@@ -1,20 +1,39 @@
+import 'dart:ui';
+
+/// Classification of kick trajectory at the moment of strike.
+enum KickType {
+  ground,
+  aerial,
+  chip,
+}
+
 /// Represents a detected kicking motion derived from pose landmarks.
 class KickEvent {
   const KickEvent({
+    required this.footPositionNormalized,
+    required this.strikeSpeed,
+    required this.type,
     required this.timestamp,
-    required this.directionX,
-    required this.directionY,
-    required this.power,
   });
+
+  /// Where on screen the kick registered (0.0–1.0, origin top-left).
+  final Offset footPositionNormalized;
+
+  /// Peak normalized foot speed during the STRIKE frame.
+  final double strikeSpeed;
+
+  final KickType type;
 
   final DateTime timestamp;
 
-  /// Normalized horizontal kick direction (-1.0 left … 1.0 right).
-  final double directionX;
-
-  /// Normalized vertical component (-1.0 down … 1.0 up).
-  final double directionY;
-
-  /// Estimated kick strength (0.0–1.0).
-  final double power;
+  @override
+  String toString() {
+    final time = '${timestamp.hour.toString().padLeft(2, '0')}:'
+        '${timestamp.minute.toString().padLeft(2, '0')}:'
+        '${timestamp.second.toString().padLeft(2, '0')}.'
+        '${timestamp.millisecond.toString().padLeft(3, '0')}';
+    return '[KICK] type=${type.name} speed=${strikeSpeed.toStringAsFixed(3)} '
+        'position=(${footPositionNormalized.dx.toStringAsFixed(2)}, '
+        '${footPositionNormalized.dy.toStringAsFixed(2)}) at $time';
+  }
 }

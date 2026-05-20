@@ -48,6 +48,12 @@ class PoseDetectorService {
   DateTime? _lastErrorLogTime;
   static const Duration _errorLogCooldown = Duration(seconds: 8);
 
+  DateTime? _lastPoseLogTime;
+  static const Duration _poseLogInterval = Duration(seconds: 3);
+
+  /// Set true to print ankle coordinates every processed frame (very noisy).
+  static bool enablePoseDebugLogs = false;
+
   static const Map<DeviceOrientation, int> _orientations = {
     DeviceOrientation.portraitUp: 0,
     DeviceOrientation.landscapeLeft: 90,
@@ -116,6 +122,14 @@ class PoseDetectorService {
   }
 
   void _logAnkles(List<PoseLandmark> landmarks, Size imageSize) {
+    if (!enablePoseDebugLogs) return;
+    final now = DateTime.now();
+    if (_lastPoseLogTime != null &&
+        now.difference(_lastPoseLogTime!) < _poseLogInterval) {
+      return;
+    }
+    _lastPoseLogTime = now;
+
     final byType = {for (final l in landmarks) l.type: l};
     final left = byType[PoseLandmarkType.leftAnkle];
     final right = byType[PoseLandmarkType.rightAnkle];

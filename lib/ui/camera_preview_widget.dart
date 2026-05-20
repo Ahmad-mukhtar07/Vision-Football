@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
+import '../pose/kick_detector.dart';
 import '../pose/pose_detector_service.dart';
 import 'pose_coordinate_mapper.dart';
 
@@ -29,6 +30,13 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   int? _selectedCameraIndex;
   List<PoseLandmark> _landmarks = [];
   StreamSubscription<List<PoseLandmark>>? _poseSubscription;
+  StreamSubscription? _kickSubscription;
+  Timer? _kickFlashTimer;
+  bool _kickFlashActive = false;
+
+  late final KickDetector _kickDetector = KickDetector(
+    poseStream: PoseDetectorService.instance.poseLandmarks,
+  );
 
   PoseDetectorService get _poseService => PoseDetectorService.instance;
 
@@ -37,7 +45,20 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     super.initState();
     _poseSubscription = _poseService.poseLandmarks.listen((landmarks) {
       if (!mounted) return;
+      final imageSize = _poseService.lastImageSize;
+      if (imageSize != null) {
+        _kickDetector.updateImageSize(imageSize);
+      }
       setState(() => _landmarks = landmarks);
+    });
+    _kickSubscription = _kickDetector.kickStream.listen((event) {
+      debugPrint(event.toString());
+      _kickFlashTimer?.cancel();
+      if (!mounted) return;
+      setState(() => _kickFlashActive = true);
+      _kickFlashTimer = Timer(const Duration(milliseconds: 400), () {
+        if (mounted) setState(() => _kickFlashActive = false);
+      });
     });
     _initCamera();
   }
@@ -92,6 +113,9 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   @override
   void dispose() {
     _poseSubscription?.cancel();
+    _kickSubscription?.cancel();
+    _kickFlashTimer?.cancel();
+    _kickDetector.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -132,6 +156,7 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
                     landmarks: _landmarks,
                     mapper: mapper,
                     minLikelihood: _minLikelihood,
+                    kickFlashActive: _kickFlashActive,
                   ),
                   size: screenSize,
                 );
@@ -148,11 +173,13 @@ class _PoseOverlayPainter extends CustomPainter {
     required this.landmarks,
     required this.mapper,
     required this.minLikelihood,
+    required this.kickFlashActive,
   });
 
   final List<PoseLandmark> landmarks;
   final PoseCoordinateMapper mapper;
   final double minLikelihood;
+  final bool kickFlashActive;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -169,7 +196,7 @@ class _PoseOverlayPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final dotPaint = Paint()
-      ..color = Colors.cyanAccent
+      ..color = kickFlashActive ? Colors.greenAccent : Colors.cyanAccent
       ..style = PaintingStyle.fill;
 
     final dotStroke = Paint()
@@ -217,6 +244,7 @@ class _PoseOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _PoseOverlayPainter oldDelegate) {
     return oldDelegate.landmarks != landmarks ||
-        oldDelegate.mapper.imageSize != mapper.imageSize;
+        oldDelegate.mapper.imageSize != mapper.imageSize ||
+        oldDelegate.kickFlashActive != kickFlashActive;
   }
 }
