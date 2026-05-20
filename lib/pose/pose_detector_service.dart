@@ -44,6 +44,10 @@ class PoseDetectorService {
   final List<double> _recentFrameIntervalsMs = [];
   DateTime? _lastProcessedAt;
 
+  String? _lastErrorMessage;
+  DateTime? _lastErrorLogTime;
+  static const Duration _errorLogCooldown = Duration(seconds: 8);
+
   static const Map<DeviceOrientation, int> _orientations = {
     DeviceOrientation.portraitUp: 0,
     DeviceOrientation.landscapeLeft: 90,
@@ -76,13 +80,13 @@ class PoseDetectorService {
     final inputImage = _inputImageFromCameraImage(image);
     if (inputImage == null) return;
 
+    lastImageSize = inputImage.metadata?.size;
+    lastRotation = inputImage.metadata?.rotation;
+
     _isProcessing = true;
     try {
       final poses = await _detector.processImage(inputImage);
       if (_disposed) return;
-
-      lastImageSize = inputImage.metadata?.size;
-      lastRotation = inputImage.metadata?.rotation;
 
       final landmarks = poses.isNotEmpty
           ? poses.first.landmarks.values.toList(growable: false)
@@ -91,11 +95,24 @@ class PoseDetectorService {
       _landmarksController.add(landmarks);
       _logAnkles(landmarks, inputImage.metadata!.size);
       _recordFpsSample();
-    } catch (e, st) {
-      debugPrint('[POSE] detection error: $e\n$st');
+    } catch (e, _) {
+      _logDetectionError(e);
     } finally {
       _isProcessing = false;
     }
+  }
+
+  void _logDetectionError(Object error) {
+    final message = error.toString();
+    final now = DateTime.now();
+    if (_lastErrorMessage == message &&
+        _lastErrorLogTime != null &&
+        now.difference(_lastErrorLogTime!) < _errorLogCooldown) {
+      return;
+    }
+    _lastErrorMessage = message;
+    _lastErrorLogTime = now;
+    debugPrint('[POSE] detection error: $message');
   }
 
   void _logAnkles(List<PoseLandmark> landmarks, Size imageSize) {
@@ -160,7 +177,7 @@ class PoseDetectorService {
     if (format == null) return null;
 
     if (Platform.isAndroid) {
-      return _androidInputImage(image, rotation, format);
+      return _androidInputImage(image, rotation);
     }
     if (Platform.isIOS && format == InputImageFormat.bgra8888) {
       if (image.planes.length != 1) return null;
@@ -178,45 +195,26 @@ class PoseDetectorService {
     return null;
   }
 
-  /// Android: supports NV21 (single plane) and YUV_420_888 (typical 3-plane stream).
+  /// Android: NV21 single-plane only (matches [ImageFormatGroup.nv21] + ML Kit).
   InputImage? _androidInputImage(
     CameraImage image,
     InputImageRotation rotation,
-    InputImageFormat? rawFormat,
   ) {
-    final size = Size(image.width.toDouble(), image.height.toDouble());
-
-    if (rawFormat == InputImageFormat.nv21 && image.planes.length == 1) {
-      final plane = image.planes.first;
-      return InputImage.fromBytes(
-        bytes: plane.bytes,
-        metadata: InputImageMetadata(
-          size: size,
-          rotation: rotation,
-          format: InputImageFormat.nv21,
-          bytesPerRow: plane.bytesPerRow,
-        ),
-      );
+    final format = InputImageFormatValue.fromRawValue(image.format.raw);
+    if (format != InputImageFormat.nv21 || image.planes.length != 1) {
+      return null;
     }
 
-    if (image.planes.length == 3) {
-      final WriteBuffer buffer = WriteBuffer();
-      for (final plane in image.planes) {
-        buffer.putUint8List(plane.bytes);
-      }
-      final bytes = buffer.done().buffer.asUint8List();
-      return InputImage.fromBytes(
-        bytes: bytes,
-        metadata: InputImageMetadata(
-          size: size,
-          rotation: rotation,
-          format: InputImageFormat.yuv_420_888,
-          bytesPerRow: image.planes.first.bytesPerRow,
-        ),
-      );
-    }
-
-    return null;
+    final plane = image.planes.first;
+    return InputImage.fromBytes(
+      bytes: plane.bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: InputImageFormat.nv21,
+        bytesPerRow: plane.bytesPerRow,
+      ),
+    );
   }
 
   Future<void> dispose() async {

@@ -57,8 +57,9 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       camera,
       ResolutionPreset.medium,
       enableAudio: false,
+      // ML Kit on Android expects NV21 (single plane), not YUV420 multi-plane.
       imageFormatGroup: Platform.isAndroid
-          ? ImageFormatGroup.yuv420
+          ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
     );
 
@@ -171,6 +172,11 @@ class _PoseOverlayPainter extends CustomPainter {
       ..color = Colors.cyanAccent
       ..style = PaintingStyle.fill;
 
+    final dotStroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
     void drawLeg(
       PoseLandmark? knee,
       PoseLandmark? ankle,
@@ -182,18 +188,30 @@ class _PoseOverlayPainter extends CustomPainter {
         final kneePt = mapper.normalizedToScreen(knee, size);
         final anklePt = mapper.normalizedToScreen(ankle, size);
         canvas.drawLine(kneePt, anklePt, linePaint);
-        canvas.drawCircle(anklePt, 10, dotPaint);
+        _drawAnkleDot(canvas, anklePt, dotPaint, dotStroke);
       } else if (ankle != null && ankle.likelihood >= minLikelihood) {
-        canvas.drawCircle(
+        _drawAnkleDot(
+          canvas,
           mapper.normalizedToScreen(ankle, size),
-          10,
           dotPaint,
+          dotStroke,
         );
       }
     }
 
     drawLeg(leftKnee, leftAnkle);
     drawLeg(rightKnee, rightAnkle);
+  }
+
+  void _drawAnkleDot(
+    Canvas canvas,
+    Offset center,
+    Paint fill,
+    Paint stroke,
+  ) {
+    const radius = 14.0;
+    canvas.drawCircle(center, radius, fill);
+    canvas.drawCircle(center, radius, stroke);
   }
 
   @override
