@@ -3,10 +3,14 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'ui/camera_preview_widget.dart';
+import 'ui/vision_football_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   runApp(const VisionFootballApp());
 }
@@ -68,7 +72,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
 
       if (!mounted) return;
       setState(() {
-        _body = CameraPreviewWidget(cameras: cameras);
+        _body = VisionFootballScreen(cameras: cameras);
       });
     } on CameraException catch (e) {
       debugPrint('Camera startup failed: ${e.code} ${e.description}');

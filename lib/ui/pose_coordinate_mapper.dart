@@ -25,6 +25,14 @@ class PoseCoordinateMapper {
     );
   }
 
+  /// Maps normalized image coords (0–1) to screen pixels (same transform as landmarks).
+  Offset normalizedOffsetToScreen(Offset normalized, Size screenSize) {
+    return Offset(
+      _translateX(normalized.dx * imageSize.width, screenSize),
+      _translateY(normalized.dy * imageSize.height, screenSize),
+    );
+  }
+
   double normalizedX(PoseLandmark landmark) => landmark.x / imageSize.width;
 
   double normalizedY(PoseLandmark landmark) => landmark.y / imageSize.height;

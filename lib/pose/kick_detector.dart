@@ -6,347 +6,688 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../models/kick_event.dart';
+import '../models/kicking_foot.dart';
+import 'kick_detection_config.dart';
+import 'pose_detector_service.dart';
 
-/// Kick detection state machine: IDLE → WINDUP → STRIKE → COOLDOWN → IDLE.
 enum KickPhase {
   idle,
-  windup,
   strike,
   cooldown,
 }
 
-enum _TrackedFoot {
-  left,
-  right,
-}
-
 class _FootFrame {
   _FootFrame({
-    required this.position,
+    required this.positionNormalized,
+    required this.z,
     required this.confidence,
     required this.timestamp,
   });
 
-  final Offset position;
+  final Offset positionNormalized;
+  final double z;
   final double confidence;
   final DateTime timestamp;
 }
 
-/// Detects real kicks from a stream of pose landmarks using normalized coordinates.
+/// Detects kicks via Z-depth thrust toward camera + planted-foot check.
 class KickDetector {
   KickDetector({
     required Stream<List<PoseLandmark>> poseStream,
-    this.windupSpeedThreshold = 0.008,
-    this.strikeSpeedThreshold = 0.02,
-    this.maxPlausibleMovement = 0.15,
-    this.cooldownDuration = const Duration(milliseconds: 800),
-    this.minConfidence = 0.6,
-    this.windupTimeLimit = const Duration(milliseconds: 600),
-  }) : _poseStream = poseStream {
+    KickDetectionConfig config = KickDetectionConfig.defaults,
+  })  : _config = config,
+        _poseStream = poseStream {
     _subscription = _poseStream.listen(_onPoseFrame);
   }
 
   final Stream<List<PoseLandmark>> _poseStream;
-
-  final double windupSpeedThreshold;
-  final double strikeSpeedThreshold;
-  final double maxPlausibleMovement;
-  final Duration cooldownDuration;
-  final double minConfidence;
-  final Duration windupTimeLimit;
+  final KickDetectionConfig _config;
 
   final StreamController<KickEvent> _kickController =
       StreamController<KickEvent>.broadcast();
 
   Stream<KickEvent> get kickStream => _kickController.stream;
 
+  final StreamController<KickCooldownUpdate> _cooldownUiController =
+      StreamController<KickCooldownUpdate>.broadcast();
+
+  /// On-screen cooldown countdown (see [KickCooldownBanner]).
+  Stream<KickCooldownUpdate> get cooldownUpdates => _cooldownUiController.stream;
+
   StreamSubscription<List<PoseLandmark>>? _subscription;
   Timer? _cooldownTimer;
+  Timer? _cooldownUiTimer;
 
   KickPhase _phase = KickPhase.idle;
   KickPhase get phase => _phase;
 
+  bool _detectionArmed = false;
+  bool _gameCanAcceptKick = true;
+  bool _mirrorPreviewAim = false;
+
+  bool? _lockedIsLeft;
+  KickingFoot? get kickingFoot => _lockedIsLeft == null
+      ? null
+      : (_lockedIsLeft! ? KickingFoot.left : KickingFoot.right);
+
+  Offset? _neutralPosition;
   Size? _imageSize;
-  final Queue<_FootFrame> _history = Queue<_FootFrame>();
 
-  _TrackedFoot? _activeFoot;
-  DateTime? _windupEnteredAt;
-  Offset? _lastTrackedPosition;
-  DateTime? _lastTrackedAt;
+  final Queue<_FootFrame> _buffer = Queue<_FootFrame>();
+  static const int _bufferSize = 3;
 
-  /// +1 = wind-up moves foot down (Y↑), -1 = wind-up moves foot up (Y↓).
-  int? _windupDySign;
+  Offset? _lastAcceptedPosition;
+  DateTime? _cooldownEndsAt;
 
+  DateTime? _lastRunupLogTime;
   DateTime? _lastTeleportLogTime;
-  static const Duration _teleportLogCooldown = Duration(seconds: 5);
+  DateTime? _lastNearKickLogTime;
+  bool _loggedCooldownStart = false;
+  static const Duration _runupLogCooldown = Duration(milliseconds: 800);
+  static const Duration _teleportLogCooldown = Duration(seconds: 4);
+  static const Duration _nearKickLogCooldown = Duration(seconds: 2);
 
-  static const int _maxHistorySize = 5;
-  static const int _windupConsecutiveFrames = 3;
-  static const double _trackingLostConfidence = 0.5;
-  static const double _aerialYThreshold = 0.45;
-  static const double _chipHorizontalRatio = 0.6;
-  static const double _referenceFrameMs = 33.0;
-  static const double _maxMovementScaleCap = 4.0;
+  final Map<bool, Offset> _lastPlantedPositions = {};
 
-  /// Supplies image dimensions for landmark normalization (from [PoseDetectorService]).
+  final StreamController<bool> _playerIsStillController =
+      StreamController<bool>.broadcast();
+
+  /// True when both ankles moved less than [KickDetectionConfig.plantedFootMaxMove]
+  /// for 4 consecutive frames (same pose frames as kick detection).
+  Stream<bool> get playerIsStill => _playerIsStillController.stream;
+
+  static const int _stillFramesRequired = 4;
+  Offset? _stillPrevLeft;
+  Offset? _stillPrevRight;
+  int _consecutiveBothStillFrames = 0;
+  bool _lastEmittedStill = false;
+
   void updateImageSize(Size size) {
     _imageSize = size;
   }
 
+  void setKickingFoot(KickingFoot foot) {
+    _lockedIsLeft = foot.isLeft;
+    _resetTrackingState();
+    disableKicks();
+  }
+
+  void setMirrorPreviewAim(bool value) {
+    _mirrorPreviewAim = value;
+  }
+
+  void clearKickingFoot() {
+    _lockedIsLeft = null;
+    _resetTrackingState();
+    disableKicks();
+  }
+
+  void applyCalibration(Offset neutralPosition) {
+    _neutralPosition = neutralPosition;
+    _detectionArmed = false;
+    _resetTrackingState();
+    _phase = KickPhase.idle;
+    _cooldownTimer?.cancel();
+  }
+
+  /// Arms kick detection (requires foot + calibration already applied).
+  void arm() => enableKickDetection();
+
+  /// Disarms detection but keeps foot lock and neutral stance.
+  void disarm() {
+    _detectionArmed = false;
+    _phase = KickPhase.idle;
+    _cooldownTimer?.cancel();
+    _cooldownUiTimer?.cancel();
+    _cooldownEndsAt = null;
+    _emitCooldownUi(inactive: true);
+    _resetTrackingState();
+  }
+
+  void enableKickDetection() {
+    if (_lockedIsLeft == null || _neutralPosition == null) return;
+    _detectionArmed = true;
+    _resetTrackingState();
+    _phase = KickPhase.idle;
+    _cooldownTimer?.cancel();
+    debugPrint('[KD] >>> READY — kick detection armed <<<');
+  }
+
+  void disableKicks() {
+    _detectionArmed = false;
+    _neutralPosition = null;
+    _resetTrackingState();
+    _phase = KickPhase.idle;
+    _cooldownTimer?.cancel();
+    _cooldownUiTimer?.cancel();
+    _cooldownEndsAt = null;
+    _emitCooldownUi(inactive: true);
+  }
+
+  void setGameCanAcceptKick(bool value) {
+    if (value && _phase == KickPhase.cooldown) return;
+    _gameCanAcceptKick = value;
+  }
+
+  void _resetTrackingState() {
+    _buffer.clear();
+    _lastAcceptedPosition = null;
+    _lastPlantedPositions.clear();
+    _stillPrevLeft = null;
+    _stillPrevRight = null;
+    _consecutiveBothStillFrames = 0;
+  }
+
   void _onPoseFrame(List<PoseLandmark> landmarks) {
-    if (_phase == KickPhase.cooldown) return;
+    if (_lockedIsLeft == null) return;
 
     final imageSize = _imageSize;
     if (imageSize == null) return;
 
-    final sample = _sampleTrackedFoot(landmarks, imageSize);
-    if (sample == null) {
-      _handleMissingLandmarks();
+    _updatePlayerStillness(landmarks, imageSize);
+
+    if (!_detectionArmed) return;
+
+    if (_phase == KickPhase.cooldown) {
       return;
     }
 
-    final frame = _FootFrame(
-      position: sample.position,
-      confidence: sample.confidence,
-      timestamp: DateTime.now(),
+    if (!_gameCanAcceptKick) {
+      return;
+    }
+
+    final kicking = _sampleKickingAnkle(landmarks, imageSize);
+    if (kicking == null) {
+      return;
+    }
+
+    if (_isTeleport(kicking.position, kicking.confidence)) {
+      _logTeleport(_teleportDelta(kicking.position));
+      return;
+    }
+
+    _lastAcceptedPosition = kicking.position;
+
+    _buffer.addLast(
+      _FootFrame(
+        positionNormalized: kicking.position,
+        z: kicking.z,
+        confidence: kicking.confidence,
+        timestamp: DateTime.now(),
+      ),
     );
+    while (_buffer.length > _bufferSize) {
+      _buffer.removeFirst();
+    }
 
-    if (_checkTeleport(frame)) return;
+    final metrics = _evaluateKick(landmarks, imageSize);
+    _logIdleOrNearKick(metrics, kicking.confidence);
 
-    _pushHistory(frame);
-    _lastTrackedPosition = frame.position;
-    _lastTrackedAt = frame.timestamp;
+    if (metrics.runupRejected) {
+      _logRunupStep(metrics.plantMove);
+    }
 
-    switch (_phase) {
-      case KickPhase.idle:
-        _processIdle(frame, sample.foot);
-      case KickPhase.windup:
-        _processWindup(frame);
-      case KickPhase.strike:
-      case KickPhase.cooldown:
-        break;
+    if (metrics.isKick) {
+      _emitStrike(metrics);
     }
   }
 
-  void _handleMissingLandmarks() {
-    if (_phase == KickPhase.windup) {
-      _resetToIdle();
+  ({Offset position, double z, double confidence})? _sampleKickingAnkle(
+    List<PoseLandmark> landmarks,
+    Size imageSize,
+  ) {
+    final locked = _lockedIsLeft;
+    if (locked == null) return null;
+
+    final byType = {for (final l in landmarks) l.type: l};
+    final ankle = locked
+        ? byType[PoseLandmarkType.leftAnkle]
+        : byType[PoseLandmarkType.rightAnkle];
+
+    if (ankle == null || ankle.likelihood < _config.minConfidence) {
+      return null;
     }
+
+    return (
+      position: Offset(
+        ankle.x / imageSize.width,
+        ankle.y / imageSize.height,
+      ),
+      z: ankle.z,
+      confidence: ankle.likelihood,
+    );
   }
 
-  /// Scales allowed jump by time between pose frames (pose runs ~6–10 Hz, not 30).
-  bool _checkTeleport(_FootFrame frame) {
-    final previous = _lastTrackedPosition;
-    final previousAt = _lastTrackedAt;
-    if (previous == null || previousAt == null) return false;
+  ({Offset position, double confidence})? _samplePlantedAnkle(
+    List<PoseLandmark> landmarks,
+    Size imageSize,
+  ) {
+    final plantedIsLeft = !_lockedIsLeft!;
+    final byType = {for (final l in landmarks) l.type: l};
+    final ankle = plantedIsLeft
+        ? byType[PoseLandmarkType.leftAnkle]
+        : byType[PoseLandmarkType.rightAnkle];
 
-    final distance = (frame.position - previous).distance;
-    final elapsedMs = frame.timestamp.difference(previousAt).inMilliseconds;
-    final scale =
-        (elapsedMs / _referenceFrameMs).clamp(1.0, _maxMovementScaleCap);
-    final allowance = maxPlausibleMovement * scale;
-
-    if (distance <= allowance) return false;
-
-    final now = DateTime.now();
-    if (_lastTeleportLogTime == null ||
-        now.difference(_lastTeleportLogTime!) >= _teleportLogCooldown) {
-      _lastTeleportLogTime = now;
-      debugPrint(
-        '[KICK] Teleport discarded — distance: ${distance.toStringAsFixed(3)} '
-        '(allowance: ${allowance.toStringAsFixed(3)}, ${elapsedMs}ms gap)',
-      );
+    if (ankle == null || ankle.likelihood < _config.minConfidence) {
+      return null;
     }
-    _resetToIdle(clearLastPosition: true);
+
+    return (
+      position: Offset(
+        ankle.x / imageSize.width,
+        ankle.y / imageSize.height,
+      ),
+      confidence: ankle.likelihood,
+    );
+  }
+
+  double _teleportDelta(Offset position) {
+    final last = _lastAcceptedPosition;
+    if (last == null) return 0;
+    return (position - last).distance;
+  }
+
+  bool _isTeleport(Offset position, double confidence) {
+    final delta = _teleportDelta(position);
+    if (delta <= _config.maxPlausibleMovement) return false;
+    // Fast, confident motion is a real kick — do not freeze tracking.
+    if (confidence >= 0.72 && delta < _config.maxKickMotionPerFrame) {
+      return false;
+    }
     return true;
   }
 
-  void _processIdle(_FootFrame frame, _TrackedFoot foot) {
-    _activeFoot = foot;
-    final sign = _detectConsecutiveMotionSign(_windupConsecutiveFrames);
-    if (sign == null) return;
-
-    _windupDySign = sign;
-    _phase = KickPhase.windup;
-    _windupEnteredAt = frame.timestamp;
-    debugPrint('[KICK] Wind-up detected (foot ${foot.name})');
-  }
-
-  void _processWindup(_FootFrame frame) {
-    if (_windupEnteredAt != null &&
-        frame.timestamp.difference(_windupEnteredAt!) > windupTimeLimit) {
-      _resetToIdle();
-      return;
+  _KickMetrics _evaluateKick(
+    List<PoseLandmark> landmarks,
+    Size imageSize,
+  ) {
+    if (_buffer.length < 2) {
+      return _KickMetrics.idle;
     }
 
-    if (frame.confidence < _trackingLostConfidence) {
-      _resetToIdle();
-      return;
+    final frames = _buffer.toList();
+    final prev = frames[frames.length - 2];
+    final curr = frames[frames.length - 1];
+
+    if (prev.confidence < _config.minConfidence ||
+        curr.confidence < _config.minConfidence) {
+      return _KickMetrics.emptyAt(curr);
     }
 
-    if (_hasStrike(frame)) {
-      _emitStrike(frame);
-      _enterCooldown();
-    }
-  }
+    final xyDelta = curr.positionNormalized - prev.positionNormalized;
+    final xySpeed = xyDelta.distance;
+    final zDelta = curr.z - prev.z;
 
-  /// Returns +1 if Y increased for [count] steps, -1 if Y decreased, else null.
-  int? _detectConsecutiveMotionSign(int count) {
-    if (_history.length < count + 1) return null;
-
-    final frames = _history.toList();
-    int? sign;
-
-    for (var i = frames.length - count; i < frames.length; i++) {
-      final previous = frames[i - 1];
-      final current = frames[i];
-      final delta = current.position - previous.position;
-      final speed = delta.distance;
-
-      if (speed < windupSpeedThreshold || current.confidence < minConfidence) {
-        return null;
+    final plantedIsLeft = !_lockedIsLeft!;
+    final planted = _samplePlantedAnkle(landmarks, imageSize);
+    var plantMove = double.infinity;
+    if (planted != null) {
+      final prevPlanted = _lastPlantedPositions[plantedIsLeft];
+      if (prevPlanted != null) {
+        plantMove = (planted.position - prevPlanted).distance;
+      } else {
+        plantMove = 0;
       }
-      if (delta.dy == 0) return null;
-
-      final stepSign = delta.dy > 0 ? 1 : -1;
-      sign ??= stepSign;
-      if (stepSign != sign) return null;
+      _lastPlantedPositions[plantedIsLeft] = planted.position;
     }
-    return sign;
-  }
 
-  bool _hasStrike(_FootFrame frame) {
-    if (_history.length < 2 || _windupDySign == null) return false;
+    final zScale = _zScale(prev.z, curr.z);
+    final zThrust = _isZThrust(zDelta, zScale) &&
+        (_buffer.length < 3 ||
+            _isZThrust(prev.z - frames[frames.length - 3].z, zScale));
 
-    final previous = _history.elementAt(_history.length - 2);
-    final delta = frame.position - previous.position;
-    final speed = delta.distance;
-    if (speed < strikeSpeedThreshold) return false;
+    final speedOk = xySpeed >= _config.strikeSpeedThreshold;
+    final plantOk = plantMove <= _config.plantedFootMaxMove;
 
-    final strikeSign = delta.dy > 0 ? 1 : (delta.dy < 0 ? -1 : 0);
-    return strikeSign == -_windupDySign!;
-  }
+    // Rule 4 (planted foot) is what distinguishes kick from run-up steps.
+    // During a run-up, both ankles move. At strike, the standing foot stops.
+    // This means run-up can flow directly into a kick naturally — no gate needed.
+    final runupRejected = zThrust && speedOk && !plantOk;
+    final isKick = zThrust && speedOk && plantOk;
+    final zThrustCandidate = _isZThrust(zDelta, zScale);
 
-  void _emitStrike(_FootFrame frame) {
-    final previous = _history.length >= 2
-        ? _history.elementAt(_history.length - 2)
-        : null;
-    final delta = previous != null
-        ? frame.position - previous.position
-        : Offset.zero;
-    final strikeSpeed = delta.distance;
+    final windowStart = frames.first.positionNormalized;
+    final windowEnd = curr.positionNormalized;
+    final windowDelta = windowEnd - windowStart;
+    final sensorDegrees =
+        PoseDetectorService.instance.sensorRotationDegrees ?? 0;
 
-    final event = KickEvent(
-      footPositionNormalized: frame.position,
-      strikeSpeed: strikeSpeed,
-      type: _classifyKick(frame.position, delta),
-      timestamp: frame.timestamp,
+    final aimDelta = _lateralAimDelta(windowDelta, xyDelta, sensorDegrees);
+    final normalizedAim = Offset(
+      (aimDelta.dx / _config.aimReferenceDelta).clamp(-1.5, 1.5),
+      aimDelta.dy,
     );
 
-    _kickController.add(event);
+    return _KickMetrics(
+      xySpeed: xySpeed,
+      zDelta: zDelta,
+      plantMove: plantMove.isFinite ? plantMove : 999,
+      isKick: isKick,
+      runupRejected: runupRejected,
+      rawDelta: xyDelta,
+      correctedDelta: normalizedAim,
+      footPosition: curr.positionNormalized,
+      type: _classifyType(curr.positionNormalized.dy),
+      sensorDegrees: sensorDegrees,
+      zThrustCandidate: zThrustCandidate,
+    );
   }
 
-  KickType _classifyKick(Offset position, Offset delta) {
-    final footHigh = position.dy < _aerialYThreshold;
-    if (!footHigh) return KickType.ground;
+  /// Lateral aim: prefer sensor-corrected delta; fall back to dominant image axis.
+  Offset _lateralAimDelta(
+    Offset windowDelta,
+    Offset instantDelta,
+    int sensorDegrees,
+  ) {
+    final correctedInstant = _correctDeltaForSensor(instantDelta, sensorDegrees);
+    final correctedWindow = _correctDeltaForSensor(windowDelta, sensorDegrees);
 
-    final horizontalSpeed = delta.dx.abs();
-    final verticalSpeed = delta.dy.abs();
-    if (verticalSpeed > 0 &&
-        horizontalSpeed < verticalSpeed * _chipHorizontalRatio) {
-      return KickType.chip;
+    var lateral = correctedWindow.dx.abs() >= correctedInstant.dx.abs()
+        ? correctedWindow.dx
+        : correctedInstant.dx;
+
+    if (lateral.abs() < 0.006) {
+      final raw = windowDelta.dx.abs() >= windowDelta.dy.abs()
+          ? windowDelta.dx
+          : -windowDelta.dy;
+      lateral = raw;
     }
-    return KickType.aerial;
+
+    return Offset(lateral, correctedInstant.dy);
+  }
+
+  Offset _correctDeltaForSensor(Offset rawDelta, int sensorDegrees) {
+    switch (sensorDegrees) {
+      case 90:
+        return Offset(rawDelta.dy, -rawDelta.dx);
+      case 270:
+        return Offset(-rawDelta.dy, rawDelta.dx);
+      case 180:
+        return Offset(-rawDelta.dx, -rawDelta.dy);
+      case 0:
+      default:
+        return rawDelta;
+    }
+  }
+
+  KickType _classifyType(double footY) {
+    return footY < _config.aerialYThreshold ? KickType.aerial : KickType.ground;
+  }
+
+  void _emitStrike(_KickMetrics metrics) {
+    _phase = KickPhase.strike;
+
+    final event = KickEvent(
+      footPositionNormalized: metrics.footPosition,
+      strikeDeltaNormalized: metrics.correctedDelta,
+      strikeSpeed: metrics.xySpeed,
+      type: metrics.type,
+      timestamp: DateTime.now(),
+      mirrorPreviewAim: _mirrorPreviewAim,
+    );
+
+    debugPrint('');
+    debugPrint('[KD] ══════ KICK DETECTED ══════');
+    debugPrint(
+      '[KD] STRIKE  speed=${metrics.xySpeed.toStringAsFixed(3)} '
+      'zDelta=${metrics.zDelta.toStringAsFixed(2)} '
+      'aim=(${metrics.correctedDelta.dx.toStringAsFixed(2)}, '
+      '${metrics.correctedDelta.dy.toStringAsFixed(2)}) '
+      'sensor=${metrics.sensorDegrees}  type=${metrics.type.name}',
+    );
+    debugPrint('[KD] ══════════════════════════');
+    debugPrint('');
+
+    _kickController.add(event);
+    _enterCooldown();
   }
 
   void _enterCooldown() {
     _phase = KickPhase.cooldown;
-    _history.clear();
-    _lastTrackedPosition = null;
-    _lastTrackedAt = null;
-    _activeFoot = null;
-    _windupEnteredAt = null;
-    _windupDySign = null;
+    _buffer.clear();
+    _lastAcceptedPosition = null;
+    _lastPlantedPositions.clear();
+    _cooldownEndsAt = DateTime.now().add(_config.cooldownDuration);
     _cooldownTimer?.cancel();
-    _cooldownTimer = Timer(cooldownDuration, () {
-      _resetToIdle(clearLastPosition: true);
+    _loggedCooldownStart = false;
+    _emitCooldownUi(inactive: false);
+    _cooldownUiTimer?.cancel();
+    _cooldownUiTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      _emitCooldownUi(inactive: false);
     });
+    _cooldownTimer = Timer(_config.cooldownDuration, () {
+      _phase = KickPhase.idle;
+      _cooldownEndsAt = null;
+      _cooldownUiTimer?.cancel();
+      _emitCooldownUi(inactive: true);
+    });
+    _logCooldownStart();
   }
 
-  void _resetToIdle({bool clearLastPosition = false}) {
-    _phase = KickPhase.idle;
-    _activeFoot = null;
-    _windupEnteredAt = null;
-    _windupDySign = null;
-    _history.clear();
-    if (clearLastPosition) {
-      _lastTrackedPosition = null;
-      _lastTrackedAt = null;
-    }
+  double _zScale(double prevZ, double currZ) {
+    return (prevZ.abs() + currZ.abs()) * 0.5 + 80.0;
   }
 
-  void _pushHistory(_FootFrame frame) {
-    _history.addLast(frame);
-    while (_history.length > _maxHistorySize) {
-      _history.removeFirst();
-    }
+  bool _isZThrust(double zDelta, double zScale) {
+    return zDelta < -_config.minZThrustPixels &&
+        zDelta / zScale < -_config.minZThrustRelative;
   }
 
-  ({Offset position, double confidence, _TrackedFoot foot})? _sampleTrackedFoot(
-    List<PoseLandmark> landmarks,
-    Size imageSize,
-  ) {
-    final byType = {for (final l in landmarks) l.type: l};
-    final left = byType[PoseLandmarkType.leftAnkle];
-    final right = byType[PoseLandmarkType.rightAnkle];
-
-    if (_phase == KickPhase.windup && _activeFoot != null) {
-      final tracked = _activeFoot == _TrackedFoot.left ? left : right;
-      if (tracked == null) return null;
-      return (
-        position: _normalize(tracked, imageSize),
-        confidence: tracked.likelihood,
-        foot: _activeFoot!,
-      );
+  void _emitCooldownUi({required bool inactive}) {
+    if (inactive || _cooldownEndsAt == null) {
+      _cooldownUiController.add(KickCooldownUpdate.inactive);
+      return;
     }
-
-    if (left == null && right == null) return null;
-
-    final PoseLandmark chosen;
-    final _TrackedFoot foot;
-    if (left == null) {
-      chosen = right!;
-      foot = _TrackedFoot.right;
-    } else if (right == null) {
-      chosen = left;
-      foot = _TrackedFoot.left;
-    } else if (left.likelihood >= right.likelihood) {
-      chosen = left;
-      foot = _TrackedFoot.left;
-    } else {
-      chosen = right;
-      foot = _TrackedFoot.right;
-    }
-
-    if (chosen.likelihood < minConfidence) return null;
-
-    return (
-      position: _normalize(chosen, imageSize),
-      confidence: chosen.likelihood,
-      foot: foot,
+    final remainingMs = _cooldownEndsAt!
+        .difference(DateTime.now())
+        .inMilliseconds
+        .clamp(0, _config.cooldownDuration.inMilliseconds);
+    _cooldownUiController.add(
+      KickCooldownUpdate(
+        active: true,
+        remainingMs: remainingMs,
+        totalMs: _config.cooldownDuration.inMilliseconds,
+      ),
     );
   }
 
-  Offset _normalize(PoseLandmark landmark, Size imageSize) {
+  void _logIdleOrNearKick(_KickMetrics metrics, double conf) {
+    if (KickDetectionConfig.verboseFrameLogs) {
+      debugPrint(
+        '[KD] IDLE buf=${_buffer.length} xySpeed=${metrics.xySpeed.toStringAsFixed(3)} '
+        'zDelta=${metrics.zDelta.toStringAsFixed(2)} '
+        'plantMove=${metrics.plantMove.toStringAsFixed(3)} conf=${conf.toStringAsFixed(2)}',
+      );
+      return;
+    }
+
+    final nearKick = metrics.zThrustCandidate &&
+        metrics.xySpeed >= _config.strikeSpeedThreshold * 0.7;
+    if (!nearKick) return;
+
+    final now = DateTime.now();
+    if (_lastNearKickLogTime != null &&
+        now.difference(_lastNearKickLogTime!) < _nearKickLogCooldown) {
+      return;
+    }
+    _lastNearKickLogTime = now;
+    debugPrint(
+      '[KD] (near) zDelta=${metrics.zDelta.toStringAsFixed(2)} '
+      'speed=${metrics.xySpeed.toStringAsFixed(3)} plant=${metrics.plantMove.toStringAsFixed(3)}',
+    );
+  }
+
+  void _logTeleport(double delta) {
+    final now = DateTime.now();
+    if (_lastTeleportLogTime != null &&
+        now.difference(_lastTeleportLogTime!) < _teleportLogCooldown) {
+      return;
+    }
+    _lastTeleportLogTime = now;
+    debugPrint('[KD] TELEPORT discarded xyDelta=${delta.toStringAsFixed(2)}');
+  }
+
+  void _logRunupStep(double plantMove) {
+    if (!KickDetectionConfig.logRunupSteps) return;
+    final now = DateTime.now();
+    if (_lastRunupLogTime != null &&
+        now.difference(_lastRunupLogTime!) < _runupLogCooldown) {
+      return;
+    }
+    _lastRunupLogTime = now;
+    debugPrint(
+      '[KD] RUNUP_STEP plant=${plantMove.toStringAsFixed(3)} '
+      '(max ${_config.plantedFootMaxMove.toStringAsFixed(3)})',
+    );
+  }
+
+  void _logCooldownStart() {
+    if (_loggedCooldownStart) return;
+    _loggedCooldownStart = true;
+    final ms = _config.cooldownDuration.inMilliseconds;
+    debugPrint('[KD] cooldown ${ms}ms (next kick after)');
+  }
+
+  void _updatePlayerStillness(List<PoseLandmark> landmarks, Size imageSize) {
+    final left = _ankleNorm(landmarks, imageSize, isLeft: true);
+    final right = _ankleNorm(landmarks, imageSize, isLeft: false);
+    if (left == null || right == null) {
+      _consecutiveBothStillFrames = 0;
+      _emitPlayerStill(false);
+      return;
+    }
+
+    if (_stillPrevLeft == null || _stillPrevRight == null) {
+      _stillPrevLeft = left;
+      _stillPrevRight = right;
+      _consecutiveBothStillFrames = 0;
+      _emitPlayerStill(false);
+      return;
+    }
+
+    final leftMove = (left - _stillPrevLeft!).distance;
+    final rightMove = (right - _stillPrevRight!).distance;
+    _stillPrevLeft = left;
+    _stillPrevRight = right;
+
+    final maxMove = _config.plantedFootMaxMove;
+    if (leftMove <= maxMove && rightMove <= maxMove) {
+      _consecutiveBothStillFrames++;
+    } else {
+      _consecutiveBothStillFrames = 0;
+    }
+
+    final isStill = _consecutiveBothStillFrames >= _stillFramesRequired;
+    _emitPlayerStill(isStill);
+  }
+
+  void _emitPlayerStill(bool isStill) {
+    if (isStill == _lastEmittedStill) return;
+    _lastEmittedStill = isStill;
+    if (!_playerIsStillController.isClosed) {
+      _playerIsStillController.add(isStill);
+    }
+  }
+
+  Offset? _ankleNorm(
+    List<PoseLandmark> landmarks,
+    Size imageSize, {
+    required bool isLeft,
+  }) {
+    final byType = {for (final l in landmarks) l.type: l};
+    final ankle = isLeft
+        ? byType[PoseLandmarkType.leftAnkle]
+        : byType[PoseLandmarkType.rightAnkle];
+    if (ankle == null || ankle.likelihood < _config.minConfidence * 0.9) {
+      return null;
+    }
     return Offset(
-      landmark.x / imageSize.width,
-      landmark.y / imageSize.height,
+      ankle.x / imageSize.width,
+      ankle.y / imageSize.height,
     );
   }
 
   void dispose() {
     _cooldownTimer?.cancel();
+    _cooldownUiTimer?.cancel();
     _subscription?.cancel();
     _kickController.close();
+    _cooldownUiController.close();
+    _playerIsStillController.close();
   }
+}
+
+/// UI state for [KickCooldownBanner].
+class KickCooldownUpdate {
+  const KickCooldownUpdate({
+    required this.active,
+    required this.remainingMs,
+    required this.totalMs,
+  });
+
+  static const KickCooldownUpdate inactive = KickCooldownUpdate(
+    active: false,
+    remainingMs: 0,
+    totalMs: 0,
+  );
+
+  final bool active;
+  final int remainingMs;
+  final int totalMs;
+}
+
+class _KickMetrics {
+  const _KickMetrics({
+    required this.xySpeed,
+    required this.zDelta,
+    required this.plantMove,
+    required this.isKick,
+    required this.runupRejected,
+    required this.rawDelta,
+    required this.correctedDelta,
+    required this.footPosition,
+    required this.type,
+    required this.sensorDegrees,
+    required this.zThrustCandidate,
+  });
+
+  static const _KickMetrics idle = _KickMetrics(
+    xySpeed: 0,
+    zDelta: 0,
+    plantMove: 0,
+    isKick: false,
+    runupRejected: false,
+    rawDelta: Offset.zero,
+    correctedDelta: Offset.zero,
+    footPosition: Offset.zero,
+    type: KickType.ground,
+    sensorDegrees: 0,
+    zThrustCandidate: false,
+  );
+
+  static _KickMetrics emptyAt(_FootFrame curr) => _KickMetrics(
+        xySpeed: 0,
+        zDelta: 0,
+        plantMove: 0,
+        isKick: false,
+        runupRejected: false,
+        rawDelta: Offset.zero,
+        correctedDelta: Offset.zero,
+        footPosition: curr.positionNormalized,
+        type: KickType.ground,
+        sensorDegrees: 0,
+        zThrustCandidate: false,
+      );
+
+  final double xySpeed;
+  final double zDelta;
+  final double plantMove;
+  final bool isKick;
+  final bool runupRejected;
+  final Offset rawDelta;
+  final Offset correctedDelta;
+  final Offset footPosition;
+  final KickType type;
+  final int sensorDegrees;
+  final bool zThrustCandidate;
 }

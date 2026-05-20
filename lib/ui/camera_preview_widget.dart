@@ -3,10 +3,14 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
+import '../models/kicking_foot.dart';
+import '../pose/kick_detection_config.dart';
 import '../pose/kick_detector.dart';
+import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
 import 'pose_coordinate_mapper.dart';
 
@@ -15,16 +19,22 @@ class CameraPreviewWidget extends StatefulWidget {
   const CameraPreviewWidget({
     super.key,
     required this.cameras,
+    required this.kickDetector,
+    required this.calibration,
+    this.kickingFoot,
   });
 
   final List<CameraDescription> cameras;
+  final KickDetector kickDetector;
+  final PlayerCalibration calibration;
+  final KickingFoot? kickingFoot;
 
   @override
   State<CameraPreviewWidget> createState() => _CameraPreviewWidgetState();
 }
 
 class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
-  static const double _minLikelihood = 0.6;
+  static const double _minLikelihood = KickDetectionConfig.minAnkleConfidence;
 
   CameraController? _controller;
   int? _selectedCameraIndex;
@@ -33,12 +43,14 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   StreamSubscription? _kickSubscription;
   Timer? _kickFlashTimer;
   bool _kickFlashActive = false;
+  Offset? _smoothedAnkleNorm;
+  KickingFoot? _smoothedFoot;
 
-  late final KickDetector _kickDetector = KickDetector(
-    poseStream: PoseDetectorService.instance.poseLandmarks,
-  );
+  static const double _overlaySmoothAlpha = 0.38;
+  static const double _overlayMaxJump = 0.07;
 
   PoseDetectorService get _poseService => PoseDetectorService.instance;
+  KickDetector get _kickDetector => widget.kickDetector;
 
   @override
   void initState() {
@@ -48,11 +60,12 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       final imageSize = _poseService.lastImageSize;
       if (imageSize != null) {
         _kickDetector.updateImageSize(imageSize);
+        widget.calibration.updateImageSize(imageSize);
       }
+      _updateSmoothedAnkle(landmarks, imageSize);
       setState(() => _landmarks = landmarks);
     });
     _kickSubscription = _kickDetector.kickStream.listen((event) {
-      debugPrint(event.toString());
       _kickFlashTimer?.cancel();
       if (!mounted) return;
       setState(() => _kickFlashActive = true);
@@ -61,6 +74,44 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       });
     });
     _initCamera();
+  }
+
+  void _updateSmoothedAnkle(List<PoseLandmark> landmarks, Size? imageSize) {
+    final foot = widget.kickingFoot;
+    if (foot == null || imageSize == null) {
+      _smoothedAnkleNorm = null;
+      _smoothedFoot = null;
+      return;
+    }
+
+    if (_smoothedFoot != foot) {
+      _smoothedFoot = foot;
+      _smoothedAnkleNorm = null;
+    }
+
+    final byType = {for (final l in landmarks) l.type: l};
+    final ankle = foot.isLeft
+        ? byType[PoseLandmarkType.leftAnkle]
+        : byType[PoseLandmarkType.rightAnkle];
+    if (ankle == null || ankle.likelihood < _minLikelihood) {
+      return;
+    }
+
+    final raw = Offset(
+      ankle.x / imageSize.width,
+      ankle.y / imageSize.height,
+    );
+    final ref = _smoothedAnkleNorm;
+    if (ref != null && (raw - ref).distance > _overlayMaxJump) {
+      return;
+    }
+
+    _smoothedAnkleNorm = ref == null
+        ? raw
+        : Offset(
+            ref.dx + (raw.dx - ref.dx) * _overlaySmoothAlpha,
+            ref.dy + (raw.dy - ref.dy) * _overlaySmoothAlpha,
+          );
   }
 
   Future<void> _initCamera() async {
@@ -90,6 +141,8 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       return;
     }
 
+    await controller.lockCaptureOrientation(DeviceOrientation.landscapeLeft);
+
     await controller.startImageStream(_onCameraImage);
     if (!mounted) {
       await controller.dispose();
@@ -115,7 +168,6 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     _poseSubscription?.cancel();
     _kickSubscription?.cancel();
     _kickFlashTimer?.cancel();
-    _kickDetector.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -141,7 +193,7 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          CameraPreview(controller),
+          _LandscapeCameraPreview(controller: controller),
           if (imageSize != null && rotation != null)
             LayoutBuilder(
               builder: (context, constraints) {
@@ -157,6 +209,8 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
                     mapper: mapper,
                     minLikelihood: _minLikelihood,
                     kickFlashActive: _kickFlashActive,
+                    kickingFoot: widget.kickingFoot,
+                    smoothedAnkleNorm: _smoothedAnkleNorm,
                   ),
                   size: screenSize,
                 );
@@ -168,83 +222,85 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   }
 }
 
+/// Full-screen cover fit for landscape (sensor buffer is usually portrait).
+class _LandscapeCameraPreview extends StatelessWidget {
+  const _LandscapeCameraPreview({required this.controller});
+
+  final CameraController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final previewSize = controller.value.previewSize;
+    if (previewSize == null) {
+      return CameraPreview(controller);
+    }
+
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: previewSize.height,
+          height: previewSize.width,
+          child: CameraPreview(controller),
+        ),
+      ),
+    );
+  }
+}
+
 class _PoseOverlayPainter extends CustomPainter {
   _PoseOverlayPainter({
     required this.landmarks,
     required this.mapper,
     required this.minLikelihood,
     required this.kickFlashActive,
+    required this.kickingFoot,
+    required this.smoothedAnkleNorm,
   });
 
   final List<PoseLandmark> landmarks;
   final PoseCoordinateMapper mapper;
   final double minLikelihood;
   final bool kickFlashActive;
+  final KickingFoot? kickingFoot;
+  final Offset? smoothedAnkleNorm;
 
   @override
   void paint(Canvas canvas, Size size) {
     final byType = {for (final l in landmarks) l.type: l};
 
-    final leftKnee = byType[PoseLandmarkType.leftKnee];
-    final leftAnkle = byType[PoseLandmarkType.leftAnkle];
-    final rightKnee = byType[PoseLandmarkType.rightKnee];
-    final rightAnkle = byType[PoseLandmarkType.rightAnkle];
+    if (kickingFoot == null) return;
 
-    final linePaint = Paint()
-      ..color = Colors.greenAccent
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
+    final isLeft = kickingFoot!.isLeft;
+    final ankle = isLeft
+        ? byType[PoseLandmarkType.leftAnkle]
+        : byType[PoseLandmarkType.rightAnkle];
+    final anklePt = smoothedAnkleNorm != null
+        ? mapper.normalizedOffsetToScreen(smoothedAnkleNorm!, size)
+        : ankle != null && ankle.likelihood >= minLikelihood
+            ? mapper.normalizedToScreen(ankle, size)
+            : null;
+    if (anklePt == null) return;
+    final fill = kickFlashActive ? Colors.greenAccent : Colors.orangeAccent;
+    const radius = 18.0;
 
-    final dotPaint = Paint()
-      ..color = kickFlashActive ? Colors.greenAccent : Colors.cyanAccent
-      ..style = PaintingStyle.fill;
-
-    final dotStroke = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    void drawLeg(
-      PoseLandmark? knee,
-      PoseLandmark? ankle,
-    ) {
-      if (knee != null &&
-          ankle != null &&
-          knee.likelihood >= minLikelihood &&
-          ankle.likelihood >= minLikelihood) {
-        final kneePt = mapper.normalizedToScreen(knee, size);
-        final anklePt = mapper.normalizedToScreen(ankle, size);
-        canvas.drawLine(kneePt, anklePt, linePaint);
-        _drawAnkleDot(canvas, anklePt, dotPaint, dotStroke);
-      } else if (ankle != null && ankle.likelihood >= minLikelihood) {
-        _drawAnkleDot(
-          canvas,
-          mapper.normalizedToScreen(ankle, size),
-          dotPaint,
-          dotStroke,
-        );
-      }
-    }
-
-    drawLeg(leftKnee, leftAnkle);
-    drawLeg(rightKnee, rightAnkle);
-  }
-
-  void _drawAnkleDot(
-    Canvas canvas,
-    Offset center,
-    Paint fill,
-    Paint stroke,
-  ) {
-    const radius = 14.0;
-    canvas.drawCircle(center, radius, fill);
-    canvas.drawCircle(center, radius, stroke);
+    canvas.drawCircle(anklePt, radius, Paint()..color = fill);
+    canvas.drawCircle(
+      anklePt,
+      radius,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
   }
 
   @override
   bool shouldRepaint(covariant _PoseOverlayPainter oldDelegate) {
     return oldDelegate.landmarks != landmarks ||
         oldDelegate.mapper.imageSize != mapper.imageSize ||
-        oldDelegate.kickFlashActive != kickFlashActive;
+        oldDelegate.kickFlashActive != kickFlashActive ||
+        oldDelegate.kickingFoot != kickingFoot ||
+        oldDelegate.smoothedAnkleNorm != smoothedAnkleNorm;
   }
 }

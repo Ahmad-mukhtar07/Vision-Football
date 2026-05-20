@@ -17,7 +17,7 @@ class PoseDetectorService {
 
   static final PoseDetectorService instance = PoseDetectorService._();
 
-  static const int _processEveryNthFrame = 3;
+  static const int _processEveryNthFrame = 1;
 
   final PoseDetector _detector = PoseDetector(
     options: PoseDetectorOptions(
@@ -40,6 +40,9 @@ class PoseDetectorService {
 
   Size? lastImageSize;
   InputImageRotation? lastRotation;
+
+  /// Degrees passed to ML Kit for the last processed frame (0/90/180/270).
+  int? sensorRotationDegrees;
 
   final List<double> _recentFrameIntervalsMs = [];
   DateTime? _lastProcessedAt;
@@ -173,19 +176,23 @@ class PoseDetectorService {
     final camera = _camera!;
 
     InputImageRotation? rotation;
+    int? rotationDegrees;
     if (Platform.isIOS) {
-      rotation = _getRotation(camera.sensorOrientation);
+      rotationDegrees = camera.sensorOrientation;
+      rotation = _getRotation(rotationDegrees);
     } else if (Platform.isAndroid) {
       final rotationCompensation =
           _orientations[_deviceOrientation];
       if (rotationCompensation == null) return null;
 
-      final compensated = camera.lensDirection == CameraLensDirection.front
+      rotationDegrees = camera.lensDirection == CameraLensDirection.front
           ? (camera.sensorOrientation + rotationCompensation) % 360
           : (camera.sensorOrientation - rotationCompensation + 360) % 360;
-      rotation = _getRotation(compensated);
+      rotation = _getRotation(rotationDegrees);
     }
-    if (rotation == null) return null;
+    if (rotation == null || rotationDegrees == null) return null;
+
+    sensorRotationDegrees = rotationDegrees;
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null) return null;
