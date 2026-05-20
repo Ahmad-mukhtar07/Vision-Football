@@ -8,6 +8,7 @@ import '../goalkeeper_component.dart';
 import '../../pose/kick_detection_config.dart';
 import '../layout_constants.dart';
 import '../trajectory_params.dart';
+import '../painters/football_painter.dart';
 import 'goal_component.dart';
 
 enum BallState {
@@ -56,7 +57,9 @@ class BallComponent extends PositionComponent {
   Vector2? _resetFrom;
   double _resetStartScale = 1;
   double _baseScale = 1;
-  Color _ballColor = Colors.white;
+  double _spinAngle = 0;
+  double _spinDirection = 1;
+  Color? _ballTint;
 
   static const double _minFlightDuration = 0.5;
   static const double _maxFlightDuration = 1.2;
@@ -84,7 +87,10 @@ class BallComponent extends PositionComponent {
     _flightStart = position.clone();
     _flightT = 0;
     _baseScale = 1;
-    _ballColor = Colors.white;
+    _ballTint = null;
+    _spinAngle = 0;
+    _spinDirection =
+        trajectory.targetPosition.dx >= position.x ? 1 : -1;
     _state = BallState.inFlight;
   }
 
@@ -185,6 +191,7 @@ class BallComponent extends PositionComponent {
 
     final duration = trajectory.flightDurationSeconds;
     _flightT = (_flightT + dt / duration).clamp(0.0, 1.0);
+    _spinAngle += _spinDirection * 0.15 * dt * 60;
     final t = _flightT;
 
     final end = Vector2(
@@ -237,15 +244,19 @@ class BallComponent extends PositionComponent {
     if (inGoal && hitGk) {
       isSave = true;
       _state = BallState.missed;
-      _ballColor = Colors.redAccent;
+      _ballTint = Colors.redAccent;
       goalkeeper.flashSave();
     } else if (inGoal) {
       isGoal = true;
       _state = BallState.scored;
-      goal.flashColor(Colors.greenAccent, const Duration(milliseconds: 500));
+      goal.flashColor(
+        Colors.greenAccent,
+        const Duration(milliseconds: 300),
+        particleOrigin: landing,
+      );
     } else {
       _state = BallState.missed;
-      _ballColor = Colors.redAccent;
+      _ballTint = Colors.redAccent;
     }
 
     _postResultTimer = 0;
@@ -262,7 +273,8 @@ class BallComponent extends PositionComponent {
     _resetFrom = position.clone();
     _resetStartScale = _baseScale;
     _resetT = 0;
-    _ballColor = Colors.white;
+    _ballTint = null;
+    _spinAngle = 0;
   }
 
   void _updateResetting(double dt) {
@@ -286,16 +298,12 @@ class BallComponent extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    final radius = size.x * 0.5 * _baseScale;
+    final radius = 18 * _baseScale;
     final center = Offset(size.x * 0.5, size.y * 0.5);
-    canvas.drawCircle(center, radius, Paint()..color = _ballColor);
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..color = Colors.black26
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
+    FootballPainter(
+      radius: radius,
+      rotationRadians: _spinAngle,
+      tintColor: _ballTint,
+    ).paint(canvas, center);
   }
 }

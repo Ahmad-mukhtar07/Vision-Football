@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../game/match_state.dart';
 
-/// Match-aware HUD: kick counter, phase instructions, GO animation, results.
+/// Match-aware HUD with styled top bar and phase animations.
 class HudOverlay extends StatefulWidget {
   const HudOverlay({
     super.key,
@@ -18,33 +18,72 @@ class HudOverlay extends StatefulWidget {
 }
 
 class _HudOverlayState extends State<HudOverlay>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   MatchState _state = const MatchState();
   StreamSubscription<MatchState>? _subscription;
+
   late final AnimationController _goController;
   late final Animation<double> _goScale;
+  late final AnimationController _arrowController;
+  late final Animation<double> _arrowOpacity;
+  late final AnimationController _shakeController;
+  late final Animation<double> _shakeOffset;
+  late final AnimationController _missFadeController;
+  late final Animation<double> _missOpacity;
+
   Timer? _goFadeTimer;
   bool _showGo = false;
+
+  static const _gold = Color(0xFFFFD700);
+  static const _orange = Color(0xFFFF6B00);
+  static const _saveRed = Color(0xFFFF3333);
 
   @override
   void initState() {
     super.initState();
     _goController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 500),
     );
     _goScale = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.5, end: 1.2)
+        tween: Tween(begin: 0.6, end: 1.1)
             .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 70,
+        weight: 65,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.2, end: 1.0)
+        tween: Tween(begin: 1.1, end: 1.0)
             .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 30,
+        weight: 35,
       ),
     ]).animate(_goController);
+
+    _arrowController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _arrowOpacity = Tween(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _arrowController, curve: Curves.easeInOut),
+    );
+
+    _shakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _shakeOffset = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: 4), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 4, end: -4), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -4, end: 4), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: 4, end: 0), weight: 1),
+    ]).animate(_shakeController);
+
+    _missFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
+    _missOpacity = Tween(begin: 1.0, end: 0.35).animate(
+      CurvedAnimation(parent: _missFadeController, curve: Curves.easeOut),
+    );
 
     _subscription = widget.matchStateStream.listen(_onMatchState);
   }
@@ -53,6 +92,7 @@ class _HudOverlayState extends State<HudOverlay>
     if (!mounted) return;
 
     final wasReady = _state.phase == MatchPhase.readyToKick;
+    final wasResult = _state.phase == MatchPhase.resultPause;
     setState(() => _state = state);
 
     if (state.phase == MatchPhase.readyToKick && !wasReady) {
@@ -63,39 +103,28 @@ class _HudOverlayState extends State<HudOverlay>
         if (mounted) setState(() => _showGo = false);
       });
     }
-  }
+    if (state.phase != MatchPhase.readyToKick) {
+      _showGo = false;
+    }
 
-  String? _centerInstruction() {
-    switch (_state.phase) {
-      case MatchPhase.runUp:
-        return 'Step back and run up';
-      case MatchPhase.readyToKick:
-        return null;
-      case MatchPhase.ballInFlight:
-        return null;
-      case MatchPhase.resultPause:
-        return switch (_state.lastResult) {
-          KickResult.goal => 'GOAL! ⚽',
-          KickResult.saved => 'SAVED! 🧤',
-          KickResult.miss => 'MISS!',
-          null => null,
-        };
-      case MatchPhase.notStarted:
-      case MatchPhase.matchOver:
-        return null;
+    if (state.phase == MatchPhase.resultPause && !wasResult) {
+      if (state.lastResult == KickResult.goal) {
+        _shakeController.forward(from: 0);
+      } else if (state.lastResult == KickResult.miss) {
+        _missFadeController.forward(from: 0);
+      }
+    }
+
+    if (state.phase != MatchPhase.resultPause) {
+      _missFadeController.reset();
+      _shakeController.reset();
     }
   }
 
-  Color _centerColor() {
-    if (_state.phase != MatchPhase.resultPause) {
-      return Colors.white;
-    }
-    return switch (_state.lastResult) {
-      KickResult.goal => Colors.yellow,
-      KickResult.saved => Colors.redAccent,
-      KickResult.miss => Colors.white,
-      null => Colors.white,
-    };
+  Shader _gradientShader(double fontSize) {
+    return LinearGradient(
+      colors: const [_gold, _orange],
+    ).createShader(Rect.fromLTWH(0, 0, 200, fontSize * 1.2));
   }
 
   @override
@@ -103,6 +132,9 @@ class _HudOverlayState extends State<HudOverlay>
     _subscription?.cancel();
     _goFadeTimer?.cancel();
     _goController.dispose();
+    _arrowController.dispose();
+    _shakeController.dispose();
+    _missFadeController.dispose();
     super.dispose();
   }
 
@@ -113,8 +145,6 @@ class _HudOverlayState extends State<HudOverlay>
       return const SizedBox.shrink();
     }
 
-    final centerText = _centerInstruction();
-
     return SafeArea(
       child: Stack(
         children: [
@@ -122,65 +152,166 @@ class _HudOverlayState extends State<HudOverlay>
             top: 8,
             left: 16,
             right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
               children: [
-                Text(
-                  '⚽ ${_state.kicksTaken} / ${_state.totalKicks}',
-                  style: _topBarStyle,
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '⚽ ${_state.kicksTaken} / ${_state.totalKicks}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '⚽ ${_state.goalsScored}',
+                        style: const TextStyle(
+                          color: Colors.lightGreenAccent,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        '🧤 ${_state.savesMade}',
+                        style: const TextStyle(
+                          color: _saveRed,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                Text(
-                  'GOALS: ${_state.goalsScored}',
-                  style: _topBarStyle,
-                ),
-                Text(
-                  'SAVES: ${_state.savesMade}',
-                  style: _topBarStyle,
+                const SizedBox(height: 6),
+                Container(
+                  height: 1,
+                  color: Colors.white24,
                 ),
               ],
             ),
           ),
-          if (_state.phase == MatchPhase.readyToKick && _showGo)
-            Center(
-              child: ScaleTransition(
-                scale: _goScale,
-                child: const Text(
-                  'GO!',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 72,
-                    fontWeight: FontWeight.w900,
-                    shadows: [
-                      Shadow(blurRadius: 12, color: Colors.black),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else if (centerText != null)
-            Center(
-              child: Text(
-                centerText,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _centerColor(),
-                  fontSize: _state.phase == MatchPhase.resultPause ? 48 : 26,
-                  fontWeight: FontWeight.bold,
-                  shadows: const [
-                    Shadow(blurRadius: 8, color: Colors.black),
-                  ],
-                ),
-              ),
-            ),
+          if (_state.phase == MatchPhase.runUp) _buildRunUpHint(),
+          if (_showGo) _buildGoBanner(),
+          if (_state.phase == MatchPhase.resultPause) _buildResultBanner(),
         ],
       ),
     );
   }
 
-  static const _topBarStyle = TextStyle(
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: FontWeight.bold,
-    shadows: [Shadow(blurRadius: 4, color: Colors.black)],
-  );
+  Widget _buildRunUpHint() {
+    return Center(
+      child: FadeTransition(
+        opacity: _arrowOpacity,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '←',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 36,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Step back and run up',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                shadows: [Shadow(blurRadius: 6, color: Colors.black)],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGoBanner() {
+    return Center(
+      child: ScaleTransition(
+        scale: _goScale,
+        child: Text(
+          'GO!',
+          style: TextStyle(
+            fontSize: 80,
+            fontWeight: FontWeight.w900,
+            foreground: Paint()
+              ..shader = _gradientShader(80)
+              ..style = PaintingStyle.fill,
+            shadows: const [
+              Shadow(blurRadius: 14, color: Colors.black87, offset: Offset(2, 3)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultBanner() {
+    final result = _state.lastResult;
+    if (result == null) return const SizedBox.shrink();
+
+    Widget child;
+    switch (result) {
+      case KickResult.goal:
+        child = AnimatedBuilder(
+          animation: _shakeController,
+          builder: (context, _) {
+            return Transform.translate(
+              offset: Offset(_shakeOffset.value, 0),
+              child: Text(
+                'GOAL! ⚽',
+                style: TextStyle(
+                  fontSize: 60,
+                  fontWeight: FontWeight.w900,
+                  foreground: Paint()..shader = _gradientShader(60),
+                  shadows: const [
+                    Shadow(blurRadius: 10, color: Colors.black),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      case KickResult.saved:
+        child = const Text(
+          'SAVED! 🧤',
+          style: TextStyle(
+            color: _saveRed,
+            fontSize: 60,
+            fontWeight: FontWeight.w900,
+            shadows: [Shadow(blurRadius: 10, color: Colors.black)],
+          ),
+        );
+      case KickResult.miss:
+        child = FadeTransition(
+          opacity: _missOpacity,
+          child: const Text(
+            'MISS!',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 50,
+              fontWeight: FontWeight.bold,
+              shadows: [Shadow(blurRadius: 8, color: Colors.black)],
+            ),
+          ),
+        );
+    }
+
+    return Center(child: child);
+  }
 }

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../models/kick_event.dart';
 import 'layout_constants.dart';
+import 'painters/goalkeeper_painter.dart';
 
 enum GoalkeeperPhase {
   idle,
@@ -14,7 +15,7 @@ enum GoalkeeperPhase {
   recovering,
 }
 
-/// Placeholder goalkeeper inside the goal mouth.
+/// Goalkeeper inside the goal mouth.
 class GoalkeeperComponent extends PositionComponent {
   GoalkeeperComponent({
     required GameLayout layout,
@@ -34,9 +35,10 @@ class GoalkeeperComponent extends PositionComponent {
   Vector2? _diveTarget;
   double _diveT = 0;
   double _recoverT = 0;
+  double _diveDirectionSign = 1;
 
   async.Timer? _reactionTimer;
-  Color _bodyColor = Colors.orange;
+  double _saveFlashOpacity = 0;
 
   static const double _reactionDelayMinMs = 200;
   static const double _reactionDelayMaxMs = 400;
@@ -82,6 +84,8 @@ class GoalkeeperComponent extends PositionComponent {
     if (!isMounted || _phase != GoalkeeperPhase.idle) return;
 
     _diveTarget = _computeDivePosition(event);
+    _diveDirectionSign =
+        (_diveTarget!.x >= _centerPosition.x) ? 1.0 : -1.0;
     _diveT = 0;
     _phase = GoalkeeperPhase.diving;
   }
@@ -117,9 +121,9 @@ class GoalkeeperComponent extends PositionComponent {
   }
 
   void flashSave() {
-    _bodyColor = Colors.greenAccent;
+    _saveFlashOpacity = 1;
     async.Timer(const Duration(milliseconds: 500), () {
-      if (isMounted) _bodyColor = Colors.orange;
+      if (isMounted) _saveFlashOpacity = 0;
     });
   }
 
@@ -131,6 +135,10 @@ class GoalkeeperComponent extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
+
+    if (_saveFlashOpacity > 0) {
+      _saveFlashOpacity = (_saveFlashOpacity - dt * 2).clamp(0, 1);
+    }
 
     switch (_phase) {
       case GoalkeeperPhase.diving:
@@ -168,12 +176,14 @@ class GoalkeeperComponent extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    final rect = Rect.fromCenter(
-      center: Offset(size.x * 0.5, size.y * 0.5),
-      width: size.x,
-      height: size.y,
-    );
-    canvas.drawRect(rect, Paint()..color = _bodyColor);
+    GoalkeeperPainter(
+      goalWidth: _layout.goalRect.width,
+      goalHeight: _layout.goalRect.height,
+      isDiving: _phase != GoalkeeperPhase.idle,
+      diveProgress: _phase == GoalkeeperPhase.diving ? _diveT : 1.0,
+      diveDirectionSign: _diveDirectionSign,
+      saveFlashOpacity: _saveFlashOpacity,
+    ).paint(canvas, Size(size.x, size.y));
   }
 
   @override

@@ -164,11 +164,13 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           game: _game,
           backgroundBuilder: (context) => const SizedBox.shrink(),
         ),
-        if (playing && _kickingFoot != null)
+        if ((playing || _setupPhase == _SetupPhase.calibrating) &&
+            _kickingFoot != null)
           FootMarkerOverlay(
             cameras: widget.cameras,
-            kickingFoot: _kickingFoot,
+            kickingFoot: _kickingFoot!,
             kickDetector: _kickDetector,
+            showFootLabel: _setupPhase == _SetupPhase.calibrating,
           ),
         if (playing && !matchOver)
           HudOverlay(matchStateStream: _matchController.stateStream),
