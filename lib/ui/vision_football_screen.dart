@@ -150,6 +150,8 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   Widget build(BuildContext context) {
     final playing = _setupPhase == _SetupPhase.playing;
     final matchOver = playing && _matchController.state.phase == MatchPhase.matchOver;
+    final showCameraPreview = _kickingFoot == null ||
+        _setupPhase == _SetupPhase.positioning;
 
     return Stack(
       fit: StackFit.expand,
@@ -159,6 +161,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           kickDetector: _kickDetector,
           calibration: _calibration,
           kickingFoot: _kickingFoot,
+          showPreview: showCameraPreview,
         ),
         GameWidget(
           game: _game,

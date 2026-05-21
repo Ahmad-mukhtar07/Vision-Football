@@ -7,12 +7,13 @@ import 'package:flutter/material.dart';
 abstract final class StadiumVisualLayout {
   static const double cameraBandTop = 0.32;
   static const double cameraBandBottom = 0.62;
-  static const double skyBandHeight = 0.32;
+  /// Upper stadium (sky + stands) — covers former camera window too.
+  static const double upperStadiumHeight = 0.62;
   static const double pitchBandTop = 0.62;
   static const double pitchBandHeight = 0.38;
 }
 
-/// Cached sky / stands scene for the top band (above the camera window).
+/// Cached sky / stands scene for the upper band (replaces visible camera window).
 class StadiumSkyPainter extends CustomPainter {
   StadiumSkyPainter({
     required this.size,
@@ -24,6 +25,7 @@ class StadiumSkyPainter extends CustomPainter {
 
   static const Color _navyTop = Color(0xFF0D1B2A);
   static const Color _horizonBlue = Color(0xFF1a3a5c);
+  static const Color _pitchHorizon = Color(0xFF2a4a28);
   static const List<Color> _crowdColors = [
     Color(0xFF8B0000),
     Color(0xFF003366),
@@ -34,28 +36,70 @@ class StadiumSkyPainter extends CustomPainter {
   void paint(Canvas canvas, Size canvasSize) {
     final w = size.width;
     final h = size.height;
-    final scale = h / (fullScreenHeight * 0.38);
 
     final gradient = ui.Gradient.linear(
       const Offset(0, 0),
       Offset(0, h),
-      [_navyTop, _horizonBlue],
+      [
+        _navyTop,
+        _horizonBlue,
+        _horizonBlue.withValues(alpha: 0.95),
+        _pitchHorizon,
+      ],
+      [0.0, 0.35, 0.72, 1.0],
     );
     canvas.drawRect(
       Rect.fromLTWH(0, 0, w, h),
       Paint()..shader = gradient,
     );
 
-    _drawCrowd(canvas, w, h, scale);
+    _drawMidStands(canvas, w, h);
+    _drawCrowd(canvas, w, h);
     _drawFloodlights(canvas, w, h);
     _drawHorizonLine(canvas, w, h);
   }
 
-  void _drawCrowd(Canvas canvas, double w, double h, double scale) {
+  /// Deeper stands fill where the camera band used to show through the goal.
+  void _drawMidStands(Canvas canvas, double w, double h) {
+    final midTop = h * StadiumVisualLayout.cameraBandTop /
+        StadiumVisualLayout.upperStadiumHeight;
+    final midRect = Rect.fromLTWH(0, midTop, w, h - midTop);
+    final midGrad = ui.Gradient.linear(
+      Offset(0, midTop),
+      Offset(0, h),
+      [
+        _horizonBlue.withValues(alpha: 0.0),
+        const Color(0xFF152a45),
+        const Color(0xFF1e3d32),
+      ],
+      [0.0, 0.45, 1.0],
+    );
+    canvas.drawRect(midRect, Paint()..shader = midGrad);
+
+    final rng = Random(77);
+    var y = midTop + h * 0.04;
+    while (y < h * 0.92) {
+      var x = 0.0;
+      while (x < w) {
+        final bw = 6 + rng.nextInt(14);
+        final bh = 4 + rng.nextInt(8);
+        canvas.drawRect(
+          Rect.fromLTWH(x, y, bw.toDouble(), bh.toDouble()),
+          Paint()
+            ..color = _crowdColors[rng.nextInt(_crowdColors.length)]
+                .withValues(alpha: 0.35 + rng.nextDouble() * 0.25),
+        );
+        x += bw + 3;
+      }
+      y += 10 + rng.nextInt(6);
+    }
+  }
+
+  void _drawCrowd(Canvas canvas, double w, double h) {
     final rng = Random(42);
-    const rowCount = 4;
-    final rowHeight = h * 0.14 * scale.clamp(0.75, 1.1);
-    var y = h * 0.22;
+    const rowCount = 5;
+    final rowHeight = h * 0.09;
+    var y = h * 0.14;
 
     for (var row = 0; row < rowCount; row++) {
       var x = -w * 0.02 + row * 7.0;
@@ -82,7 +126,7 @@ class StadiumSkyPainter extends CustomPainter {
     for (final frac in positions) {
       final x = w * frac - towerW * 0.5;
       canvas.drawRect(
-        Rect.fromLTWH(x, 0, towerW, h * 0.95),
+        Rect.fromLTWH(x, 0, towerW, h * 0.92),
         Paint()..color = Colors.white.withValues(alpha: 0.85),
       );
       for (final dx in [-3.0, 3.0]) {
@@ -100,7 +144,7 @@ class StadiumSkyPainter extends CustomPainter {
       Offset(0, h - 1),
       Offset(w, h - 1),
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.15)
+        ..color = Colors.white.withValues(alpha: 0.22)
         ..strokeWidth = 1.5,
     );
   }

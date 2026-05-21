@@ -22,12 +22,16 @@ class CameraPreviewWidget extends StatefulWidget {
     required this.kickDetector,
     required this.calibration,
     this.kickingFoot,
+    this.showPreview = true,
   });
 
   final List<CameraDescription> cameras;
   final KickDetector kickDetector;
   final PlayerCalibration calibration;
   final KickingFoot? kickingFoot;
+
+  /// When false, camera stream keeps running for pose/ML Kit but preview is hidden.
+  final bool showPreview;
 
   @override
   State<CameraPreviewWidget> createState() => _CameraPreviewWidgetState();
@@ -187,6 +191,10 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     final imageSize = _poseService.lastImageSize;
     final rotation = _poseService.lastRotation;
     final camera = widget.cameras[_selectedCameraIndex!];
+
+    if (!widget.showPreview) {
+      return const SizedBox.expand();
+    }
 
     return ColoredBox(
       color: Colors.black,

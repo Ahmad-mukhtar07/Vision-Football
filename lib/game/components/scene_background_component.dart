@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../layout_constants.dart';
 import '../painters/stadium_painter.dart';
 
-/// Stadium sky / stands band (cached, above camera window).
+/// Stadium sky / stands band (cached; fills upper screen including ex-camera band).
 class SkyBackgroundComponent extends PositionComponent {
   SkyBackgroundComponent({required GameLayout layout})
       : _layout = layout,
@@ -33,7 +33,7 @@ class SkyBackgroundComponent extends PositionComponent {
 
   void _ensureCache() {
     final w = _layout.width;
-    final h = _layout.height * StadiumVisualLayout.skyBandHeight;
+    final h = _layout.height * StadiumVisualLayout.upperStadiumHeight;
     final newSize = Vector2(w, h);
     if (_cachedPicture != null && _cachedSize == newSize) return;
 
