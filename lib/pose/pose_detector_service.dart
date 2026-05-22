@@ -9,9 +9,6 @@ import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 /// Wraps Google ML Kit pose detection and exposes a stream of pose results.
-///
-/// Landmark [x]/[y] from ML Kit are in input-image pixel space; normalize to
-/// 0.0–1.0 by dividing by [lastImageSize] width/height when needed downstream.
 class PoseDetectorService {
   PoseDetectorService._();
 
@@ -38,11 +35,33 @@ class PoseDetectorService {
   CameraDescription? _camera;
   DeviceOrientation _deviceOrientation = DeviceOrientation.portraitUp;
 
+  /// Raw camera buffer size (often landscape: width > height).
+  Size? lastBufferImageSize;
+
+  /// Upright size ML Kit landmark coords use (portrait: height > width).
   Size? lastImageSize;
   InputImageRotation? lastRotation;
 
+  /// Maps buffer dimensions to upright portrait/landscape space for landmarks.
+  static Size orientedImageSize(Size bufferSize, InputImageRotation rotation) {
+    switch (rotation) {
+      case InputImageRotation.rotation90deg:
+      case InputImageRotation.rotation270deg:
+        return Size(bufferSize.height, bufferSize.width);
+      case InputImageRotation.rotation0deg:
+      case InputImageRotation.rotation180deg:
+        return bufferSize;
+    }
+  }
+
+  /// Raw [CameraDescription.sensorOrientation] (for kick aim correction).
+  int? cameraSensorOrientation;
+
   /// Degrees passed to ML Kit for the last processed frame (0/90/180/270).
   int? sensorRotationDegrees;
+
+  bool get isFrontCamera =>
+      _camera?.lensDirection == CameraLensDirection.front;
 
   final List<double> _recentFrameIntervalsMs = [];
   DateTime? _lastProcessedAt;
@@ -71,12 +90,22 @@ class PoseDetectorService {
   }) {
     _camera = camera;
     _deviceOrientation = deviceOrientation;
+    cameraSensorOrientation = camera.sensorOrientation;
   }
 
-  /// Maps sensor/device-compensated degrees to [InputImageRotation] for ML Kit.
-  InputImageRotation _getRotation(int sensorDegrees) {
-    return InputImageRotationValue.fromRawValue(sensorDegrees) ??
-        InputImageRotation.rotation0deg;
+  InputImageRotation _getInputImageRotation(int sensorDegrees) {
+    switch (sensorDegrees) {
+      case 0:
+        return InputImageRotation.rotation0deg;
+      case 90:
+        return InputImageRotation.rotation90deg;
+      case 180:
+        return InputImageRotation.rotation180deg;
+      case 270:
+        return InputImageRotation.rotation270deg;
+      default:
+        return InputImageRotation.rotation270deg;
+    }
   }
 
   Future<void> processCameraImage(CameraImage image) async {
@@ -89,8 +118,26 @@ class PoseDetectorService {
     final inputImage = _inputImageFromCameraImage(image);
     if (inputImage == null) return;
 
-    lastImageSize = inputImage.metadata?.size;
-    lastRotation = inputImage.metadata?.rotation;
+    final meta = inputImage.metadata;
+    if (meta != null) {
+      lastBufferImageSize = meta.size;
+      lastRotation = meta.rotation;
+      lastImageSize = orientedImageSize(meta.size, meta.rotation);
+    }
+
+    if (_frameCounter == 1 || _frameCounter % 120 == 0) {
+      final buf = lastBufferImageSize;
+      final upright = lastImageSize;
+      debugPrint(
+        '[CAM] buffer=${buf?.width.toInt()}×${buf?.height.toInt()} '
+        'upright=${upright?.width.toInt()}×${upright?.height.toInt()} '
+        '(portrait: upright height > width)',
+      );
+      debugPrint(
+        '[POSE] inputRotation=${lastRotation?.name ?? "?"} '
+        'upright=${upright?.width.toInt()}×${upright?.height.toInt()}',
+      );
+    }
 
     _isProcessing = true;
     try {
@@ -102,7 +149,9 @@ class PoseDetectorService {
           : <PoseLandmark>[];
 
       _landmarksController.add(landmarks);
-      _logAnkles(landmarks, inputImage.metadata!.size);
+      if (lastImageSize != null) {
+        _logAnkles(landmarks, lastImageSize!);
+      }
       _recordFpsSample();
     } catch (e, _) {
       _logDetectionError(e);
@@ -139,8 +188,8 @@ class PoseDetectorService {
 
     String fmt(PoseLandmark? l) {
       if (l == null) return '—';
-      final nx = (l.x / imageSize.width).toStringAsFixed(3);
-      final ny = (l.y / imageSize.height).toStringAsFixed(3);
+      final nx = (l.x > 2.0 ? l.x / imageSize.width : l.x).toStringAsFixed(3);
+      final ny = (l.y > 2.0 ? l.y / imageSize.height : l.y).toStringAsFixed(3);
       final conf = l.likelihood.toStringAsFixed(2);
       return '($nx, $ny, $conf)';
     }
@@ -179,16 +228,15 @@ class PoseDetectorService {
     int? rotationDegrees;
     if (Platform.isIOS) {
       rotationDegrees = camera.sensorOrientation;
-      rotation = _getRotation(rotationDegrees);
+      rotation = _getInputImageRotation(rotationDegrees);
     } else if (Platform.isAndroid) {
-      final rotationCompensation =
-          _orientations[_deviceOrientation];
+      final rotationCompensation = _orientations[_deviceOrientation];
       if (rotationCompensation == null) return null;
 
       rotationDegrees = camera.lensDirection == CameraLensDirection.front
           ? (camera.sensorOrientation + rotationCompensation) % 360
           : (camera.sensorOrientation - rotationCompensation + 360) % 360;
-      rotation = _getRotation(rotationDegrees);
+      rotation = _getInputImageRotation(rotationDegrees);
     }
     if (rotation == null || rotationDegrees == null) return null;
 
@@ -216,7 +264,6 @@ class PoseDetectorService {
     return null;
   }
 
-  /// Android: NV21 single-plane only (matches [ImageFormatGroup.nv21] + ML Kit).
   InputImage? _androidInputImage(
     CameraImage image,
     InputImageRotation rotation,

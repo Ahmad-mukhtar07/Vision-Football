@@ -2,7 +2,9 @@ import 'dart:ui';
 
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
+import '../ui/pose_coordinate_mapper.dart';
 import 'kick_detection_config.dart';
+import 'pose_detector_service.dart';
 
 /// Tracks one ankle with confidence, geometry checks, smoothing, and jump rejection.
 class StableFootTracker {
@@ -34,9 +36,6 @@ class StableFootTracker {
 
   bool get isLocked => _lockedToLeft != null;
 
-  /// Unsmoothed ankle position — use for speed / kick direction (matches overlay motion).
-  ///
-  /// [requireOnGround] false during kicks so a lifted foot is still tracked (air kicks).
   ({Offset position, double confidence})? sampleRaw(
     List<PoseLandmark> landmarks,
     Size imageSize, {
@@ -59,15 +58,11 @@ class StableFootTracker {
     }
 
     return (
-      position: Offset(
-        ankle.x / imageSize.width,
-        ankle.y / imageSize.height,
-      ),
+      position: _norm(ankle, imageSize),
       confidence: ankle.likelihood,
     );
   }
 
-  /// Smoothed position for stable stance / calibration (reduces jitter).
   ({Offset position, double confidence})? sample(
     List<PoseLandmark> landmarks,
     Size imageSize,
@@ -91,10 +86,7 @@ class StableFootTracker {
       return _heldSample();
     }
 
-    final raw = Offset(
-      ankle.x / imageSize.width,
-      ankle.y / imageSize.height,
-    );
+    final raw = _norm(ankle, imageSize);
 
     final reference = _smoothedPosition ?? _heldPosition;
     if (reference != null && (raw - reference).distance > maxJumpPerFrame) {
@@ -119,6 +111,14 @@ class StableFootTracker {
     return (position: _heldPosition!, confidence: minConfidence);
   }
 
+  Offset _norm(PoseLandmark landmark, Size imageSize) {
+    return PoseCoordinateMapper.landmarkToNormalized(
+      landmark: landmark,
+      imageSize: imageSize,
+      isFrontCamera: PoseDetectorService.instance.isFrontCamera,
+    );
+  }
+
   bool _isAnkleBelowKnee(
     PoseLandmark ankle,
     PoseLandmark? knee,
@@ -127,9 +127,8 @@ class StableFootTracker {
     if (knee == null || knee.likelihood < minConfidence * 0.9) {
       return true;
     }
-    final ankleY = ankle.y / imageSize.height;
-    final kneeY = knee.y / imageSize.height;
-    return ankleY >
-        kneeY + KickDetectionConfig.minAnkleBelowKneeFraction;
+    final ankleY = _norm(ankle, imageSize).dy;
+    final kneeY = _norm(knee, imageSize).dy;
+    return ankleY > kneeY + KickDetectionConfig.minAnkleBelowKneeFraction;
   }
 }

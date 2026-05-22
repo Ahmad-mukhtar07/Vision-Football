@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../models/kicking_foot.dart';
-import 'kick_detection_config.dart';
 import 'stable_foot_tracker.dart';
 
 enum CalibrationPhase {
@@ -46,6 +45,9 @@ class PlayerCalibration extends ChangeNotifier {
   Offset? _neutralPosition;
   Offset? get neutralPosition => _neutralPosition;
 
+  double? _neutralZ;
+  double? get neutralZ => _neutralZ;
+
   bool get isReady => _phase == CalibrationPhase.ready && _neutralPosition != null;
 
   int get stillSampleCount => _stillSamples.length;
@@ -61,11 +63,14 @@ class PlayerCalibration extends ChangeNotifier {
 
   Size? _imageSize;
   final List<Offset> _stillSamples = [];
+  final List<double> _stillZSamples = [];
   Offset? _lastFootPosition;
   DateTime? _lastFootAt;
   DateTime? _holdStartedAt;
   bool? _lockedIsLeft;
   int _consecutiveMisses = 0;
+
+  List<PoseLandmark>? _lastLandmarks;
 
   void updateImageSize(Size size) {
     _imageSize = size;
@@ -90,11 +95,13 @@ class PlayerCalibration extends ChangeNotifier {
 
     if (_lastFootPosition != null) {
       _neutralPosition = _lastFootPosition;
+      _neutralZ = _sampleAnkleZ(_lastLandmarks, _imageSize);
       _phase = CalibrationPhase.ready;
       debugPrint(
         '[CALIBRATION] Forced ready (last seen) — '
         'neutral=(${_neutralPosition!.dx.toStringAsFixed(2)}, '
-        '${_neutralPosition!.dy.toStringAsFixed(2)})',
+        '${_neutralPosition!.dy.toStringAsFixed(2)}) '
+        'neutralZ=${_neutralZ?.toStringAsFixed(1) ?? 'null'}',
       );
       notifyListeners();
     }
@@ -107,6 +114,8 @@ class PlayerCalibration extends ChangeNotifier {
         _lockedIsLeft == null) {
       return;
     }
+
+    _lastLandmarks = landmarks;
 
     if (_holdStartedAt != null &&
         DateTime.now().difference(_holdStartedAt!) > holdTimeout) {
@@ -122,6 +131,7 @@ class PlayerCalibration extends ChangeNotifier {
       _consecutiveMisses++;
       if (_consecutiveMisses >= maxConsecutiveMissedFrames) {
         _stillSamples.clear();
+        _stillZSamples.clear();
         _phase = CalibrationPhase.searching;
         _holdStartedAt = null;
         notifyListeners();
@@ -137,6 +147,7 @@ class PlayerCalibration extends ChangeNotifier {
       _phase = CalibrationPhase.holding;
       _holdStartedAt = now;
       _stillSamples.clear();
+      _stillZSamples.clear();
       notifyListeners();
     }
 
@@ -160,12 +171,15 @@ class PlayerCalibration extends ChangeNotifier {
           );
         }
         _stillSamples.clear();
+        _stillZSamples.clear();
         notifyListeners();
         return;
       }
     }
 
     _stillSamples.add(foot);
+    final z = _sampleAnkleZ(landmarks, imageSize);
+    if (z != null) _stillZSamples.add(z);
     notifyListeners();
 
     if (_stillSamples.length < stillFramesRequired) return;
@@ -178,19 +192,40 @@ class PlayerCalibration extends ChangeNotifier {
     final sumY = _stillSamples.fold<double>(0, (s, o) => s + o.dy);
     final n = _stillSamples.length;
     _neutralPosition = Offset(sum / n, sumY / n);
+
+    if (_stillZSamples.isNotEmpty) {
+      _neutralZ = _stillZSamples.fold<double>(0, (s, v) => s + v) /
+          _stillZSamples.length;
+    }
+
     _phase = CalibrationPhase.ready;
     _stillSamples.clear();
+    _stillZSamples.clear();
     debugPrint(
       '[CALIBRATION] Ready — neutral=(${_neutralPosition!.dx.toStringAsFixed(2)}, '
-      '${_neutralPosition!.dy.toStringAsFixed(2)})',
+      '${_neutralPosition!.dy.toStringAsFixed(2)}) '
+      'neutralZ=${_neutralZ?.toStringAsFixed(1) ?? 'null'}',
     );
     notifyListeners();
+  }
+
+  double? _sampleAnkleZ(List<PoseLandmark>? landmarks, Size? imageSize) {
+    if (landmarks == null || imageSize == null || _lockedIsLeft == null) {
+      return null;
+    }
+    final byType = {for (final l in landmarks) l.type: l};
+    final ankle = _lockedIsLeft!
+        ? byType[PoseLandmarkType.leftAnkle]
+        : byType[PoseLandmarkType.rightAnkle];
+    return ankle?.z;
   }
 
   void reset() {
     _phase = CalibrationPhase.searching;
     _neutralPosition = null;
+    _neutralZ = null;
     _stillSamples.clear();
+    _stillZSamples.clear();
     _lastFootPosition = null;
     _lastFootAt = null;
     _holdStartedAt = null;
@@ -205,7 +240,9 @@ class PlayerCalibration extends ChangeNotifier {
     _lockedIsLeft = null;
     _phase = CalibrationPhase.searching;
     _neutralPosition = null;
+    _neutralZ = null;
     _stillSamples.clear();
+    _stillZSamples.clear();
     _lastFootPosition = null;
     _lastFootAt = null;
     _holdStartedAt = null;
@@ -215,6 +252,7 @@ class PlayerCalibration extends ChangeNotifier {
 
   void _resetCollection({bool keepPhase = false}) {
     _stillSamples.clear();
+    _stillZSamples.clear();
     _lastFootPosition = null;
     _lastFootAt = null;
     if (!keepPhase) {

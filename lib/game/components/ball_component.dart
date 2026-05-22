@@ -63,8 +63,7 @@ class BallComponent extends PositionComponent {
 
   static const double _minFlightDuration = 0.5;
   static const double _maxFlightDuration = 1.2;
-  static const double _minStrikeSpeed = 0.015;
-  static const double _maxStrikeSpeed = 0.12;
+  // Power is now normalized 0–1 via KickEvent.kickPower.
   static const double _postResultDelay = 1.2;
   static const double _resetDuration = 0.4;
 
@@ -99,11 +98,8 @@ class BallComponent extends PositionComponent {
     final h = layout.height;
     final goalRect = layout.goalRect;
 
-    // strikeDeltaNormalized.dx is lateral aim in roughly [-1, 1] (set in KickDetector).
-    var lateral = strike.dx.clamp(-1.0, 1.0);
-    if (event.mirrorPreviewAim) {
-      lateral = -lateral;
-    }
+    // Lateral aim (screen-space, mirrored in PoseCoordinateMapper)
+    final lateral = strike.dx.clamp(-1.0, 1.0);
     final halfWidth =
         goalRect.width * KickDetectionConfig.defaults.aimGoalHalfWidthFraction;
     final clampedX = (goalRect.center.dx + lateral * halfWidth).clamp(
@@ -111,15 +107,22 @@ class BallComponent extends PositionComponent {
       goalRect.right - goalRect.width * 0.05,
     );
 
-    final targetY = event.type == KickType.aerial
+    // Fix 7: vertical aim from strike.dy
+    double targetYBase = event.type == KickType.aerial
         ? goalRect.top + goalRect.height * 0.15
         : goalRect.top + goalRect.height * 0.72;
+    final verticalAim = (-strike.dy).clamp(-1.0, 1.0);
+    final verticalRange = goalRect.height * 0.45;
+    final targetY = (targetYBase - verticalAim * verticalRange)
+        .clamp(
+          goalRect.top + goalRect.height * 0.05,
+          goalRect.bottom - goalRect.height * 0.05,
+        );
 
     final targetPosition = Offset(clampedX, targetY);
 
-    final speedNorm = event.strikeSpeed.clamp(_minStrikeSpeed, _maxStrikeSpeed);
-    final speedT =
-        (speedNorm - _minStrikeSpeed) / (_maxStrikeSpeed - _minStrikeSpeed);
+    // Fix 5: use kickPower (already 0–1) for flight duration
+    final speedT = event.kickPower;
     var flightDurationSeconds =
         _maxFlightDuration -
         speedT * (_maxFlightDuration - _minFlightDuration);

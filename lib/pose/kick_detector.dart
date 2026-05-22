@@ -8,6 +8,7 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import '../models/kick_event.dart';
 import '../models/kicking_foot.dart';
 import 'kick_detection_config.dart';
+import '../ui/pose_coordinate_mapper.dart';
 import 'pose_detector_service.dart';
 
 enum KickPhase {
@@ -63,7 +64,6 @@ class KickDetector {
 
   bool _detectionArmed = false;
   bool _gameCanAcceptKick = true;
-  bool _mirrorPreviewAim = false;
 
   bool? _lockedIsLeft;
   KickingFoot? get kickingFoot => _lockedIsLeft == null
@@ -71,10 +71,11 @@ class KickDetector {
       : (_lockedIsLeft! ? KickingFoot.left : KickingFoot.right);
 
   Offset? _neutralPosition;
+  double? _neutralZ;
   Size? _imageSize;
 
   final Queue<_FootFrame> _buffer = Queue<_FootFrame>();
-  static const int _bufferSize = 3;
+  static const int _bufferSize = 6; // Fix 8: was 3, now ~200ms at 30fps
 
   Offset? _lastAcceptedPosition;
   DateTime? _cooldownEndsAt;
@@ -88,6 +89,7 @@ class KickDetector {
   static const Duration _nearKickLogCooldown = Duration(seconds: 2);
 
   final Map<bool, Offset> _lastPlantedPositions = {};
+  int _plantedFootMissingFrames = 0; // Fix 6
 
   final StreamController<bool> _playerIsStillController =
       StreamController<bool>.broadcast();
@@ -113,7 +115,7 @@ class KickDetector {
   }
 
   void setMirrorPreviewAim(bool value) {
-    _mirrorPreviewAim = value;
+    // Retained for API compat; mirror is handled in PoseCoordinateMapper.
   }
 
   void clearKickingFoot() {
@@ -122,12 +124,17 @@ class KickDetector {
     disableKicks();
   }
 
-  void applyCalibration(Offset neutralPosition) {
+  void applyCalibration(Offset neutralPosition, {double? neutralZ}) {
     _neutralPosition = neutralPosition;
+    _neutralZ = neutralZ;
     _detectionArmed = false;
     _resetTrackingState();
     _phase = KickPhase.idle;
     _cooldownTimer?.cancel();
+    debugPrint(
+      '[KD] calibration applied — neutral=(${neutralPosition.dx.toStringAsFixed(2)}, '
+      '${neutralPosition.dy.toStringAsFixed(2)}) neutralZ=${neutralZ?.toStringAsFixed(1) ?? 'null'}',
+    );
   }
 
   /// Arms kick detection (requires foot + calibration already applied).
@@ -156,6 +163,7 @@ class KickDetector {
   void disableKicks() {
     _detectionArmed = false;
     _neutralPosition = null;
+    _neutralZ = null;
     _resetTrackingState();
     _phase = KickPhase.idle;
     _cooldownTimer?.cancel();
@@ -173,10 +181,15 @@ class KickDetector {
     _buffer.clear();
     _lastAcceptedPosition = null;
     _lastPlantedPositions.clear();
+    _plantedFootMissingFrames = 0;
     _stillPrevLeft = null;
     _stillPrevRight = null;
     _consecutiveBothStillFrames = 0;
   }
+
+  // ---------------------------------------------------------------------------
+  // Frame processing
+  // ---------------------------------------------------------------------------
 
   void _onPoseFrame(List<PoseLandmark> landmarks) {
     if (_lockedIsLeft == null) return;
@@ -232,6 +245,10 @@ class KickDetector {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Sampling
+  // ---------------------------------------------------------------------------
+
   ({Offset position, double z, double confidence})? _sampleKickingAnkle(
     List<PoseLandmark> landmarks,
     Size imageSize,
@@ -249,9 +266,10 @@ class KickDetector {
     }
 
     return (
-      position: Offset(
-        ankle.x / imageSize.width,
-        ankle.y / imageSize.height,
+      position: PoseCoordinateMapper.landmarkToNormalized(
+        landmark: ankle,
+        imageSize: imageSize,
+        isFrontCamera: PoseDetectorService.instance.isFrontCamera,
       ),
       z: ankle.z,
       confidence: ankle.likelihood,
@@ -273,13 +291,18 @@ class KickDetector {
     }
 
     return (
-      position: Offset(
-        ankle.x / imageSize.width,
-        ankle.y / imageSize.height,
+      position: PoseCoordinateMapper.landmarkToNormalized(
+        landmark: ankle,
+        imageSize: imageSize,
+        isFrontCamera: PoseDetectorService.instance.isFrontCamera,
       ),
       confidence: ankle.likelihood,
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Teleport filter
+  // ---------------------------------------------------------------------------
 
   double _teleportDelta(Offset position) {
     final last = _lastAcceptedPosition;
@@ -290,12 +313,16 @@ class KickDetector {
   bool _isTeleport(Offset position, double confidence) {
     final delta = _teleportDelta(position);
     if (delta <= _config.maxPlausibleMovement) return false;
-    // Fast, confident motion is a real kick — do not freeze tracking.
-    if (confidence >= 0.72 && delta < _config.maxKickMotionPerFrame) {
+    if (confidence >= _config.minConfidence &&
+        delta < _config.maxKickMotionPerFrame * 1.35) {
       return false;
     }
     return true;
   }
+
+  // ---------------------------------------------------------------------------
+  // Kick evaluation (core logic)
+  // ---------------------------------------------------------------------------
 
   _KickMetrics _evaluateKick(
     List<PoseLandmark> landmarks,
@@ -314,23 +341,45 @@ class KickDetector {
       return _KickMetrics.emptyAt(curr);
     }
 
+    // --- XY delta & speed ---
     final xyDelta = curr.positionNormalized - prev.positionNormalized;
     final xySpeed = xyDelta.distance;
     final zDelta = curr.z - prev.z;
 
+    // --- Fix 5: Timestamp-normalized velocity ---
+    final elapsedMs =
+        curr.timestamp.difference(prev.timestamp).inMicroseconds / 1000.0;
+    final elapsedSecs = elapsedMs.clamp(16.0, 100.0) / 1000.0;
+    final xyVelocity = xySpeed / elapsedSecs;
+    final zSpeed = (-zDelta).clamp(0.0, 200.0) / 200.0;
+    final combinedPower = ((xyVelocity / _config.maxXyVelocityNorm) * 0.65 +
+            zSpeed * 0.35)
+        .clamp(0.0, 1.0);
+
+    // --- Planted foot (Fix 6) ---
     final plantedIsLeft = !_lockedIsLeft!;
     final planted = _samplePlantedAnkle(landmarks, imageSize);
-    var plantMove = double.infinity;
+    double plantMove;
+
     if (planted != null) {
+      _plantedFootMissingFrames = 0;
       final prevPlanted = _lastPlantedPositions[plantedIsLeft];
       if (prevPlanted != null) {
         plantMove = (planted.position - prevPlanted).distance;
       } else {
-        plantMove = 0;
+        plantMove = _config.plantedFootMaxMove; // neutral first frame
       }
       _lastPlantedPositions[plantedIsLeft] = planted.position;
+    } else {
+      if (_plantedFootMissingFrames < _config.maxPlantedMissingFrames) {
+        plantMove = 0; // assume still — can't measure
+        _plantedFootMissingFrames++;
+      } else {
+        plantMove = double.infinity;
+      }
     }
 
+    // --- Z thrust ---
     final zScale = _zScale(prev.z, curr.z);
     final zThrust = _isZThrust(zDelta, zScale) &&
         (_buffer.length < 3 ||
@@ -339,23 +388,56 @@ class KickDetector {
     final speedOk = xySpeed >= _config.strikeSpeedThreshold;
     final plantOk = plantMove <= _config.plantedFootMaxMove;
 
-    // Rule 4 (planted foot) is what distinguishes kick from run-up steps.
-    // During a run-up, both ankles move. At strike, the standing foot stops.
-    // This means run-up can flow directly into a kick naturally — no gate needed.
     final runupRejected = zThrust && speedOk && !plantOk;
     final isKick = zThrust && speedOk && plantOk;
     final zThrustCandidate = _isZThrust(zDelta, zScale);
 
-    final windowStart = frames.first.positionNormalized;
-    final windowEnd = curr.positionNormalized;
-    final windowDelta = windowEnd - windowStart;
+    // --- Fix 8: Peak-speed aim window ---
     final sensorDegrees =
-        PoseDetectorService.instance.sensorRotationDegrees ?? 0;
+        PoseDetectorService.instance.cameraSensorOrientation ??
+        PoseDetectorService.instance.sensorRotationDegrees ??
+        0;
 
-    final aimDelta = _lateralAimDelta(windowDelta, xyDelta, sensorDegrees);
+    int peakIdx = frames.length - 1;
+    double peakSpeed = 0;
+    for (int i = 1; i < frames.length; i++) {
+      final d = (frames[i].positionNormalized -
+              frames[i - 1].positionNormalized)
+          .distance;
+      if (d > peakSpeed) {
+        peakSpeed = d;
+        peakIdx = i;
+      }
+    }
+
+    final windowDelta =
+        frames[peakIdx].positionNormalized - frames.first.positionNormalized;
+    final instantDelta = xyDelta;
+
+    // Fix 1: cross-reference neutral baseline when window delta is small
+    Offset neutralAimBoost = Offset.zero;
+    if (_neutralPosition != null && windowDelta.distance < 0.02) {
+      neutralAimBoost =
+          (curr.positionNormalized - _neutralPosition!) * 0.5;
+    }
+
+    final aimDelta = _lateralAimDelta(
+      windowDelta + neutralAimBoost,
+      instantDelta,
+      sensorDegrees,
+    );
+    // Fix 9: clamp ±1.0 (was ±1.5)
     final normalizedAim = Offset(
-      (aimDelta.dx / _config.aimReferenceDelta).clamp(-1.5, 1.5),
+      (aimDelta.dx / _config.aimReferenceDelta).clamp(-1.0, 1.0),
       aimDelta.dy,
+    );
+
+    // --- Fix 1 + 4: classify type relative to neutral ---
+    final kickType = _classifyType(
+      footPos: curr.positionNormalized,
+      neutralPos: _neutralPosition ?? curr.positionNormalized,
+      xyDelta: xyDelta,
+      xySpeed: xySpeed,
     );
 
     return _KickMetrics(
@@ -367,13 +449,17 @@ class KickDetector {
       rawDelta: xyDelta,
       correctedDelta: normalizedAim,
       footPosition: curr.positionNormalized,
-      type: _classifyType(curr.positionNormalized.dy),
+      type: kickType,
       sensorDegrees: sensorDegrees,
       zThrustCandidate: zThrustCandidate,
+      kickPower: combinedPower,
     );
   }
 
-  /// Lateral aim: prefer sensor-corrected delta; fall back to dominant image axis.
+  // ---------------------------------------------------------------------------
+  // Aim helpers
+  // ---------------------------------------------------------------------------
+
   Offset _lateralAimDelta(
     Offset windowDelta,
     Offset instantDelta,
@@ -396,23 +482,49 @@ class KickDetector {
     return Offset(lateral, correctedInstant.dy);
   }
 
+  /// PoseCoordinateMapper.landmarkToNormalized normalises into portrait-upright
+  /// space (orientedImageSize swaps axes for 90/270°). Deltas are therefore
+  /// already portrait-aligned. If aim is inverted on a specific device,
+  /// set [KickDetectionConfig.flipAimXForDevice] true as a workaround. (Fix 3)
   Offset _correctDeltaForSensor(Offset rawDelta, int sensorDegrees) {
-    switch (sensorDegrees) {
-      case 90:
-        return Offset(rawDelta.dy, -rawDelta.dx);
-      case 270:
-        return Offset(-rawDelta.dy, rawDelta.dx);
-      case 180:
-        return Offset(-rawDelta.dx, -rawDelta.dy);
-      case 0:
-      default:
-        return rawDelta;
-    }
+    if (_config.flipAimXForDevice) return Offset(-rawDelta.dx, rawDelta.dy);
+    return rawDelta;
   }
 
-  KickType _classifyType(double footY) {
-    return footY < _config.aerialYThreshold ? KickType.aerial : KickType.ground;
+  // ---------------------------------------------------------------------------
+  // Shot type classification (Fix 1 + Fix 4)
+  // ---------------------------------------------------------------------------
+
+  KickType _classifyType({
+    required Offset footPos,
+    required Offset neutralPos,
+    required Offset xyDelta,
+    required double xySpeed,
+  }) {
+    // Relative height above neutral: positive = foot is higher than rest position
+    final relativeRise = neutralPos.dy - footPos.dy; // dy inverted: up = smaller y
+    final verticalLift = -xyDelta.dy; // negative dy = moving up
+
+    // Chip: slower-speed, slightly-lifted kick
+    if (xySpeed < _config.chipMaxSpeed &&
+        xySpeed >= _config.strikeSpeedThreshold &&
+        relativeRise > 0.04 &&
+        relativeRise < 0.09) {
+      return KickType.chip;
+    }
+
+    if (relativeRise > _config.aerialRelativeRise ||
+        (relativeRise > _config.aerialMinRise &&
+            verticalLift > _config.aerialMinLift)) {
+      return KickType.aerial;
+    }
+
+    return KickType.ground;
   }
+
+  // ---------------------------------------------------------------------------
+  // Emit strike
+  // ---------------------------------------------------------------------------
 
   void _emitStrike(_KickMetrics metrics) {
     _phase = KickPhase.strike;
@@ -421,19 +533,22 @@ class KickDetector {
       footPositionNormalized: metrics.footPosition,
       strikeDeltaNormalized: metrics.correctedDelta,
       strikeSpeed: metrics.xySpeed,
+      kickPower: metrics.kickPower,
       type: metrics.type,
       timestamp: DateTime.now(),
-      mirrorPreviewAim: _mirrorPreviewAim,
     );
 
     debugPrint('');
     debugPrint('[KD] ══════ KICK DETECTED ══════');
     debugPrint(
-      '[KD] STRIKE  speed=${metrics.xySpeed.toStringAsFixed(3)} '
-      'zDelta=${metrics.zDelta.toStringAsFixed(2)} '
-      'aim=(${metrics.correctedDelta.dx.toStringAsFixed(2)}, '
-      '${metrics.correctedDelta.dy.toStringAsFixed(2)}) '
-      'sensor=${metrics.sensorDegrees}  type=${metrics.type.name}',
+      '[KD] STRIKE raw=(${metrics.rawDelta.dx.toStringAsFixed(3)}, '
+      '${metrics.rawDelta.dy.toStringAsFixed(3)}) '
+      'corrected=(${metrics.correctedDelta.dx.toStringAsFixed(3)}, '
+      '${metrics.correctedDelta.dy.toStringAsFixed(3)}) '
+      'sensor=${metrics.sensorDegrees} '
+      'speed=${metrics.xySpeed.toStringAsFixed(3)} '
+      'power=${metrics.kickPower.toStringAsFixed(2)} '
+      'type=${metrics.type.name}',
     );
     debugPrint('[KD] ══════════════════════════');
     debugPrint('');
@@ -442,11 +557,16 @@ class KickDetector {
     _enterCooldown();
   }
 
+  // ---------------------------------------------------------------------------
+  // Cooldown
+  // ---------------------------------------------------------------------------
+
   void _enterCooldown() {
     _phase = KickPhase.cooldown;
     _buffer.clear();
     _lastAcceptedPosition = null;
     _lastPlantedPositions.clear();
+    _plantedFootMissingFrames = 0;
     _cooldownEndsAt = DateTime.now().add(_config.cooldownDuration);
     _cooldownTimer?.cancel();
     _loggedCooldownStart = false;
@@ -464,14 +584,23 @@ class KickDetector {
     _logCooldownStart();
   }
 
+  // ---------------------------------------------------------------------------
+  // Z-depth helpers (Fix 10)
+  // ---------------------------------------------------------------------------
+
   double _zScale(double prevZ, double currZ) {
-    return (prevZ.abs() + currZ.abs()) * 0.5 + 80.0;
+    final neutralZ = _neutralZ ?? ((prevZ.abs() + currZ.abs()) * 0.5);
+    return neutralZ.abs().clamp(40.0, 300.0);
   }
 
   bool _isZThrust(double zDelta, double zScale) {
     return zDelta < -_config.minZThrustPixels &&
         zDelta / zScale < -_config.minZThrustRelative;
   }
+
+  // ---------------------------------------------------------------------------
+  // Cooldown UI
+  // ---------------------------------------------------------------------------
 
   void _emitCooldownUi({required bool inactive}) {
     if (inactive || _cooldownEndsAt == null) {
@@ -490,6 +619,10 @@ class KickDetector {
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Logging
+  // ---------------------------------------------------------------------------
 
   void _logIdleOrNearKick(_KickMetrics metrics, double conf) {
     if (KickDetectionConfig.verboseFrameLogs) {
@@ -548,6 +681,10 @@ class KickDetector {
     debugPrint('[KD] cooldown ${ms}ms (next kick after)');
   }
 
+  // ---------------------------------------------------------------------------
+  // Player stillness (for match phase)
+  // ---------------------------------------------------------------------------
+
   void _updatePlayerStillness(List<PoseLandmark> landmarks, Size imageSize) {
     final left = _ankleNorm(landmarks, imageSize, isLeft: true);
     final right = _ankleNorm(landmarks, imageSize, isLeft: false);
@@ -601,9 +738,10 @@ class KickDetector {
     if (ankle == null || ankle.likelihood < _config.minConfidence * 0.9) {
       return null;
     }
-    return Offset(
-      ankle.x / imageSize.width,
-      ankle.y / imageSize.height,
+    return PoseCoordinateMapper.landmarkToNormalized(
+      landmark: ankle,
+      imageSize: imageSize,
+      isFrontCamera: PoseDetectorService.instance.isFrontCamera,
     );
   }
 
@@ -649,6 +787,7 @@ class _KickMetrics {
     required this.type,
     required this.sensorDegrees,
     required this.zThrustCandidate,
+    required this.kickPower,
   });
 
   static const _KickMetrics idle = _KickMetrics(
@@ -663,6 +802,7 @@ class _KickMetrics {
     type: KickType.ground,
     sensorDegrees: 0,
     zThrustCandidate: false,
+    kickPower: 0,
   );
 
   static _KickMetrics emptyAt(_FootFrame curr) => _KickMetrics(
@@ -677,6 +817,7 @@ class _KickMetrics {
         type: KickType.ground,
         sensorDegrees: 0,
         zThrustCandidate: false,
+        kickPower: 0,
       );
 
   final double xySpeed;
@@ -690,4 +831,5 @@ class _KickMetrics {
   final KickType type;
   final int sensorDegrees;
   final bool zThrustCandidate;
+  final double kickPower;
 }

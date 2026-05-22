@@ -50,16 +50,10 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   @override
   void initState() {
     super.initState();
-    final frontIndex = widget.cameras.indexWhere(
-      (c) => c.lensDirection == CameraLensDirection.front,
-    );
-    final camera = widget.cameras[frontIndex >= 0 ? frontIndex : 0];
-    final mirrorPreviewAim =
-        camera.lensDirection == CameraLensDirection.front;
-
     final poseStream = PoseDetectorService.instance.poseLandmarks;
+    // Aim is mirrored in PoseCoordinateMapper; do not flip again for ball/GK.
     _kickDetector = KickDetector(poseStream: poseStream)
-      ..setMirrorPreviewAim(mirrorPreviewAim);
+      ..setMirrorPreviewAim(false);
     _calibration = PlayerCalibration(poseStream: poseStream);
     _calibration.addListener(_onCalibrationChanged);
 
@@ -107,7 +101,10 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
 
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
-    _kickDetector.applyCalibration(_calibration.neutralPosition!);
+    _kickDetector.applyCalibration(
+      _calibration.neutralPosition!,
+      neutralZ: _calibration.neutralZ,
+    );
 
     setState(() => _setupPhase = _SetupPhase.playing);
     _matchController.startMatch();

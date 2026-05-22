@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
@@ -87,9 +88,10 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
     }
 
     _holdFrames = 0;
-    final raw = Offset(
-      ankle.x / imageSize.width,
-      ankle.y / imageSize.height,
+    final raw = PoseCoordinateMapper.landmarkToNormalized(
+      landmark: ankle,
+      imageSize: imageSize,
+      isFrontCamera: _isFrontCamera(),
     );
     final ref = _displayNorm;
     if (ref == null) {
@@ -102,7 +104,31 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
         ref.dy + (raw.dy - ref.dy) * alpha,
       );
     }
+    if (kDebugMode) {
+      _logFootPositionThrottled(raw);
+    }
     setState(() {});
+  }
+
+  DateTime? _lastFootLog;
+  void _logFootPositionThrottled(Offset norm) {
+    final now = DateTime.now();
+    if (_lastFootLog != null &&
+        now.difference(_lastFootLog!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastFootLog = now;
+    debugPrint(
+      '[FOOT] norm=(${norm.dx.toStringAsFixed(2)}, ${norm.dy.toStringAsFixed(2)})',
+    );
+  }
+
+  bool _isFrontCamera() {
+    final frontIndex = widget.cameras.indexWhere(
+      (c) => c.lensDirection == CameraLensDirection.front,
+    );
+    final camera = widget.cameras[frontIndex >= 0 ? frontIndex : 0];
+    return camera.lensDirection == CameraLensDirection.front;
   }
 
   @override
@@ -127,33 +153,35 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
     final norm = _displayNorm;
     final foot = widget.kickingFoot;
     final imageSize = PoseDetectorService.instance.lastImageSize;
-    final rotation = PoseDetectorService.instance.lastRotation;
-    if (norm == null || foot == null || imageSize == null || rotation == null) {
+    if (norm == null || foot == null || imageSize == null) {
       return const SizedBox.shrink();
     }
 
-    final frontIndex = widget.cameras.indexWhere(
-      (c) => c.lensDirection == CameraLensDirection.front,
-    );
-    final camera = widget.cameras[frontIndex >= 0 ? frontIndex : 0];
+    final sensor = PoseDetectorService.instance.cameraSensorOrientation ?? 270;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final screen = constraints.biggest;
         final mapper = PoseCoordinateMapper(
           imageSize: imageSize,
-          rotation: rotation,
-          lensDirection: camera.lensDirection,
+          screenSize: screen,
+          isFrontCamera: _isFrontCamera(),
+          sensorRotation: sensor,
         );
-        final pt = mapper.normalizedOffsetToScreen(norm, screen);
+        final pt = mapper.normalizedOffsetToScreen(norm);
+        final clamped = Offset(
+          pt.dx.clamp(24.0, screen.width - 24),
+          pt.dy.clamp(24.0, screen.height - 24),
+        );
+
         _starOrigin = const Offset(24, 24);
 
         return Stack(
           fit: StackFit.expand,
           children: [
             Positioned(
-              left: pt.dx - 24,
-              top: pt.dy - 24,
+              left: clamped.dx - 24,
+              top: clamped.dy - 24,
               child: AnimatedBuilder(
                 animation: _starController,
                 builder: (context, child) {
@@ -170,8 +198,8 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
             ),
             if (widget.showFootLabel)
               Positioned(
-                left: pt.dx - 40,
-                top: pt.dy + 28,
+                left: clamped.dx - 40,
+                top: clamped.dy + 28,
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

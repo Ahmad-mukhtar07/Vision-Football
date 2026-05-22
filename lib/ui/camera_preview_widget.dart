@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../models/kicking_foot.dart';
@@ -14,7 +13,7 @@ import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
 import 'pose_coordinate_mapper.dart';
 
-/// Full-screen camera preview with pose landmark overlay (ankles / lower legs).
+/// Camera stream for pose/ML Kit; preview optional (hidden during match).
 class CameraPreviewWidget extends StatefulWidget {
   const CameraPreviewWidget({
     super.key,
@@ -42,6 +41,7 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
 
   CameraController? _controller;
   int? _selectedCameraIndex;
+  int? _sensorRotationDegrees;
   List<PoseLandmark> _landmarks = [];
   StreamSubscription<List<PoseLandmark>>? _poseSubscription;
   StreamSubscription? _kickSubscription;
@@ -55,6 +55,9 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
 
   PoseDetectorService get _poseService => PoseDetectorService.instance;
   KickDetector get _kickDetector => widget.kickDetector;
+
+  /// Raw sensor orientation from [CameraDescription] (degrees).
+  int? get sensorRotationDegrees => _sensorRotationDegrees;
 
   @override
   void initState() {
@@ -101,9 +104,12 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       return;
     }
 
-    final raw = Offset(
-      ankle.x / imageSize.width,
-      ankle.y / imageSize.height,
+    final isFront = widget.cameras[_selectedCameraIndex ?? 0].lensDirection ==
+        CameraLensDirection.front;
+    final raw = PoseCoordinateMapper.landmarkToNormalized(
+      landmark: ankle,
+      imageSize: imageSize,
+      isFrontCamera: isFront,
     );
     final ref = _smoothedAnkleNorm;
     if (ref != null && (raw - ref).distance > _overlayMaxJump) {
@@ -125,15 +131,17 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     _selectedCameraIndex = frontIndex >= 0 ? frontIndex : 0;
 
     final camera = widget.cameras[_selectedCameraIndex!];
+    _sensorRotationDegrees = camera.sensorOrientation;
+
     debugPrint(
       '[CAMERA] front camera index=$_selectedCameraIndex '
       'lens=${camera.lensDirection.name} sensorOrientation=${camera.sensorOrientation}',
     );
+
     final controller = CameraController(
       camera,
-      ResolutionPreset.medium,
+      ResolutionPreset.high,
       enableAudio: false,
-      // ML Kit on Android expects NV21 (single plane), not YUV420 multi-plane.
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
@@ -145,7 +153,17 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       return;
     }
 
-    await controller.lockCaptureOrientation(DeviceOrientation.landscapeLeft);
+    debugPrint(
+      '[CAM] deviceOrientation=${controller.value.deviceOrientation} '
+      'sensorOrientation=${camera.sensorOrientation}',
+    );
+
+    await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
+
+    _poseService.bindCameraSession(
+      camera: camera,
+      deviceOrientation: controller.value.deviceOrientation,
+    );
 
     await controller.startImageStream(_onCameraImage);
     if (!mounted) {
@@ -189,8 +207,8 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     }
 
     final imageSize = _poseService.lastImageSize;
-    final rotation = _poseService.lastRotation;
     final camera = widget.cameras[_selectedCameraIndex!];
+    final sensor = _sensorRotationDegrees ?? camera.sensorOrientation;
 
     if (!widget.showPreview) {
       return const SizedBox.expand();
@@ -201,15 +219,17 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          _LandscapeCameraPreview(controller: controller),
-          if (imageSize != null && rotation != null)
+          _PortraitCameraPreview(controller: controller),
+          if (imageSize != null)
             LayoutBuilder(
               builder: (context, constraints) {
                 final screenSize = constraints.biggest;
                 final mapper = PoseCoordinateMapper(
                   imageSize: imageSize,
-                  rotation: rotation,
-                  lensDirection: camera.lensDirection,
+                  screenSize: screenSize,
+                  isFrontCamera:
+                      camera.lensDirection == CameraLensDirection.front,
+                  sensorRotation: sensor,
                 );
                 return CustomPaint(
                   painter: _PoseOverlayPainter(
@@ -230,25 +250,20 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   }
 }
 
-/// Full-screen cover fit for landscape (sensor buffer is usually portrait).
-class _LandscapeCameraPreview extends StatelessWidget {
-  const _LandscapeCameraPreview({required this.controller});
+/// Full-screen cover fit for portrait.
+class _PortraitCameraPreview extends StatelessWidget {
+  const _PortraitCameraPreview({required this.controller});
 
   final CameraController controller;
 
   @override
   Widget build(BuildContext context) {
-    final previewSize = controller.value.previewSize;
-    if (previewSize == null) {
-      return CameraPreview(controller);
-    }
-
     return ClipRect(
       child: FittedBox(
         fit: BoxFit.cover,
         child: SizedBox(
-          width: previewSize.height,
-          height: previewSize.width,
+          width: controller.value.previewSize?.width ?? 1,
+          height: controller.value.previewSize?.height ?? 1,
           child: CameraPreview(controller),
         ),
       ),
@@ -275,20 +290,21 @@ class _PoseOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final byType = {for (final l in landmarks) l.type: l};
-
     if (kickingFoot == null) return;
 
+    final byType = {for (final l in landmarks) l.type: l};
     final isLeft = kickingFoot!.isLeft;
     final ankle = isLeft
         ? byType[PoseLandmarkType.leftAnkle]
         : byType[PoseLandmarkType.rightAnkle];
+
     final anklePt = smoothedAnkleNorm != null
-        ? mapper.normalizedOffsetToScreen(smoothedAnkleNorm!, size)
+        ? mapper.normalizedOffsetToScreen(smoothedAnkleNorm!)
         : ankle != null && ankle.likelihood >= minLikelihood
-            ? mapper.normalizedToScreen(ankle, size)
+            ? mapper.toScreen(ankle)
             : null;
     if (anklePt == null) return;
+
     final fill = kickFlashActive ? Colors.greenAccent : Colors.orangeAccent;
     const radius = 18.0;
 

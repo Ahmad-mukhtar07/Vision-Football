@@ -91,6 +91,7 @@ class GoalkeeperComponent extends PositionComponent {
   }
 
   /// Maps foot X tell + random guess to a dive center inside the goal mouth.
+  /// Coordinates are screen-space (PoseCoordinateMapper mirrors X for front camera).
   Vector2 _computeDivePosition(KickEvent event) {
     final goal = _layout.goalRect;
     final foot = event.footPositionNormalized;
@@ -100,10 +101,9 @@ class GoalkeeperComponent extends PositionComponent {
       -LayoutConstants.maxStrikeDeltaForAim,
       LayoutConstants.maxStrikeDeltaForAim,
     );
-    final aimSign = event.mirrorPreviewAim ? -1.0 : 1.0;
     final aimFraction = (LayoutConstants.ballSpawnXFraction +
-            foot.dx * aimSign * LayoutConstants.ballAimFromFootFactor +
-            strikeDx * aimSign * LayoutConstants.ballAimFromStrikeFactor)
+            foot.dx * LayoutConstants.ballAimFromFootFactor +
+            strikeDx * LayoutConstants.ballAimFromStrikeFactor)
         .clamp(0.0, 1.0);
     final tellX = goal.left + goal.width * aimFraction;
 
@@ -115,6 +115,13 @@ class GoalkeeperComponent extends PositionComponent {
     final clampedX = diveCenterX.clamp(
       goal.left + halfW,
       goal.right - halfW,
+    );
+
+    debugPrint(
+      '[GK_DIVE] dir=${strike.dx.toStringAsFixed(3)} '
+      'ball_lateral=${strike.dx.toStringAsFixed(3)} '
+      'gkX=${clampedX.toStringAsFixed(1)} '
+      'predicted=$usePrediction',
     );
 
     return Vector2(clampedX, goal.center.dy);
