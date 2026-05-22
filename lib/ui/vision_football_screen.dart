@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
+import '../game/game_foot_marker_controller.dart';
 import '../game/match_state.dart';
 import '../game/vision_football_game.dart';
 import '../models/kicking_foot.dart';
@@ -42,6 +43,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   late final PlayerCalibration _calibration;
   late final MatchController _matchController;
   late final VisionFootballGame _game;
+  final GameFootMarkerController _gameFootMarker = GameFootMarkerController();
 
   KickingFoot? _kickingFoot;
   _SetupPhase? _setupPhase;
@@ -53,7 +55,8 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     final poseStream = PoseDetectorService.instance.poseLandmarks;
     // Aim is mirrored in PoseCoordinateMapper; do not flip again for ball/GK.
     _kickDetector = KickDetector(poseStream: poseStream)
-      ..setMirrorPreviewAim(false);
+      ..setMirrorPreviewAim(false)
+      ..bindGameFootMarker(_gameFootMarker);
     _calibration = PlayerCalibration(poseStream: poseStream);
     _calibration.addListener(_onCalibrationChanged);
 
@@ -67,6 +70,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _game = VisionFootballGame(
       kickStream: _kickDetector.kickStream,
       matchController: _matchController,
+      onBallBecameIdle: _gameFootMarker.snapToAnchored,
     );
     _kickDetector.setGameCanAcceptKick(false);
     _kickDetector.disarm();
@@ -105,12 +109,14 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _calibration.neutralPosition!,
       neutralZ: _calibration.neutralZ,
     );
+    _gameFootMarker.beginGameMode(_calibration.neutralPosition!);
 
     setState(() => _setupPhase = _SetupPhase.playing);
     _matchController.startMatch();
   }
 
   void _recalibrate() {
+    _gameFootMarker.endGameMode();
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
     _calibration.clearKickingFoot();
@@ -118,6 +124,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   }
 
   void _changeFoot() {
+    _gameFootMarker.endGameMode();
     _kickDetector.disarm();
     _kickDetector.clearKickingFoot();
     _calibration.clearKickingFoot();
@@ -170,7 +177,10 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             cameras: widget.cameras,
             kickingFoot: _kickingFoot!,
             kickDetector: _kickDetector,
-            showFootLabel: _setupPhase == _SetupPhase.calibrating,
+            gameFootMarker: _gameFootMarker,
+            gameAligned: playing,
+            showFootLabel:
+                _setupPhase == _SetupPhase.calibrating || playing,
           ),
         if (playing && !matchOver)
           HudOverlay(matchStateStream: _matchController.stateStream),

@@ -17,10 +17,12 @@ class VisionFootballGame extends FlameGame {
   VisionFootballGame({
     required Stream<KickEvent> kickStream,
     required this.matchController,
+    this.onBallBecameIdle,
   }) : _kickStream = kickStream;
 
   final Stream<KickEvent> _kickStream;
   final MatchController matchController;
+  final VoidCallback? onBallBecameIdle;
 
   final StreamController<GoalEvent> _goalController =
       StreamController<GoalEvent>.broadcast();
@@ -52,7 +54,7 @@ class VisionFootballGame extends FlameGame {
       goalkeeper: _goalkeeper,
       layout: _layout,
       onFlightEnd: _onFlightEnd,
-      onBecameIdle: () {},
+      onBecameIdle: onBallBecameIdle,
     );
 
     await add(sky);

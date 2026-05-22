@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
+import '../game/game_foot_marker_controller.dart';
 import '../models/kick_event.dart';
 import '../models/kicking_foot.dart';
 import 'kick_detection_config.dart';
@@ -65,6 +66,8 @@ class KickDetector {
   bool _detectionArmed = false;
   bool _gameCanAcceptKick = true;
 
+  GameFootMarkerController? _gameFootMarker;
+
   bool? _lockedIsLeft;
   KickingFoot? get kickingFoot => _lockedIsLeft == null
       ? null
@@ -118,6 +121,10 @@ class KickDetector {
     // Retained for API compat; mirror is handled in PoseCoordinateMapper.
   }
 
+  void bindGameFootMarker(GameFootMarkerController controller) {
+    _gameFootMarker = controller;
+  }
+
   void clearKickingFoot() {
     _lockedIsLeft = null;
     _resetTrackingState();
@@ -164,6 +171,7 @@ class KickDetector {
     _detectionArmed = false;
     _neutralPosition = null;
     _neutralZ = null;
+    _gameFootMarker?.endGameMode();
     _resetTrackingState();
     _phase = KickPhase.idle;
     _cooldownTimer?.cancel();
@@ -218,6 +226,8 @@ class KickDetector {
       _logTeleport(_teleportDelta(kicking.position));
       return;
     }
+
+    _gameFootMarker?.updateFromFoot(kicking.position);
 
     _lastAcceptedPosition = kicking.position;
 
@@ -527,7 +537,14 @@ class KickDetector {
   // ---------------------------------------------------------------------------
 
   void _emitStrike(_KickMetrics metrics) {
+    final marker = _gameFootMarker;
+    if (marker != null && marker.isGameMode && !marker.isEligibleForStrike) {
+      debugPrint('[KD] strike ignored — marker did not pass the ball');
+      return;
+    }
+
     _phase = KickPhase.strike;
+    marker?.onShotFired();
 
     final event = KickEvent(
       footPositionNormalized: metrics.footPosition,

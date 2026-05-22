@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
+import '../game/game_foot_marker_controller.dart';
 import '../game/painters/boot_marker_painter.dart';
 import '../models/kicking_foot.dart';
 import '../pose/kick_detector.dart';
@@ -18,12 +19,16 @@ class FootMarkerOverlay extends StatefulWidget {
     required this.cameras,
     required this.kickingFoot,
     required this.kickDetector,
+    this.gameFootMarker,
+    this.gameAligned = false,
     this.showFootLabel = false,
   });
 
   final List<CameraDescription> cameras;
   final KickingFoot? kickingFoot;
   final KickDetector kickDetector;
+  final GameFootMarkerController? gameFootMarker;
+  final bool gameAligned;
   final bool showFootLabel;
 
   @override
@@ -54,9 +59,11 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
-    _subscription = PoseDetectorService.instance.poseLandmarks.listen(
-      _onLandmarks,
-    );
+    if (!widget.gameAligned) {
+      _subscription = PoseDetectorService.instance.poseLandmarks.listen(
+        _onLandmarks,
+      );
+    }
     _kickSubscription = widget.kickDetector.kickStream.listen((_) {
       if (!mounted) return;
       _starController.forward(from: 0);
@@ -104,23 +111,7 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
         ref.dy + (raw.dy - ref.dy) * alpha,
       );
     }
-    if (kDebugMode) {
-      _logFootPositionThrottled(raw);
-    }
     setState(() {});
-  }
-
-  DateTime? _lastFootLog;
-  void _logFootPositionThrottled(Offset norm) {
-    final now = DateTime.now();
-    if (_lastFootLog != null &&
-        now.difference(_lastFootLog!) < const Duration(seconds: 2)) {
-      return;
-    }
-    _lastFootLog = now;
-    debugPrint(
-      '[FOOT] norm=(${norm.dx.toStringAsFixed(2)}, ${norm.dy.toStringAsFixed(2)})',
-    );
   }
 
   bool _isFrontCamera() {
@@ -138,6 +129,16 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
       _displayNorm = null;
       _holdFrames = 0;
     }
+    if (oldWidget.gameAligned != widget.gameAligned) {
+      if (widget.gameAligned) {
+        _subscription?.cancel();
+        _subscription = null;
+      } else {
+        _subscription ??= PoseDetectorService.instance.poseLandmarks.listen(
+          _onLandmarks,
+        );
+      }
+    }
   }
 
   @override
@@ -150,76 +151,177 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final norm = _displayNorm;
     final foot = widget.kickingFoot;
-    final imageSize = PoseDetectorService.instance.lastImageSize;
-    if (norm == null || foot == null || imageSize == null) {
-      return const SizedBox.shrink();
-    }
-
-    final sensor = PoseDetectorService.instance.cameraSensorOrientation ?? 270;
+    if (foot == null) return const SizedBox.shrink();
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final screen = constraints.biggest;
-        final mapper = PoseCoordinateMapper(
-          imageSize: imageSize,
-          screenSize: screen,
-          isFrontCamera: _isFrontCamera(),
-          sensorRotation: sensor,
-        );
-        final pt = mapper.normalizedOffsetToScreen(norm);
-        final clamped = Offset(
-          pt.dx.clamp(24.0, screen.width - 24),
-          pt.dy.clamp(24.0, screen.height - 24),
-        );
+        widget.gameFootMarker?.configureForScreen(screen);
 
-        _starOrigin = const Offset(24, 24);
+        if (widget.gameAligned) {
+          return _buildGameAligned(screen, foot);
+        }
+        return _buildCalibrationAligned(screen, foot);
+      },
+    );
+  }
 
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned(
-              left: clamped.dx - 24,
-              top: clamped.dy - 24,
-              child: AnimatedBuilder(
-                animation: _starController,
-                builder: (context, child) {
-                  return CustomPaint(
-                    size: const Size(48, 48),
-                    painter: BootMarkerPainter(
-                      kickFlashActive: _starController.isAnimating,
-                      starBurstProgress: _starController.value,
-                      starBurstOrigin: _starOrigin,
-                    ),
-                  );
-                },
-              ),
-            ),
-            if (widget.showFootLabel)
-              Positioned(
-                left: clamped.dx - 40,
-                top: clamped.dy + 28,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    foot.bodyLabel,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
+  Widget _buildGameAligned(Size screen, KickingFoot foot) {
+    final marker = widget.gameFootMarker;
+    if (marker == null) return const SizedBox.shrink();
+
+    return ListenableBuilder(
+      listenable: marker,
+      builder: (context, _) {
+        final pt = marker.screenPosition;
+        if (pt == null) return const SizedBox.shrink();
+        return _gameAlignedStack(screen, foot, marker, pt);
+      },
+    );
+  }
+
+  Widget _gameAlignedStack(
+    Size screen,
+    KickingFoot foot,
+    GameFootMarkerController marker,
+    Offset pt,
+  ) {
+    final clamped = Offset(
+      pt.dx.clamp(24.0, screen.width - 24),
+      pt.dy.clamp(24.0, screen.height - 24),
+    );
+    _starOrigin = const Offset(24, 24);
+
+    final ballCenter = marker.ballCenterScreen;
+    final ringColor = switch (marker.state) {
+      MarkerPositionState.tracking => marker.didPassBall
+          ? Colors.greenAccent.withValues(alpha: 0.95)
+          : Colors.cyanAccent.withValues(alpha: 0.75),
+      MarkerPositionState.recovering => Colors.white.withValues(alpha: 0.25),
+      MarkerPositionState.anchored => marker.didPassBall
+          ? Colors.greenAccent.withValues(alpha: 0.9)
+          : Colors.white.withValues(alpha: 0.35),
+    };
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (ballCenter != null)
+          Positioned(
+            left: ballCenter.dx - GameFootMarkerController.ballHitRadiusPx,
+            top: ballCenter.dy - GameFootMarkerController.ballHitRadiusPx,
+            child: IgnorePointer(
+              child: Container(
+                width: GameFootMarkerController.ballHitRadiusPx * 2,
+                height: GameFootMarkerController.ballHitRadiusPx * 2,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: ringColor,
+                    width: marker.isTrackingStrike ? 2.5 : 2,
                   ),
                 ),
               ),
-          ],
-        );
-      },
+            ),
+          ),
+        Positioned(
+          left: clamped.dx - 24,
+          top: clamped.dy - 24,
+          child: AnimatedBuilder(
+            animation: _starController,
+            builder: (context, child) {
+              return CustomPaint(
+                size: const Size(48, 48),
+                painter: BootMarkerPainter(
+                  kickFlashActive: _starController.isAnimating,
+                  starBurstProgress: _starController.value,
+                  starBurstOrigin: _starOrigin,
+                ),
+              );
+            },
+          ),
+        ),
+        if (widget.showFootLabel)
+          Positioned(
+            left: clamped.dx - 48,
+            top: clamped.dy + 28,
+            child: Text(
+              marker.isTrackingStrike ? 'Strike!' : 'Kick through the ball',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCalibrationAligned(Size screen, KickingFoot foot) {
+    final norm = _displayNorm;
+    final imageSize = PoseDetectorService.instance.lastImageSize;
+    if (norm == null || imageSize == null) {
+      return const SizedBox.shrink();
+    }
+
+    final sensor = PoseDetectorService.instance.cameraSensorOrientation ?? 270;
+    final mapper = PoseCoordinateMapper(
+      imageSize: imageSize,
+      screenSize: screen,
+      isFrontCamera: _isFrontCamera(),
+      sensorRotation: sensor,
+    );
+    final pt = mapper.normalizedOffsetToScreen(norm);
+    final clamped = Offset(
+      pt.dx.clamp(24.0, screen.width - 24),
+      pt.dy.clamp(24.0, screen.height - 24),
+    );
+    _starOrigin = const Offset(24, 24);
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned(
+          left: clamped.dx - 24,
+          top: clamped.dy - 24,
+          child: AnimatedBuilder(
+            animation: _starController,
+            builder: (context, child) {
+              return CustomPaint(
+                size: const Size(48, 48),
+                painter: BootMarkerPainter(
+                  kickFlashActive: _starController.isAnimating,
+                  starBurstProgress: _starController.value,
+                  starBurstOrigin: _starOrigin,
+                ),
+              );
+            },
+          ),
+        ),
+        if (widget.showFootLabel)
+          Positioned(
+            left: clamped.dx - 56,
+            top: clamped.dy + 28,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'Remember this spot — ${foot.bodyLabel}',
+                style: const TextStyle(
+                  color: Colors.amberAccent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
