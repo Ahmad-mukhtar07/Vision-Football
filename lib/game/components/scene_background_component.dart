@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import '../layout_constants.dart';
 import '../painters/stadium_painter.dart';
 
-/// Stadium crowd background (image-based; fills upper screen behind goal/keeper).
+/// Stadium crowd background (animated GIF; fills upper screen behind goal/keeper).
 class SkyBackgroundComponent extends PositionComponent {
   SkyBackgroundComponent({required GameLayout layout})
       : _layout = layout,
@@ -17,26 +17,47 @@ class SkyBackgroundComponent extends PositionComponent {
         );
 
   final GameLayout _layout;
-  ui.Image? _crowdImage;
+  final List<ui.Image> _frames = [];
+  final List<Duration> _frameDurations = [];
+  int _currentFrame = 0;
+  double _frameTimer = 0;
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    _crowdImage = await _loadImage('assets/images/stadium_crowd.png');
+    await _loadGifFrames('assets/images/Football-fans.gif');
   }
 
-  Future<ui.Image> _loadImage(String assetPath) async {
+  Future<void> _loadGifFrames(String assetPath) async {
     final data = await rootBundle.load(assetPath);
     final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-    final frame = await codec.getNextFrame();
-    return frame.image;
+
+    for (var i = 0; i < codec.frameCount; i++) {
+      final frameInfo = await codec.getNextFrame();
+      _frames.add(frameInfo.image);
+      _frameDurations.add(frameInfo.duration);
+    }
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    if (_frames.isEmpty) return;
+
+    _frameTimer += dt;
+    final currentDuration = _frameDurations[_currentFrame].inMilliseconds / 1000.0;
+
+    if (_frameTimer >= currentDuration) {
+      _frameTimer = 0;
+      _currentFrame = (_currentFrame + 1) % _frames.length;
+    }
   }
 
   @override
   void render(Canvas canvas) {
-    final img = _crowdImage;
-    if (img == null) return;
+    if (_frames.isEmpty) return;
 
+    final img = _frames[_currentFrame];
     final w = _layout.width;
     final h = _layout.height * StadiumVisualLayout.pitchBandTop;
 
@@ -56,7 +77,10 @@ class SkyBackgroundComponent extends PositionComponent {
 
   @override
   void onRemove() {
-    _crowdImage?.dispose();
+    for (final frame in _frames) {
+      frame.dispose();
+    }
+    _frames.clear();
     super.onRemove();
   }
 }
