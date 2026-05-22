@@ -2,11 +2,12 @@ import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../layout_constants.dart';
 import '../painters/stadium_painter.dart';
 
-/// Stadium sky / stands band (cached; fills upper screen including ex-camera band).
+/// Stadium crowd background (image-based; fills upper screen behind goal/keeper).
 class SkyBackgroundComponent extends PositionComponent {
   SkyBackgroundComponent({required GameLayout layout})
       : _layout = layout,
@@ -16,50 +17,46 @@ class SkyBackgroundComponent extends PositionComponent {
         );
 
   final GameLayout _layout;
-  ui.Picture? _cachedPicture;
-  Vector2? _cachedSize;
+  ui.Image? _crowdImage;
 
   @override
-  void onGameResize(Vector2 size) {
-    super.onGameResize(size);
-    _invalidateCache();
+  Future<void> onLoad() async {
+    await super.onLoad();
+    _crowdImage = await _loadImage('assets/images/stadium_crowd.png');
   }
 
-  void _invalidateCache() {
-    _cachedPicture?.dispose();
-    _cachedPicture = null;
-    _cachedSize = null;
-  }
-
-  void _ensureCache() {
-    final w = _layout.width;
-    final h = _layout.height * StadiumVisualLayout.upperStadiumHeight;
-    final newSize = Vector2(w, h);
-    if (_cachedPicture != null && _cachedSize == newSize) return;
-
-    _cachedPicture?.dispose();
-    size = newSize;
-    position = Vector2.zero();
-
-    final painter = StadiumSkyPainter(
-      size: Size(w, h),
-      fullScreenHeight: _layout.height,
-    );
-    _cachedPicture = recordStaticPicture(painter, Size(w, h));
-    _cachedSize = newSize;
+  Future<ui.Image> _loadImage(String assetPath) async {
+    final data = await rootBundle.load(assetPath);
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    return frame.image;
   }
 
   @override
   void render(Canvas canvas) {
-    _ensureCache();
-    if (_cachedPicture != null) {
-      canvas.drawPicture(_cachedPicture!);
-    }
+    final img = _crowdImage;
+    if (img == null) return;
+
+    final w = _layout.width;
+    final h = _layout.height * StadiumVisualLayout.pitchBandTop;
+
+    size = Vector2(w, h);
+    position = Vector2.zero();
+
+    final srcRect = Rect.fromLTWH(
+      0,
+      0,
+      img.width.toDouble(),
+      img.height.toDouble(),
+    );
+    final destRect = Rect.fromLTWH(0, 0, w, h);
+
+    canvas.drawImageRect(img, srcRect, destRect, Paint());
   }
 
   @override
   void onRemove() {
-    _cachedPicture?.dispose();
+    _crowdImage?.dispose();
     super.onRemove();
   }
 }
