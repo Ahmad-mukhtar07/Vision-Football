@@ -6,11 +6,11 @@ import 'package:flutter/material.dart';
 /// Visual layout bands (screen fractions). Game layout constants unchanged.
 abstract final class StadiumVisualLayout {
   static const double cameraBandTop = 0.32;
-  static const double cameraBandBottom = 0.62;
+  static const double cameraBandBottom = 0.445;
   /// Upper stadium (sky + stands) — covers former camera window too.
-  static const double upperStadiumHeight = 0.62;
-  static const double pitchBandTop = 0.62;
-  static const double pitchBandHeight = 0.38;
+  static const double upperStadiumHeight = 0.445;
+  static const double pitchBandTop = 0.445;
+  static const double pitchBandHeight = 0.555;
 }
 
 /// Cached sky / stands scene for the upper band (replaces visible camera window).

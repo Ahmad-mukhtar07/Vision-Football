@@ -12,7 +12,7 @@ abstract final class LayoutConstants {
   static const double ballSpawnXFraction = 0.50;
 
   static const double skyHeightFraction = 0.30;
-  static const double pitchHeightFraction = 0.40;
+  static const double pitchHeightFraction = 0.555;
 
   static const double gkWidthInGoalFraction = 0.12;
   static const double gkHeightInGoalFraction = 0.85;
