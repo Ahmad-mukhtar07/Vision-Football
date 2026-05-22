@@ -4,9 +4,9 @@ import 'package:flame/extensions.dart';
 
 /// Landscape first-person layout fractions (width = long axis).
 abstract final class LayoutConstants {
-  static const double goalWidthFraction = 0.55;
-  static const double goalHeightFraction = 0.35;
-  static const double goalTopFraction = 0.28;
+  static const double goalWidthFraction = 0.88;
+  static const double goalHeightFraction = 0.25;
+  static const double goalTopFraction = 0.32;
 
   static const double ballSpawnYFraction = 0.80;
   static const double ballSpawnXFraction = 0.50;

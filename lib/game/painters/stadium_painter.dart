@@ -55,7 +55,7 @@ class StadiumSkyPainter extends CustomPainter {
 
     _drawMidStands(canvas, w, h);
     _drawCrowd(canvas, w, h);
-    _drawFloodlights(canvas, w, h);
+    // Floodlights removed per design update
     _drawHorizonLine(canvas, w, h);
   }
 
@@ -115,27 +115,6 @@ class StadiumSkyPainter extends CustomPainter {
         x += blockW + 2 + rng.nextDouble() * 5;
       }
       y += rowHeight * 0.85;
-    }
-  }
-
-  void _drawFloodlights(Canvas canvas, double w, double h) {
-    const towerW = 6.0;
-    final positions = [0.15, 0.35, 0.65, 0.85];
-    final lampColor = Colors.yellow.shade100;
-
-    for (final frac in positions) {
-      final x = w * frac - towerW * 0.5;
-      canvas.drawRect(
-        Rect.fromLTWH(x, 0, towerW, h * 0.92),
-        Paint()..color = Colors.white.withValues(alpha: 0.85),
-      );
-      for (final dx in [-3.0, 3.0]) {
-        canvas.drawCircle(
-          Offset(x + towerW * 0.5 + dx, 6),
-          3,
-          Paint()..color = lampColor,
-        );
-      }
     }
   }
 

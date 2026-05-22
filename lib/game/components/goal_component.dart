@@ -1,7 +1,9 @@
 import 'dart:async' as async;
+import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../layout_constants.dart';
 import '../painters/goal_painter.dart';
@@ -20,9 +22,41 @@ class GoalComponent extends PositionComponent {
 
   GameLayout get layout => _layout;
 
-  double _netFlashOpacity = 0;
+  ui.Image? _goalImage;
+  Rect? _destRect;
+  double _flashOpacity = 0;
   final List<GoalParticle> _particles = [];
   async.Timer? _flashTimer;
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    _goalImage = await _loadImage('assets/images/goal_post.png');
+    _computeDestRect();
+  }
+
+  Future<ui.Image> _loadImage(String assetPath) async {
+    final data = await rootBundle.load(assetPath);
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    return frame.image;
+  }
+
+  void _computeDestRect() {
+    final img = _goalImage;
+    if (img == null) return;
+
+    final imageAspect = img.width / img.height;
+    final boxAspect = size.x / size.y;
+
+    if (imageAspect > boxAspect) {
+      final h = size.x / imageAspect;
+      _destRect = Rect.fromLTWH(0, (size.y - h) / 2, size.x, h);
+    } else {
+      final w = size.y * imageAspect;
+      _destRect = Rect.fromLTWH((size.x - w) / 2, 0, w, size.y);
+    }
+  }
 
   @override
   void update(double dt) {
@@ -32,17 +66,34 @@ class GoalComponent extends PositionComponent {
     }
     _particles.removeWhere((p) => p.isDead);
 
-    if (_netFlashOpacity > 0) {
-      _netFlashOpacity = (_netFlashOpacity - dt * 2.5).clamp(0, 1);
+    if (_flashOpacity > 0) {
+      _flashOpacity = (_flashOpacity - dt * 2.5).clamp(0, 1);
     }
   }
 
   @override
   void render(Canvas canvas) {
-    GoalPainter(
-      size: Size(size.x, size.y),
-      netFlashOpacity: _netFlashOpacity,
-    ).paint(canvas);
+    final img = _goalImage;
+    final dest = _destRect;
+
+    if (img != null && dest != null) {
+      final srcRect = Rect.fromLTWH(
+        0,
+        0,
+        img.width.toDouble(),
+        img.height.toDouble(),
+      );
+      canvas.drawImageRect(img, srcRect, dest, Paint());
+
+      if (_flashOpacity > 0) {
+        canvas.drawRect(
+          dest,
+          Paint()
+            ..color = Colors.white.withValues(alpha: _flashOpacity * 0.6)
+            ..blendMode = BlendMode.srcOver,
+        );
+      }
+    }
 
     if (_particles.isNotEmpty) {
       paintGoalParticles(canvas, _particles);
@@ -51,16 +102,16 @@ class GoalComponent extends PositionComponent {
 
   bool containsScreenPoint(Offset point) => _layout.goalRect.contains(point);
 
-  /// Visual celebration on goal (net flash + particles). API unchanged for callers.
+  /// Visual celebration on goal (flash + particles). API unchanged for callers.
   void flashColor(Color color, Duration duration, {Offset? particleOrigin}) {
     _flashTimer?.cancel();
-    _netFlashOpacity = 0.8;
+    _flashOpacity = 0.8;
     if (particleOrigin != null) {
       final local = particleOrigin - Offset(position.x, position.y);
       _particles.addAll(GoalParticle.burst(local));
     }
     _flashTimer = async.Timer(const Duration(milliseconds: 300), () {
-      _netFlashOpacity = 0;
+      _flashOpacity = 0;
       _flashTimer = null;
     });
   }
