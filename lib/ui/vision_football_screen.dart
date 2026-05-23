@@ -179,8 +179,6 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             kickDetector: _kickDetector,
             gameFootMarker: _gameFootMarker,
             gameAligned: playing,
-            showFootLabel:
-                _setupPhase == _SetupPhase.calibrating || playing,
           ),
         if (playing && !matchOver)
           HudOverlay(matchStateStream: _matchController.stateStream),

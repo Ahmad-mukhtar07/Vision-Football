@@ -1,18 +1,17 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../game/game_foot_marker_controller.dart';
-import '../game/painters/boot_marker_painter.dart';
 import '../models/kicking_foot.dart';
 import '../pose/kick_detector.dart';
 import '../pose/pose_detector_service.dart';
 import 'pose_coordinate_mapper.dart';
+import 'widgets/boot_marker_widget.dart';
 
-/// Boot marker drawn above the Flame game layer.
+/// Football boot marker drawn above the Flame game layer.
 class FootMarkerOverlay extends StatefulWidget {
   const FootMarkerOverlay({
     super.key,
@@ -21,7 +20,6 @@ class FootMarkerOverlay extends StatefulWidget {
     required this.kickDetector,
     this.gameFootMarker,
     this.gameAligned = false,
-    this.showFootLabel = false,
   });
 
   final List<CameraDescription> cameras;
@@ -29,7 +27,6 @@ class FootMarkerOverlay extends StatefulWidget {
   final KickDetector kickDetector;
   final GameFootMarkerController? gameFootMarker;
   final bool gameAligned;
-  final bool showFootLabel;
 
   @override
   State<FootMarkerOverlay> createState() => _FootMarkerOverlayState();
@@ -42,6 +39,10 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
   static const double _stillSmoothAlpha = 0.55;
   static const double _fastFollowAlpha = 0.92;
 
+  static const double _bootW = BootMarkerLayout.width;
+  static const double _bootH = BootMarkerLayout.height;
+  static final Offset _bootAnchor = BootMarkerLayout.anchor;
+
   Offset? _displayNorm;
   int _holdFrames = 0;
   static const int _maxHoldFrames = 12;
@@ -49,16 +50,20 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
   StreamSubscription<List<PoseLandmark>>? _subscription;
   StreamSubscription? _kickSubscription;
 
-  late final AnimationController _starController;
-  Offset _starOrigin = Offset.zero;
+  late final AnimationController _kickFlashController;
+  bool _kickFlashActive = false;
 
   @override
   void initState() {
     super.initState();
-    _starController = AnimationController(
+    _kickFlashController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
+      duration: const Duration(milliseconds: 350),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed && mounted) {
+          setState(() => _kickFlashActive = false);
+        }
+      });
     if (!widget.gameAligned) {
       _subscription = PoseDetectorService.instance.poseLandmarks.listen(
         _onLandmarks,
@@ -66,7 +71,8 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
     }
     _kickSubscription = widget.kickDetector.kickStream.listen((_) {
       if (!mounted) return;
-      _starController.forward(from: 0);
+      setState(() => _kickFlashActive = true);
+      _kickFlashController.forward(from: 0);
     });
   }
 
@@ -145,8 +151,22 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
   void dispose() {
     _subscription?.cancel();
     _kickSubscription?.cancel();
-    _starController.dispose();
+    _kickFlashController.dispose();
     super.dispose();
+  }
+
+  Offset _bootTopLeft(Offset footPoint) => footPoint - _bootAnchor;
+
+  Offset _clampFootPoint(Offset pt, Size screen) => Offset(
+        pt.dx.clamp(_bootAnchor.dx, screen.width - (_bootW - _bootAnchor.dx)),
+        pt.dy.clamp(_bootAnchor.dy, screen.height - (_bootH - _bootAnchor.dy)),
+      );
+
+  Widget _bootMarkerWidget(KickingFoot foot) {
+    return BootMarkerWidget(
+      isLeftFoot: foot.isLeft,
+      kickFlashActive: _kickFlashActive,
+    );
   }
 
   @override
@@ -187,12 +207,7 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
     GameFootMarkerController marker,
     Offset pt,
   ) {
-    final clamped = Offset(
-      pt.dx.clamp(24.0, screen.width - 24),
-      pt.dy.clamp(24.0, screen.height - 24),
-    );
-    _starOrigin = const Offset(24, 24);
-
+    final clamped = _clampFootPoint(pt, screen);
     final ballCenter = marker.ballCenterScreen;
     final ringColor = switch (marker.state) {
       MarkerPositionState.tracking => marker.didPassBall
@@ -203,6 +218,8 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
           ? Colors.greenAccent.withValues(alpha: 0.9)
           : Colors.white.withValues(alpha: 0.35),
     };
+
+    final bootPos = _bootTopLeft(clamped);
 
     return Stack(
       fit: StackFit.expand,
@@ -226,36 +243,10 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
             ),
           ),
         Positioned(
-          left: clamped.dx - 24,
-          top: clamped.dy - 24,
-          child: AnimatedBuilder(
-            animation: _starController,
-            builder: (context, child) {
-              return CustomPaint(
-                size: const Size(48, 48),
-                painter: BootMarkerPainter(
-                  kickFlashActive: _starController.isAnimating,
-                  starBurstProgress: _starController.value,
-                  starBurstOrigin: _starOrigin,
-                ),
-              );
-            },
-          ),
+          left: bootPos.dx,
+          top: bootPos.dy,
+          child: _bootMarkerWidget(foot),
         ),
-        if (widget.showFootLabel)
-          Positioned(
-            left: clamped.dx - 48,
-            top: clamped.dy + 28,
-            child: Text(
-              marker.isTrackingStrike ? 'Strike!' : 'Kick through the ball',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.85),
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -275,52 +266,17 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
       sensorRotation: sensor,
     );
     final pt = mapper.normalizedOffsetToScreen(norm);
-    final clamped = Offset(
-      pt.dx.clamp(24.0, screen.width - 24),
-      pt.dy.clamp(24.0, screen.height - 24),
-    );
-    _starOrigin = const Offset(24, 24);
+    final clamped = _clampFootPoint(pt, screen);
+    final bootPos = _bootTopLeft(clamped);
 
     return Stack(
       fit: StackFit.expand,
       children: [
         Positioned(
-          left: clamped.dx - 24,
-          top: clamped.dy - 24,
-          child: AnimatedBuilder(
-            animation: _starController,
-            builder: (context, child) {
-              return CustomPaint(
-                size: const Size(48, 48),
-                painter: BootMarkerPainter(
-                  kickFlashActive: _starController.isAnimating,
-                  starBurstProgress: _starController.value,
-                  starBurstOrigin: _starOrigin,
-                ),
-              );
-            },
-          ),
+          left: bootPos.dx,
+          top: bootPos.dy,
+          child: _bootMarkerWidget(foot),
         ),
-        if (widget.showFootLabel)
-          Positioned(
-            left: clamped.dx - 56,
-            top: clamped.dy + 28,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                'Remember this spot — ${foot.bodyLabel}',
-                style: const TextStyle(
-                  color: Colors.amberAccent,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }
