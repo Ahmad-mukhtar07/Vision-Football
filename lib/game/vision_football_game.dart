@@ -33,6 +33,7 @@ class VisionFootballGame extends FlameGame {
 
   late GameLayout _layout;
   late final SkyBackgroundComponent _sky;
+  late final PitchBackgroundComponent _pitch;
   late final GoalComponent _goal;
   late final GoalkeeperComponent _goalkeeper;
   late final BallComponent _ball;
@@ -48,7 +49,7 @@ class VisionFootballGame extends FlameGame {
 
     _layout = GameLayout(size);
     _sky = SkyBackgroundComponent(layout: _layout);
-    final pitch = PitchBackgroundComponent(layout: _layout);
+    _pitch = PitchBackgroundComponent(layout: _layout);
     _goal = GoalComponent(layout: _layout);
     _goalkeeper = GoalkeeperComponent(layout: _layout);
     _ball = BallComponent(
@@ -60,7 +61,7 @@ class VisionFootballGame extends FlameGame {
     );
 
     await add(_sky);
-    await add(pitch);
+    await add(_pitch);
     await add(_goal);
     await add(_goalkeeper);
     await add(_ball);
@@ -128,6 +129,9 @@ class VisionFootballGame extends FlameGame {
     _goal.applyVisualScale(scale);
     _goalkeeper.visualScale = scale;
     _sky.crowdZoom = crowdZoom;
+    _pitch.shotType = shotType;
+    _pitch.ballSpawnY = spawnY;
+    _pitch.goalBottomY = _goal.visualBottomY;
     _ball.resetToSpawn(Vector2(
       _layout.width * LayoutConstants.ballSpawnXFraction,
       spawnY,

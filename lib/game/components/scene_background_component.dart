@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../layout_constants.dart';
+import '../match_state.dart';
 import '../painters/stadium_painter.dart';
 
 /// Stadium crowd background (animated GIF; fills upper screen behind goal/keeper).
@@ -109,6 +110,27 @@ class PitchBackgroundComponent extends PositionComponent {
   final GameLayout _layout;
   ui.Picture? _cachedPicture;
   Vector2? _cachedSize;
+  ShotType _shotType = ShotType.penalty;
+  double _ballSpawnY = 0;
+  double _goalBottomY = 0;
+
+  set shotType(ShotType value) {
+    if (value == _shotType) return;
+    _shotType = value;
+    _invalidateCache();
+  }
+
+  set ballSpawnY(double y) {
+    if (y == _ballSpawnY) return;
+    _ballSpawnY = y;
+    _invalidateCache();
+  }
+
+  set goalBottomY(double y) {
+    if (y == _goalBottomY) return;
+    _goalBottomY = y;
+    _invalidateCache();
+  }
 
   @override
   void onGameResize(Vector2 size) {
@@ -133,14 +155,18 @@ class PitchBackgroundComponent extends PositionComponent {
     size = newSize;
     position = Vector2(0, top);
 
-    final spawn = _layout.ballSpawn;
+    final spawnX = _layout.ballSpawn.x;
+    final spawnY = _ballSpawnY > 0 ? _ballSpawnY : _layout.ballSpawn.y;
+    final effectiveGoalBottomY = _goalBottomY > 0 ? _goalBottomY : _layout.goalRect.bottom;
     final painter = StadiumPitchPainter(
       size: Size(w, h),
       fullScreenWidth: w,
       fullScreenHeight: _layout.height,
-      ballSpawnX: spawn.x,
-      ballSpawnY: spawn.y,
+      ballSpawnX: spawnX,
+      ballSpawnY: spawnY,
       goalRect: _layout.goalRect,
+      goalBottomY: effectiveGoalBottomY,
+      isFreeKick: _shotType == ShotType.freeKick,
     );
     _cachedPicture = recordStaticPicture(painter, Size(w, h));
     _cachedSize = newSize;

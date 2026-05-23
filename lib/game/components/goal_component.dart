@@ -33,6 +33,19 @@ class GoalComponent extends PositionComponent {
     _visualScale = scale;
   }
 
+  /// Screen-space Y where the goal image visually ends (accounting for
+  /// letterboxing and visual scale).
+  double get visualBottomY {
+    final goalRect = _layout.goalRect;
+    final cy = goalRect.top + size.y / 2;
+    double localBottom = size.y;
+    if (_destRect != null) {
+      localBottom = _destRect!.bottom;
+    }
+    final distFromCenter = localBottom - size.y / 2;
+    return cy + distFromCenter * _visualScale;
+  }
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
