@@ -25,8 +25,13 @@ class GoalComponent extends PositionComponent {
   ui.Image? _goalImage;
   Rect? _destRect;
   double _flashOpacity = 0;
+  double _visualScale = 1.0;
   final List<GoalParticle> _particles = [];
   async.Timer? _flashTimer;
+
+  void applyVisualScale(double scale) {
+    _visualScale = scale;
+  }
 
   @override
   Future<void> onLoad() async {
@@ -76,6 +81,13 @@ class GoalComponent extends PositionComponent {
     final img = _goalImage;
     final dest = _destRect;
 
+    canvas.save();
+    final cx = size.x / 2;
+    final cy = size.y / 2;
+    canvas.translate(cx, cy);
+    canvas.scale(_visualScale, _visualScale);
+    canvas.translate(-cx, -cy);
+
     if (img != null && dest != null) {
       final srcRect = Rect.fromLTWH(
         0,
@@ -98,6 +110,8 @@ class GoalComponent extends PositionComponent {
     if (_particles.isNotEmpty) {
       paintGoalParticles(canvas, _particles);
     }
+
+    canvas.restore();
   }
 
   bool containsScreenPoint(Offset point) => _layout.goalRect.contains(point);

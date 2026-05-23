@@ -77,6 +77,13 @@ class BallComponent extends PositionComponent {
     _baseScale = 1;
   }
 
+  void resetToSpawn(Vector2 spawn) {
+    _spawnPosition = spawn.clone();
+    if (_state == BallState.idle) {
+      position = _spawnPosition.clone();
+    }
+  }
+
   void strike(KickEvent event) {
     if (_state != BallState.idle) return;
 

@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'dart:math';
+
+/// Whether the current kick is a penalty or a free kick.
+enum ShotType { penalty, freeKick }
 
 /// Outcome of a single penalty kick.
 enum KickResult {
@@ -26,6 +30,7 @@ class MatchState {
     this.savesMade = 0,
     this.phase = MatchPhase.notStarted,
     this.lastResult,
+    this.shotType = ShotType.penalty,
   });
 
   final int totalKicks;
@@ -34,6 +39,7 @@ class MatchState {
   final int savesMade;
   final MatchPhase phase;
   final KickResult? lastResult;
+  final ShotType shotType;
 
   MatchState copyWith({
     int? totalKicks,
@@ -43,6 +49,7 @@ class MatchState {
     MatchPhase? phase,
     KickResult? lastResult,
     bool clearLastResult = false,
+    ShotType? shotType,
   }) {
     return MatchState(
       totalKicks: totalKicks ?? this.totalKicks,
@@ -51,6 +58,7 @@ class MatchState {
       savesMade: savesMade ?? this.savesMade,
       phase: phase ?? this.phase,
       lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
+      shotType: shotType ?? this.shotType,
     );
   }
 }
@@ -75,6 +83,7 @@ class MatchController {
   final Duration resultPauseDuration;
   final Duration runUpTimeout;
   final Duration goDuration;
+  final Random _random = Random();
 
   final StreamController<MatchState> _stateController =
       StreamController<MatchState>.broadcast();
@@ -181,9 +190,11 @@ class MatchController {
 
   void _enterRunUp() {
     _phaseTimer?.cancel();
+    final nextShot = _random.nextBool() ? ShotType.penalty : ShotType.freeKick;
     _state = _state.copyWith(
       phase: MatchPhase.runUp,
       clearLastResult: true,
+      shotType: nextShot,
     );
     _emit();
     onDisarmKickDetection?.call();

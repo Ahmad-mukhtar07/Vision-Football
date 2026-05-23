@@ -39,6 +39,9 @@ class GoalkeeperComponent extends PositionComponent {
 
   async.Timer? _reactionTimer;
   double _saveFlashOpacity = 0;
+  double _visualScale = 1.0;
+
+  set visualScale(double s) => _visualScale = s;
 
   static const double _reactionDelayMinMs = 200;
   static const double _reactionDelayMaxMs = 400;
@@ -183,6 +186,13 @@ class GoalkeeperComponent extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
+    canvas.save();
+    final cx = size.x / 2;
+    final cy = size.y / 2;
+    canvas.translate(cx, cy);
+    canvas.scale(_visualScale, _visualScale);
+    canvas.translate(-cx, -cy);
+
     GoalkeeperPainter(
       goalWidth: _layout.goalRect.width,
       goalHeight: _layout.goalRect.height,
@@ -191,6 +201,8 @@ class GoalkeeperComponent extends PositionComponent {
       diveDirectionSign: _diveDirectionSign,
       saveFlashOpacity: _saveFlashOpacity,
     ).paint(canvas, Size(size.x, size.y));
+
+    canvas.restore();
   }
 
   @override

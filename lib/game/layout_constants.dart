@@ -34,6 +34,10 @@ abstract final class LayoutConstants {
   static const double ballAerialArcHeightFraction = 0.18;
   static const double ballChipArcHeightFraction = 0.22;
   static const double chipTargetYInGoalFraction = 0.35;
+
+  static const double freeKickVisualScale = 0.72;
+  static const double freeKickBallSpawnYFraction = 0.85;
+  static const double freeKickCrowdZoom = 1.15;
 }
 
 /// Pixel layout derived from [screenSize] and [LayoutConstants].

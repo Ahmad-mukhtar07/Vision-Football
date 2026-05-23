@@ -32,10 +32,12 @@ class VisionFootballGame extends FlameGame {
   bool get canAcceptKick => _ball.isReadyForKick;
 
   late GameLayout _layout;
+  late final SkyBackgroundComponent _sky;
   late final GoalComponent _goal;
   late final GoalkeeperComponent _goalkeeper;
   late final BallComponent _ball;
   StreamSubscription<KickEvent>? _kickSubscription;
+  StreamSubscription<MatchState>? _matchSubscription;
 
   @override
   Color backgroundColor() => Colors.transparent;
@@ -45,7 +47,7 @@ class VisionFootballGame extends FlameGame {
     await super.onLoad();
 
     _layout = GameLayout(size);
-    final sky = SkyBackgroundComponent(layout: _layout);
+    _sky = SkyBackgroundComponent(layout: _layout);
     final pitch = PitchBackgroundComponent(layout: _layout);
     _goal = GoalComponent(layout: _layout);
     _goalkeeper = GoalkeeperComponent(layout: _layout);
@@ -57,13 +59,14 @@ class VisionFootballGame extends FlameGame {
       onBecameIdle: onBallBecameIdle,
     );
 
-    await add(sky);
+    await add(_sky);
     await add(pitch);
     await add(_goal);
     await add(_goalkeeper);
     await add(_ball);
 
     _kickSubscription = _kickStream.listen(_onKick);
+    _matchSubscription = matchController.stateStream.listen(_onMatchState);
   }
 
   void _onKick(KickEvent event) {
@@ -108,9 +111,33 @@ class VisionFootballGame extends FlameGame {
     // Components use layout from onLoad; full relayout on resize is a later step.
   }
 
+  void _onMatchState(MatchState state) {
+    if (state.phase == MatchPhase.runUp) {
+      _applyShotType(state.shotType);
+    }
+  }
+
+  void _applyShotType(ShotType shotType) {
+    final isPenalty = shotType == ShotType.penalty;
+    final scale = isPenalty ? 1.0 : LayoutConstants.freeKickVisualScale;
+    final spawnY = isPenalty
+        ? _layout.height * LayoutConstants.ballSpawnYFraction
+        : _layout.height * LayoutConstants.freeKickBallSpawnYFraction;
+    final crowdZoom = isPenalty ? 1.0 : LayoutConstants.freeKickCrowdZoom;
+
+    _goal.applyVisualScale(scale);
+    _goalkeeper.visualScale = scale;
+    _sky.crowdZoom = crowdZoom;
+    _ball.resetToSpawn(Vector2(
+      _layout.width * LayoutConstants.ballSpawnXFraction,
+      spawnY,
+    ));
+  }
+
   @override
   void onRemove() {
     _kickSubscription?.cancel();
+    _matchSubscription?.cancel();
     _goalController.close();
     super.onRemove();
   }

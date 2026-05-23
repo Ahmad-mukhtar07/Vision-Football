@@ -21,6 +21,9 @@ class SkyBackgroundComponent extends PositionComponent {
   final List<Duration> _frameDurations = [];
   int _currentFrame = 0;
   double _frameTimer = 0;
+  double _crowdZoom = 1.0;
+
+  set crowdZoom(double z) => _crowdZoom = z;
 
   @override
   Future<void> onLoad() async {
@@ -64,14 +67,24 @@ class SkyBackgroundComponent extends PositionComponent {
     size = Vector2(w, h);
     position = Vector2.zero();
 
-    final srcRect = Rect.fromLTWH(
-      0,
-      0,
-      img.width.toDouble(),
-      img.height.toDouble(),
-    );
-    final destRect = Rect.fromLTWH(0, 0, w, h);
+    final imgW = img.width.toDouble();
+    final imgH = img.height.toDouble();
 
+    Rect srcRect;
+    if (_crowdZoom > 1.0) {
+      final cropW = imgW / _crowdZoom;
+      final cropH = imgH / _crowdZoom;
+      srcRect = Rect.fromLTWH(
+        (imgW - cropW) / 2,
+        (imgH - cropH) / 2,
+        cropW,
+        cropH,
+      );
+    } else {
+      srcRect = Rect.fromLTWH(0, 0, imgW, imgH);
+    }
+
+    final destRect = Rect.fromLTWH(0, 0, w, h);
     canvas.drawImageRect(img, srcRect, destRect, Paint());
   }
 

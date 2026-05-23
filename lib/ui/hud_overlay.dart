@@ -209,21 +209,37 @@ class _HudOverlayState extends State<HudOverlay>
   }
 
   Widget _buildRunUpHint() {
+    final shotLabel = _state.shotType == ShotType.freeKick
+        ? 'FREE KICK'
+        : 'PENALTY';
+    final shotColor = _state.shotType == ShotType.freeKick
+        ? const Color(0xFF4FC3F7)
+        : _gold;
+
     return Center(
       child: FadeTransition(
         opacity: _arrowOpacity,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              '←',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 36,
-                fontWeight: FontWeight.bold,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: shotColor.withValues(alpha: 0.6)),
+              ),
+              child: Text(
+                shotLabel,
+                style: TextStyle(
+                  color: shotColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             const Text(
               'Step back and run up',
               textAlign: TextAlign.center,
