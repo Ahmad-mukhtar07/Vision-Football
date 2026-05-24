@@ -16,6 +16,8 @@ abstract final class LayoutConstants {
 
   static const double gkWidthInGoalFraction = 0.12;
   static const double gkHeightInGoalFraction = 0.85;
+  /// Pushes GK slightly below goal rect centre (screen Y down).
+  static const double gkVerticalOffsetFraction = 0.09;
 
   static const double targetXMinFraction = 0.08;
   static const double targetXMaxFraction = 0.92;
@@ -37,7 +39,8 @@ abstract final class LayoutConstants {
 
   static const double freeKickVisualScale = 0.72;
   static const double freeKickBallSpawnYFraction = 0.83;
-  static const double freeKickCrowdZoom = 1.15;
+  /// Slight crowd zoom for penalty (closer feel); free kick uses 1.0.
+  static const double penaltyCrowdZoom = 1.12;
 }
 
 /// Pixel layout derived from [screenSize] and [LayoutConstants].

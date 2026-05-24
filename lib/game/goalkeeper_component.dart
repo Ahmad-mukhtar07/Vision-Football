@@ -57,7 +57,10 @@ class GoalkeeperComponent extends PositionComponent {
       goal.width * LayoutConstants.gkWidthInGoalFraction,
       goal.height * LayoutConstants.gkHeightInGoalFraction,
     );
-    _centerPosition = Vector2(goal.center.dx, goal.center.dy);
+    _centerPosition = Vector2(
+      goal.center.dx,
+      goal.center.dy + goal.height * LayoutConstants.gkVerticalOffsetFraction,
+    );
     position = _centerPosition.clone();
   }
 

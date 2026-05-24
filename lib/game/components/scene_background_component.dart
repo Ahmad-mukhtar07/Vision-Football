@@ -75,9 +75,10 @@ class SkyBackgroundComponent extends PositionComponent {
     if (_crowdZoom > 1.0) {
       final cropW = imgW / _crowdZoom;
       final cropH = imgH / _crowdZoom;
+      // Anchor crop to bottom so the pitch horizon is not clipped when zooming in.
       srcRect = Rect.fromLTWH(
         (imgW - cropW) / 2,
-        (imgH - cropH) / 2,
+        imgH - cropH,
         cropW,
         cropH,
       );

@@ -124,7 +124,8 @@ class VisionFootballGame extends FlameGame {
     final spawnY = isPenalty
         ? _layout.height * LayoutConstants.ballSpawnYFraction
         : _layout.height * LayoutConstants.freeKickBallSpawnYFraction;
-    final crowdZoom = isPenalty ? 1.0 : LayoutConstants.freeKickCrowdZoom;
+    final crowdZoom =
+        isPenalty ? LayoutConstants.penaltyCrowdZoom : 1.0;
 
     _goal.applyVisualScale(scale);
     _goalkeeper.visualScale = scale;
