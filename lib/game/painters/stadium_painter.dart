@@ -136,6 +136,22 @@ class StadiumSkyPainter extends CustomPainter {
       oldDelegate.fullScreenHeight != fullScreenHeight;
 }
 
+/// Real-world geometry (metres).
+const double _goalWidthM = 7.32;
+const double _sixYardBoxWidthM = 18.32;
+const double _sixYardDepthM = 5.5;
+const double _eighteenYardBoxWidthM = 40.32;
+const double _eighteenYardDepthM = 16.5;
+const double _penaltySpotDepthM = 11.0;
+
+/// xNorm values: goal half-width = 1.0
+const double _sixYardXNorm = _sixYardBoxWidthM / 2 / (_goalWidthM / 2);
+const double _eighteenXNorm = _eighteenYardBoxWidthM / 2 / (_goalWidthM / 2);
+
+/// Max real-world depth visible for each mode.
+const double _penaltyMaxDepthM = 13.0;
+const double _freekickMaxDepthM = 22.0;
+
 /// Cached pitch grass and perspective penalty-area markings.
 class StadiumPitchPainter extends CustomPainter {
   StadiumPitchPainter({
@@ -146,6 +162,7 @@ class StadiumPitchPainter extends CustomPainter {
     required this.ballSpawnY,
     required this.goalRect,
     required this.goalBottomY,
+    required this.visualScale,
     required this.isFreeKick,
   });
 
@@ -156,6 +173,7 @@ class StadiumPitchPainter extends CustomPainter {
   final double ballSpawnY;
   final Rect goalRect;
   final double goalBottomY;
+  final double visualScale;
   final bool isFreeKick;
 
   static const Color _grassBase = Color(0xFF2d5a1b);
@@ -173,11 +191,11 @@ class StadiumPitchPainter extends CustomPainter {
     );
 
     _drawMowingBands(canvas, w, h, topOffset);
-    _drawPerspectiveMarkings(canvas, w, h, topOffset);
+    _drawPerspectiveMarkings(canvas, topOffset);
   }
 
   void _drawMowingBands(Canvas canvas, double w, double h, double topOffset) {
-    final goalLineLocalY = goalRect.bottom - topOffset;
+    final goalLineLocalY = goalBottomY - topOffset;
     final bottomY = h;
     const bandCount = 6;
     final totalH = bottomY - goalLineLocalY;
@@ -193,73 +211,115 @@ class StadiumPitchPainter extends CustomPainter {
     }
   }
 
-  void _drawPerspectiveMarkings(Canvas canvas, double w, double h, double topOffset) {
+  void _drawPerspectiveMarkings(Canvas canvas, double topOffset) {
     final persp = PenaltyAreaPerspective(
       screenSize: Size(fullScreenWidth, fullScreenHeight),
       goalRect: goalRect,
       goalBottomY: goalBottomY,
       ballSpawnY: ballSpawnY,
+      visualScale: visualScale,
     );
 
-    final linePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.62)
+    Offset p(double x, double d) {
+      final s = persp.project(x, d);
+      return Offset(s.dx, s.dy - topOffset);
+    }
+
+    final brightPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.75)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
 
-    final faintLinePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.35)
+    final dimPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.50)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
 
-    Offset local(Offset screen) => Offset(screen.dx, screen.dy - topOffset);
-
-    // Goal line
-    final glL = local(persp.leftAtDepth(PenaltyAreaPerspective.goalLineDepth));
-    final glR = local(persp.rightAtDepth(PenaltyAreaPerspective.goalLineDepth));
-    canvas.drawLine(glL, glR, linePaint);
-
-    // 6-yard box
-    const sixD = PenaltyAreaPerspective.sixYardDepth;
-    final sixHW = persp.sixYardHalfWidth(sixD);
-    final sixY = persp.yAtDepth(sixD) - topOffset;
-    final vpx = persp.vanishingPoint.dx;
-
-    final sixTL = Offset(vpx - persp.sixYardHalfWidth(0), glL.dy);
-    final sixTR = Offset(vpx + persp.sixYardHalfWidth(0), glR.dy);
-    final sixBL = Offset(vpx - sixHW, sixY);
-    final sixBR = Offset(vpx + sixHW, sixY);
-
-    canvas.drawLine(sixTL, sixBL, linePaint);
-    canvas.drawLine(sixTR, sixBR, linePaint);
-    canvas.drawLine(sixBL, sixBR, linePaint);
-
-    // 18-yard box
-    const eighteenD = PenaltyAreaPerspective.eighteenYardDepth;
-    final eighteenL = local(persp.leftAtDepth(eighteenD));
-    final eighteenR = local(persp.rightAtDepth(eighteenD));
-
-    final outerPaint = isFreeKick ? linePaint : faintLinePaint;
-    canvas.drawLine(glL, eighteenL, outerPaint);
-    canvas.drawLine(glR, eighteenR, outerPaint);
-    canvas.drawLine(eighteenL, eighteenR, outerPaint);
-
-    // Penalty arc (outside the 18-yard line, toward the ball)
-    final arcPath = persp.arcAtDepth(eighteenD, 0.18);
-    final localArcPath = arcPath.shift(Offset(0, -topOffset));
-    canvas.drawPath(localArcPath, isFreeKick ? linePaint : faintLinePaint);
-
-    // Penalty spot (penalty mode only)
-    if (!isFreeKick) {
-      const spotD = PenaltyAreaPerspective.penaltySpotDepth;
-      final spotScreen = persp.project(0, spotD);
-      canvas.drawCircle(
-        local(spotScreen),
-        4,
-        Paint()..color = Colors.white.withValues(alpha: 0.85),
-      );
+    if (isFreeKick) {
+      _drawFreeKickMarkings(canvas, p, brightPaint, dimPaint, topOffset);
+    } else {
+      _drawPenaltyMarkings(canvas, p, brightPaint);
     }
+  }
+
+  /// Penalty mode: goal line edge-to-edge + 6-yard box. No spot, 18-yard, or arc.
+  void _drawPenaltyMarkings(
+    Canvas canvas,
+    Offset Function(double x, double d) p,
+    Paint linePaint,
+  ) {
+    const sixD = _sixYardDepthM / _penaltyMaxDepthM;
+
+    // Goal line — extends to screen edges (large xNorm, canvas clips)
+    canvas.drawLine(p(-20.0, 0), p(20.0, 0), linePaint);
+
+    // 6-yard box sides
+    canvas.drawLine(p(-_sixYardXNorm, 0), p(-_sixYardXNorm, sixD), linePaint);
+    canvas.drawLine(p(_sixYardXNorm, 0), p(_sixYardXNorm, sixD), linePaint);
+
+    // 6-yard box front
+    canvas.drawLine(p(-_sixYardXNorm, sixD), p(_sixYardXNorm, sixD), linePaint);
+  }
+
+  /// Free kick mode: 18-yard + 6-yard + penalty arc through ball.
+  void _drawFreeKickMarkings(
+    Canvas canvas,
+    Offset Function(double x, double d) p,
+    Paint innerPaint,
+    Paint outerPaint,
+    double topOffset,
+  ) {
+    const sixD = _sixYardDepthM / _freekickMaxDepthM;
+    const eighteenD = _eighteenYardDepthM / _freekickMaxDepthM;
+    const spotD = _penaltySpotDepthM / _freekickMaxDepthM;
+
+    // 18-yard box (outer, dimmer) — sides extend off-screen
+    canvas.drawLine(p(-_eighteenXNorm, 0), p(_eighteenXNorm, 0), outerPaint);
+    canvas.drawLine(p(-_eighteenXNorm, 0), p(-_eighteenXNorm, eighteenD), outerPaint);
+    canvas.drawLine(p(_eighteenXNorm, 0), p(_eighteenXNorm, eighteenD), outerPaint);
+
+    // Third horizontal line — full screen width (arc meets it at the edges)
+    final eighteenY = p(0, eighteenD).dy;
+    canvas.drawLine(
+      Offset(0, eighteenY),
+      Offset(fullScreenWidth, eighteenY),
+      outerPaint,
+    );
+
+    // 6-yard box (inner, bright)
+    canvas.drawLine(p(-_sixYardXNorm, 0), p(_sixYardXNorm, 0), innerPaint);
+    canvas.drawLine(p(-_sixYardXNorm, 0), p(-_sixYardXNorm, sixD), innerPaint);
+    canvas.drawLine(p(_sixYardXNorm, 0), p(_sixYardXNorm, sixD), innerPaint);
+    canvas.drawLine(p(-_sixYardXNorm, sixD), p(_sixYardXNorm, sixD), innerPaint);
+
+    // Penalty spot (11 m) — between 6-yard and 18-yard lines; ball is not here.
+    canvas.drawCircle(
+      p(0, spotD),
+      4,
+      Paint()..color = Colors.white.withValues(alpha: 0.85),
+    );
+
+    // Penalty arc: ends off-screen, above the 18-yard line; apex through ball centre.
+    final ballLocal = Offset(ballSpawnX, ballSpawnY - topOffset);
+    const edgeOutset = 72.0;
+    const endpointLiftPx = 10.0;
+
+    final leftEnd = Offset(-edgeOutset, eighteenY - endpointLiftPx);
+    final rightEnd = Offset(
+      fullScreenWidth + edgeOutset,
+      eighteenY - endpointLiftPx,
+    );
+    // Quadratic control so B(0.5) == ballLocal exactly.
+    final control = Offset(
+      2 * ballLocal.dx - 0.5 * leftEnd.dx - 0.5 * rightEnd.dx,
+      2 * ballLocal.dy - 0.5 * leftEnd.dy - 0.5 * rightEnd.dy,
+    );
+    final arcPath = Path()
+      ..moveTo(leftEnd.dx, leftEnd.dy)
+      ..quadraticBezierTo(control.dx, control.dy, rightEnd.dx, rightEnd.dy);
+    canvas.drawPath(arcPath, innerPaint);
   }
 
   @override
@@ -269,6 +329,7 @@ class StadiumPitchPainter extends CustomPainter {
       oldDelegate.ballSpawnY != ballSpawnY ||
       oldDelegate.goalRect != goalRect ||
       oldDelegate.goalBottomY != goalBottomY ||
+      oldDelegate.visualScale != visualScale ||
       oldDelegate.isFreeKick != isFreeKick;
 }
 

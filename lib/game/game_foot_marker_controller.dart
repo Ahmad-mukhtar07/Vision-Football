@@ -87,16 +87,33 @@ class GameFootMarkerController extends ChangeNotifier {
   }
 
   void configureForScreen(Size screenSize) {
-    final layout = GameLayout(Vector2(screenSize.width, screenSize.height));
-    _ballCenterScreen = Offset(layout.ballSpawn.x, layout.ballSpawn.y);
-    _restMarkerScreen = Offset(
-      _ballCenterScreen!.dx,
-      _ballCenterScreen!.dy + belowBallOffsetPx,
-    );
     _lateralScale = screenSize.width * 0.9;
     _forwardScale = screenSize.height * 0.38;
     _runUpMaxDownPx = screenSize.height * 0.14;
     _strikeMaxUpPx = screenSize.height * 0.12;
+
+    // Do not overwrite ball center during play — shot type updates it via
+    // [updateBallCenter]; resetting here every frame misaligns the ring.
+    if (!_gameMode) {
+      final layout = GameLayout(Vector2(screenSize.width, screenSize.height));
+      _ballCenterScreen = Offset(layout.ballSpawn.x, layout.ballSpawn.y);
+      _restMarkerScreen = Offset(
+        _ballCenterScreen!.dx,
+        _ballCenterScreen!.dy + belowBallOffsetPx,
+      );
+      if (_state == MarkerPositionState.anchored) {
+        _screenPosition = _restMarkerScreen;
+        notifyListeners();
+      }
+    }
+  }
+
+  void updateBallCenter(Offset center) {
+    _ballCenterScreen = center;
+    _restMarkerScreen = Offset(
+      center.dx,
+      center.dy + belowBallOffsetPx,
+    );
     if (_gameMode && _state == MarkerPositionState.anchored) {
       _screenPosition = _restMarkerScreen;
       notifyListeners();

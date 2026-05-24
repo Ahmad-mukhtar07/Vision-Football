@@ -113,6 +113,7 @@ class PitchBackgroundComponent extends PositionComponent {
   ShotType _shotType = ShotType.penalty;
   double _ballSpawnY = 0;
   double _goalBottomY = 0;
+  double _visualScale = 1.0;
 
   set shotType(ShotType value) {
     if (value == _shotType) return;
@@ -129,6 +130,12 @@ class PitchBackgroundComponent extends PositionComponent {
   set goalBottomY(double y) {
     if (y == _goalBottomY) return;
     _goalBottomY = y;
+    _invalidateCache();
+  }
+
+  set visualScale(double s) {
+    if (s == _visualScale) return;
+    _visualScale = s;
     _invalidateCache();
   }
 
@@ -166,6 +173,7 @@ class PitchBackgroundComponent extends PositionComponent {
       ballSpawnY: spawnY,
       goalRect: _layout.goalRect,
       goalBottomY: effectiveGoalBottomY,
+      visualScale: _visualScale,
       isFreeKick: _shotType == ShotType.freeKick,
     );
     _cachedPicture = recordStaticPicture(painter, Size(w, h));

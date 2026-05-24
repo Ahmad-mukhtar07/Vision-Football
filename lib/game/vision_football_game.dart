@@ -132,6 +132,7 @@ class VisionFootballGame extends FlameGame {
     _pitch.shotType = shotType;
     _pitch.ballSpawnY = spawnY;
     _pitch.goalBottomY = _goal.visualBottomY;
+    _pitch.visualScale = scale;
     _ball.resetToSpawn(Vector2(
       _layout.width * LayoutConstants.ballSpawnXFraction,
       spawnY,

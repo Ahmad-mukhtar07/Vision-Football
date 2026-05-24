@@ -5,6 +5,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import '../game/game_foot_marker_controller.dart';
+import '../game/layout_constants.dart';
 import '../game/match_state.dart';
 import '../game/vision_football_game.dart';
 import '../models/kicking_foot.dart';
@@ -75,7 +76,10 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _kickDetector.setGameCanAcceptKick(false);
     _kickDetector.disarm();
 
-    _matchStateSub = _matchController.stateStream.listen((_) {
+    _matchStateSub = _matchController.stateStream.listen((state) {
+      if (state.phase == MatchPhase.runUp) {
+        _syncMarkerBallCenter(state.shotType);
+      }
       if (mounted) setState(() {});
     });
   }
@@ -138,6 +142,18 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
     _matchController.restartMatch();
+  }
+
+  void _syncMarkerBallCenter(ShotType shotType) {
+    final screen = MediaQuery.of(context).size;
+    final isPenalty = shotType == ShotType.penalty;
+    final spawnY = isPenalty
+        ? screen.height * LayoutConstants.ballSpawnYFraction
+        : screen.height * LayoutConstants.freeKickBallSpawnYFraction;
+    _gameFootMarker.updateBallCenter(Offset(
+      screen.width * LayoutConstants.ballSpawnXFraction,
+      spawnY,
+    ));
   }
 
   @override

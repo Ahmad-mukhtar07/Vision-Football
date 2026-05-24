@@ -36,7 +36,7 @@ abstract final class LayoutConstants {
   static const double chipTargetYInGoalFraction = 0.35;
 
   static const double freeKickVisualScale = 0.72;
-  static const double freeKickBallSpawnYFraction = 0.85;
+  static const double freeKickBallSpawnYFraction = 0.83;
   static const double freeKickCrowdZoom = 1.15;
 }
 
