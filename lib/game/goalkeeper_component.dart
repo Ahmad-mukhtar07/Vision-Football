@@ -13,6 +13,7 @@ enum GoalkeeperPhase {
   idle,
   crouching,
   diving,
+  recoverTransition,
   recovering,
 }
 
@@ -40,7 +41,9 @@ class GoalkeeperComponent extends PositionComponent {
   bool _diveIsHigh = false;
 
   double _crouchT = 0;
+  double _recoverTransitionT = 0;
   static const double _crouchDuration = 0.12;
+  static const double _recoverTransitionDuration = 0.18;
 
   async.Timer? _reactionTimer;
   double _saveFlashOpacity = 0;
@@ -69,6 +72,8 @@ class GoalkeeperComponent extends PositionComponent {
       'crouch-left',
       'crouch-right',
       'straight-top',
+      'recovery-left',
+      'recovery-right',
     ];
     for (final name in names) {
       _sprites[name] = await _loadImage('assets/images/keeper/Keeper-$name.png');
@@ -190,9 +195,9 @@ class GoalkeeperComponent extends PositionComponent {
   }
 
   void _beginRecover() {
-    _currentSprite = 'front';
-    _phase = GoalkeeperPhase.recovering;
-    _recoverT = 0;
+    _currentSprite = _diveDirectionSign >= 0 ? 'recovery-right' : 'recovery-left';
+    _recoverTransitionT = 0;
+    _phase = GoalkeeperPhase.recoverTransition;
   }
 
   @override
@@ -208,6 +213,8 @@ class GoalkeeperComponent extends PositionComponent {
         _updateCrouching(dt);
       case GoalkeeperPhase.diving:
         _updateDiving(dt);
+      case GoalkeeperPhase.recoverTransition:
+        _updateRecoverTransition(dt);
       case GoalkeeperPhase.recovering:
         _updateRecovering(dt);
       case GoalkeeperPhase.idle:
@@ -231,6 +238,15 @@ class GoalkeeperComponent extends PositionComponent {
 
     if (_diveT >= 1.0) {
       _beginRecover();
+    }
+  }
+
+  void _updateRecoverTransition(double dt) {
+    _recoverTransitionT += dt / _recoverTransitionDuration;
+    if (_recoverTransitionT >= 1.0) {
+      _currentSprite = 'front';
+      _recoverT = 0;
+      _phase = GoalkeeperPhase.recovering;
     }
   }
 
