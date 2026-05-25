@@ -14,10 +14,8 @@ abstract final class LayoutConstants {
   static const double skyHeightFraction = 0.30;
   static const double pitchHeightFraction = 0.555;
 
-  static const double gkWidthInGoalFraction = 0.12;
-  static const double gkHeightInGoalFraction = 0.85;
-  /// Pushes GK slightly below goal rect centre (screen Y down).
-  static const double gkVerticalOffsetFraction = 0.09;
+  static const double gkWidthInGoalFraction = 0.45;
+  static const double gkHeightInGoalFraction = 0.90;
 
   static const double targetXMinFraction = 0.08;
   static const double targetXMaxFraction = 0.92;
