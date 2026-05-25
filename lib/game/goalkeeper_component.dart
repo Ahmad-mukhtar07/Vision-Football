@@ -68,6 +68,7 @@ class GoalkeeperComponent extends PositionComponent {
       'top-right',
       'crouch-left',
       'crouch-right',
+      'straight-top',
     ];
     for (final name in names) {
       _sprites[name] = await _loadImage('assets/images/keeper/Keeper-$name.png');
@@ -127,7 +128,15 @@ class GoalkeeperComponent extends PositionComponent {
 
   void _startDive() {
     if (_diveIsHigh) {
-      _currentSprite = _diveDirectionSign >= 0 ? 'top-right' : 'top-left';
+      final goal = _layout.goalRect;
+      final targetX = _diveTarget?.x ?? _centerPosition.x;
+      final fromCenter = (targetX - goal.center.dx).abs();
+      final isCentral = fromCenter < goal.width * 0.15;
+      if (isCentral) {
+        _currentSprite = 'straight-top';
+      } else {
+        _currentSprite = _diveDirectionSign >= 0 ? 'top-right' : 'top-left';
+      }
     } else {
       _currentSprite = _diveDirectionSign >= 0 ? 'right' : 'left';
     }
