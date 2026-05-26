@@ -207,6 +207,21 @@ class KickDetector {
 
     _updatePlayerStillness(landmarks, imageSize);
 
+    // Marker is visual-only — update it regardless of detection gates so the
+    // foot marker tracks depth (run-up) even when kick detection is disarmed.
+    // Deliberately skip _isTeleport: that check uses _lastAcceptedPosition
+    // which is only updated inside the armed gate, so during run-up the
+    // accumulated delta grows stale and silently blocks every frame.
+    final kickingForMarker = _sampleKickingAnkle(landmarks, imageSize);
+    if (kickingForMarker != null) {
+      final footScale = _sampleKickingFootScale(landmarks, imageSize);
+      _gameFootMarker?.updateFromFoot(
+        kickingForMarker.position,
+        footScale: footScale,
+        ankleZ: kickingForMarker.z,
+      );
+    }
+
     if (!_detectionArmed) return;
 
     if (_phase == KickPhase.cooldown) {
@@ -217,7 +232,7 @@ class KickDetector {
       return;
     }
 
-    final kicking = _sampleKickingAnkle(landmarks, imageSize);
+    final kicking = kickingForMarker ?? _sampleKickingAnkle(landmarks, imageSize);
     if (kicking == null) {
       return;
     }
@@ -226,8 +241,6 @@ class KickDetector {
       _logTeleport(_teleportDelta(kicking.position));
       return;
     }
-
-    _gameFootMarker?.updateFromFoot(kicking.position);
 
     _lastAcceptedPosition = kicking.position;
 
@@ -284,6 +297,71 @@ class KickDetector {
       z: ankle.z,
       confidence: ankle.likelihood,
     );
+  }
+
+  /// Body-scale proxy for depth tracking.
+  ///
+  /// At foot-level camera, the lower body is by far the most visible part.
+  /// We measure shin length (ankle→knee) on BOTH legs and average the valid
+  /// readings. Using both legs averages out the noise from individual leg
+  /// motion during walking. Confidence threshold is lowered because at foot
+  /// level even partial detections contain usable geometry.
+  ///
+  /// Falls back to hip→ankle, then hip-to-hip, then single-leg shin if only
+  /// one side is visible.
+  double? _sampleKickingFootScale(
+    List<PoseLandmark> landmarks,
+    Size imageSize,
+  ) {
+    if (_lockedIsLeft == null) return null;
+
+    final byType = {for (final l in landmarks) l.type: l};
+    final isFront = PoseDetectorService.instance.isFrontCamera;
+    Offset toNorm(PoseLandmark lm) => PoseCoordinateMapper.landmarkToNormalized(
+          landmark: lm,
+          imageSize: imageSize,
+          isFrontCamera: isFront,
+        );
+
+    bool ok(PoseLandmark? lm) =>
+        lm != null && lm.likelihood >= 0.3;
+
+    final lAnkle = byType[PoseLandmarkType.leftAnkle];
+    final rAnkle = byType[PoseLandmarkType.rightAnkle];
+    final lKnee = byType[PoseLandmarkType.leftKnee];
+    final rKnee = byType[PoseLandmarkType.rightKnee];
+
+    // Primary: average both shins (ankle→knee). Most visible at foot level.
+    final shinSamples = <double>[];
+    if (ok(lAnkle) && ok(lKnee)) {
+      shinSamples.add((toNorm(lAnkle!) - toNorm(lKnee!)).distance);
+    }
+    if (ok(rAnkle) && ok(rKnee)) {
+      shinSamples.add((toNorm(rAnkle!) - toNorm(rKnee!)).distance);
+    }
+    if (shinSamples.isNotEmpty) {
+      return shinSamples.reduce((a, b) => a + b) / shinSamples.length;
+    }
+
+    // Fallback: hip→ankle (full leg)
+    final lHip = byType[PoseLandmarkType.leftHip];
+    final rHip = byType[PoseLandmarkType.rightHip];
+    final legSamples = <double>[];
+    if (ok(lHip) && ok(lAnkle)) {
+      legSamples.add((toNorm(lHip!) - toNorm(lAnkle!)).distance);
+    }
+    if (ok(rHip) && ok(rAnkle)) {
+      legSamples.add((toNorm(rHip!) - toNorm(rAnkle!)).distance);
+    }
+    if (legSamples.isNotEmpty) {
+      return legSamples.reduce((a, b) => a + b) / legSamples.length;
+    }
+
+    // Last resort: hip-to-hip span
+    if (ok(lHip) && ok(rHip)) {
+      return (toNorm(lHip!) - toNorm(rHip!)).distance;
+    }
+    return null;
   }
 
   ({Offset position, double confidence})? _samplePlantedAnkle(

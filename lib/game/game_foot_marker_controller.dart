@@ -34,17 +34,33 @@ class GameFootMarkerController extends ChangeNotifier {
   static const double markerRadiusPx = 24;
   static const double ballHitRadiusPx = 26;
 
-  static const double _strikeLiftNorm = 0.008;
-  static const double _strikeForwardNorm = 0.006;
-  static const double _anchoredLerp = 0.38;
+  static const double _anchoredLerp = 0.55;
   static const double _trackingLerp = 0.72;
   static const double _recoverLerp = 0.28;
   static const double _snapDistancePx = 8;
   static const int _framesToClearPass = 4;
 
+  /// Minimum per-frame velocity (normalized) to trigger tracking / strike mode.
+  /// Must be high enough that walking (slow drift) doesn't trigger it, but
+  /// low enough that a kick swing does.
+  static const double _strikeVelocityNorm = 0.025;
+
   bool _passedBallThisSwing = false;
   bool _markerOverBallNow = false;
   int _framesAwayFromBall = 0;
+
+  // ── Body-scale depth tracking ──
+  //
+  // Apparent shin length (ankle→knee in normalized image coords) is the most
+  // reliable depth signal at foot-level camera angles. It scales linearly
+  // with distance from the camera.
+  double? _neutralScale;
+  double? _smoothedScale;
+  int _scaleDebugCounter = 0;
+  static const double _scaleSmoothAlpha = 0.55;
+  static const double _maxShrinkFraction = 0.50;
+
+  Offset? _prevFootNorm;
 
   bool _gameMode = false;
   MarkerPositionState _state = MarkerPositionState.anchored;
@@ -73,6 +89,10 @@ class GameFootMarkerController extends ChangeNotifier {
     _neutralNorm = neutralNorm;
     _gameMode = true;
     _clearPassState();
+    _neutralScale = null;
+    _smoothedScale = null;
+    _scaleDebugCounter = 0;
+    _prevFootNorm = null;
     _state = MarkerPositionState.anchored;
     _screenPosition = _restMarkerScreen;
     notifyListeners();
@@ -120,36 +140,49 @@ class GameFootMarkerController extends ChangeNotifier {
     }
   }
 
-  void updateFromFoot(Offset footNorm) {
+  void updateFromFoot(Offset footNorm, {double? footScale, double? ankleZ}) {
     if (!_gameMode || _neutralNorm == null || _restMarkerScreen == null) {
       return;
     }
 
+    _ingestScale(footScale);
+
     if (_state == MarkerPositionState.recovering) {
       _advanceRecovering();
+      _prevFootNorm = footNorm;
       return;
     }
 
     final delta = footNorm - _neutralNorm!;
-    final footTarget = _footToGameScreen(delta);
 
+    // Check for strike-like motion: rapid per-frame velocity, not slow drift.
     if (_state == MarkerPositionState.anchored &&
-        _shouldBeginTracking(delta, footTarget)) {
+        _shouldBeginTracking(footNorm)) {
       _state = MarkerPositionState.tracking;
     }
 
-    final target = _state == MarkerPositionState.tracking
-        ? footTarget
+    final baseTarget = _state == MarkerPositionState.tracking
+        ? _footToGameScreen(delta)
         : _anchoredTarget(delta);
 
     final lerpT =
         _state == MarkerPositionState.tracking ? _trackingLerp : _anchoredLerp;
 
     final prev = _screenPosition ?? _restMarkerScreen!;
-    _screenPosition = Offset(
-      prev.dx + (target.dx - prev.dx) * lerpT,
-      prev.dy + (target.dy - prev.dy) * lerpT,
+    var newX = prev.dx + (baseTarget.dx - prev.dx) * lerpT;
+    var newY = prev.dy + (baseTarget.dy - prev.dy) * lerpT;
+
+    // Apply depth offset from body scale to the FINAL position. This works
+    // regardless of anchored/tracking state, so even if tracking triggers
+    // during a walk, the depth signal still drives the marker down.
+    final depthPx = _scaleDepthOffsetPx();
+    newY = (newY + depthPx).clamp(
+      _restMarkerScreen!.dy - _strikeMaxUpPx,
+      _restMarkerScreen!.dy + _runUpMaxDownPx,
     );
+
+    _screenPosition = Offset(newX, newY);
+    _prevFootNorm = footNorm;
 
     _updatePassDetection(prev, _screenPosition!);
     notifyListeners();
@@ -184,6 +217,8 @@ class GameFootMarkerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Private ───────────────────────────────────────────────────────────────
+
   void _clearPassState() {
     _passedBallThisSwing = false;
     _markerOverBallNow = false;
@@ -197,6 +232,7 @@ class GameFootMarkerController extends ChangeNotifier {
     return (pos - ball).distance;
   }
 
+  /// Full-range mapping used during tracking / strike.
   Offset _footToGameScreen(Offset delta) {
     final rest = _restMarkerScreen!;
     final ball = _ballCenterScreen;
@@ -207,26 +243,71 @@ class GameFootMarkerController extends ChangeNotifier {
     return Offset(rest.dx + delta.dx * _lateralScale, y);
   }
 
-  /// Pre-kick: lateral + run-up down; limited upward toward ball.
+  /// Pre-kick target: lateral movement only (no vertical from delta).
+  /// Vertical depth is applied separately via [_scaleDepthOffsetPx].
   Offset _anchoredTarget(Offset delta) {
     final rest = _restMarkerScreen!;
-    var y = rest.dy + delta.dy * _forwardScale;
-    final maxDown = rest.dy + _runUpMaxDownPx;
-    final maxUp = rest.dy - 8;
-    y = y.clamp(maxUp, maxDown);
-    return Offset(rest.dx + delta.dx * _lateralScale, y);
+    return Offset(rest.dx + delta.dx * _lateralScale, rest.dy);
   }
 
-  bool _shouldBeginTracking(Offset delta, Offset footTarget) {
-    if (-delta.dy >= _strikeForwardNorm) return true;
-    if (delta.distance >= _strikeLiftNorm) return true;
+  /// Pixel offset from body-scale change.
+  /// Positive = marker moves down (player walked back, body appears smaller).
+  /// Negative = marker moves up (player walked closer, body appears bigger).
+  /// Both directions use the same travel range for symmetry.
+  double _scaleDepthOffsetPx() {
+    final neutral = _neutralScale;
+    final current = _smoothedScale;
+    if (neutral == null || current == null || neutral <= 0) return 0;
 
-    final rest = _restMarkerScreen;
-    if (rest != null && footTarget.dy < rest.dy - 6) return true;
+    // ratio < 0 → shrunk (walked back); ratio > 0 → grew (walked closer)
+    final ratio = (current - neutral) / neutral;
+    // Negate so that shrink → positive t (marker down).
+    // Clamp symmetrically; _maxShrinkFraction controls how much real-world
+    // movement is needed to reach full deflection (higher = less sensitive).
+    final t = (-ratio).clamp(-_maxShrinkFraction, _maxShrinkFraction) /
+        _maxShrinkFraction;
 
+    // Symmetric range: same max travel in both directions.
+    return t * _runUpMaxDownPx;
+  }
+
+  void _ingestScale(double? scale) {
+    if (scale == null || scale <= 0) return;
+    if (_neutralScale == null) {
+      _neutralScale = scale;
+      _smoothedScale = scale;
+      debugPrint('[FootMarker] neutral body scale: '
+          '${scale.toStringAsFixed(4)}');
+      return;
+    }
+    _smoothedScale = _smoothedScale! + (scale - _smoothedScale!) * _scaleSmoothAlpha;
+
+    _scaleDebugCounter++;
+    if (_scaleDebugCounter % 30 == 0) {
+      final ratio = (_smoothedScale! - _neutralScale!) / _neutralScale!;
+      final px = _scaleDepthOffsetPx();
+      debugPrint('[FootMarker] scale neutral=${_neutralScale!.toStringAsFixed(4)} '
+          'curr=${_smoothedScale!.toStringAsFixed(4)} '
+          'ratio=${ratio.toStringAsFixed(3)} '
+          'offsetPx=${px.toStringAsFixed(1)}');
+    }
+  }
+
+  /// Only begin tracking when the foot is moving rapidly toward or past the
+  /// ball — i.e. an actual kick swing, not slow walking. Uses per-frame
+  /// velocity (distance from previous frame's normalized position).
+  bool _shouldBeginTracking(Offset footNorm) {
+    final prev = _prevFootNorm;
+    if (prev == null) return false;
+
+    final velocity = (footNorm - prev).distance;
+    if (velocity >= _strikeVelocityNorm) return true;
+
+    // Also trigger if the marker is already very close to the ball
     final ball = _ballCenterScreen;
-    if (ball != null &&
-        (footTarget - ball).distance <= ballHitRadiusPx + markerRadiusPx + 36) {
+    final pos = _screenPosition;
+    if (ball != null && pos != null &&
+        (pos - ball).distance <= ballHitRadiusPx + markerRadiusPx) {
       return true;
     }
     return false;
