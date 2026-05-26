@@ -30,7 +30,7 @@ class GameFootMarkerController extends ChangeNotifier {
   double _runUpMaxDownPx = 110;
   double _strikeMaxUpPx = 90;
 
-  static const double belowBallOffsetPx = 52;
+  static const double belowBallOffsetPx = 72;
   static const double markerRadiusPx = 24;
   static const double ballHitRadiusPx = 26;
 
