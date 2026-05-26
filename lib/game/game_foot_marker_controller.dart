@@ -35,10 +35,10 @@ class GameFootMarkerController extends ChangeNotifier {
   static const double ballHitRadiusPx = 26;
 
   static const double _anchoredLerp = 0.55;
-  static const double _trackingLerp = 0.72;
+  static const double _trackingLerp = 0.92;
   static const double _recoverLerp = 0.28;
   static const double _snapDistancePx = 8;
-  static const int _framesToClearPass = 4;
+  static const int _framesToClearPass = 14;
 
   /// Minimum per-frame velocity (normalized) to trigger tracking / strike mode.
   /// Must be high enough that walking (slow drift) doesn't trigger it, but
@@ -61,6 +61,7 @@ class GameFootMarkerController extends ChangeNotifier {
   static const double _maxShrinkFraction = 0.50;
 
   Offset? _prevFootNorm;
+  Offset? _prevFootScreenTarget;
 
   bool _gameMode = false;
   MarkerPositionState _state = MarkerPositionState.anchored;
@@ -74,16 +75,23 @@ class GameFootMarkerController extends ChangeNotifier {
   /// Green ring only while marker is on the ball.
   bool get didPassBall => _markerOverBallNow;
 
-  /// Kick gate — must pass / touch ball in 2D (not from far away).
-  bool get isEligibleForStrike =>
-      _markerOverBallNow ||
-      (_passedBallThisSwing && _distanceMarkerToBall() <= _strikeEligibilityRadius);
+  /// Kick gate — true if the foot has crossed through the ball during this
+  /// swing. Once a pass is recorded, eligibility holds for the full
+  /// [_framesToClearPass] window even if the foot has followed through far
+  /// past the ball (natural curved kicks).
+  bool get isEligibleForStrike => _markerOverBallNow || _passedBallThisSwing;
 
   bool get isTrackingStrike => _state == MarkerPositionState.tracking;
 
+  /// Radius used for "currently over ball" (green ring). Tight so the ring
+  /// only shows on actual contact.
   double get _contactRadius => ballHitRadiusPx + markerRadiusPx * 0.4;
+
+  /// Larger radius for the pass-through swing test. Curved natural swings
+  /// don't cross the exact center — give them generous room.
+  double get _passSweepRadius => ballHitRadiusPx + markerRadiusPx + 18;
+
   double get _clearRadius => ballHitRadiusPx + markerRadiusPx + 14;
-  double get _strikeEligibilityRadius => ballHitRadiusPx + markerRadiusPx + 24;
 
   void beginGameMode(Offset neutralNorm) {
     _neutralNorm = neutralNorm;
@@ -93,6 +101,7 @@ class GameFootMarkerController extends ChangeNotifier {
     _smoothedScale = null;
     _scaleDebugCounter = 0;
     _prevFootNorm = null;
+    _prevFootScreenTarget = null;
     _state = MarkerPositionState.anchored;
     _screenPosition = _restMarkerScreen;
     notifyListeners();
@@ -150,31 +159,33 @@ class GameFootMarkerController extends ChangeNotifier {
     if (_state == MarkerPositionState.recovering) {
       _advanceRecovering();
       _prevFootNorm = footNorm;
+      _prevFootScreenTarget = null;
       return;
     }
 
     final delta = footNorm - _neutralNorm!;
 
-    // Check for strike-like motion: rapid per-frame velocity, not slow drift.
     if (_state == MarkerPositionState.anchored &&
         _shouldBeginTracking(footNorm)) {
       _state = MarkerPositionState.tracking;
     }
 
+    // Foot's true unsmoothed screen target this frame. Pass detection uses
+    // this path so fast / curved swings register even when the visual marker
+    // is still catching up via lerp.
+    final footScreenTarget = _footToGameScreen(delta);
+
     final baseTarget = _state == MarkerPositionState.tracking
-        ? _footToGameScreen(delta)
+        ? footScreenTarget
         : _anchoredTarget(delta);
 
     final lerpT =
         _state == MarkerPositionState.tracking ? _trackingLerp : _anchoredLerp;
 
     final prev = _screenPosition ?? _restMarkerScreen!;
-    var newX = prev.dx + (baseTarget.dx - prev.dx) * lerpT;
+    final newX = prev.dx + (baseTarget.dx - prev.dx) * lerpT;
     var newY = prev.dy + (baseTarget.dy - prev.dy) * lerpT;
 
-    // Apply depth offset from body scale to the FINAL position. This works
-    // regardless of anchored/tracking state, so even if tracking triggers
-    // during a walk, the depth signal still drives the marker down.
     final depthPx = _scaleDepthOffsetPx();
     newY = (newY + depthPx).clamp(
       _restMarkerScreen!.dy - _strikeMaxUpPx,
@@ -182,9 +193,16 @@ class GameFootMarkerController extends ChangeNotifier {
     );
 
     _screenPosition = Offset(newX, newY);
+    final prevFootTarget = _prevFootScreenTarget ?? footScreenTarget;
     _prevFootNorm = footNorm;
+    _prevFootScreenTarget = footScreenTarget;
 
-    _updatePassDetection(prev, _screenPosition!);
+    _updatePassDetection(
+      prevMarker: prev,
+      nextMarker: _screenPosition!,
+      prevFoot: prevFootTarget,
+      nextFoot: footScreenTarget,
+    );
     notifyListeners();
   }
 
@@ -223,13 +241,6 @@ class GameFootMarkerController extends ChangeNotifier {
     _passedBallThisSwing = false;
     _markerOverBallNow = false;
     _framesAwayFromBall = 0;
-  }
-
-  double _distanceMarkerToBall() {
-    final pos = _screenPosition;
-    final ball = _ballCenterScreen;
-    if (pos == null || ball == null) return double.infinity;
-    return (pos - ball).distance;
   }
 
   /// Full-range mapping used during tracking / strike.
@@ -331,31 +342,39 @@ class GameFootMarkerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _updatePassDetection(Offset prev, Offset next) {
+  void _updatePassDetection({
+    required Offset prevMarker,
+    required Offset nextMarker,
+    required Offset prevFoot,
+    required Offset nextFoot,
+  }) {
     final ball = _ballCenterScreen;
     if (ball == null) return;
 
-    final distNext = (next - ball).distance;
+    // "Currently over ball" (green ring): tight radius, marker position only.
+    final distNext = (nextMarker - ball).distance;
     _markerOverBallNow = distNext <= _contactRadius;
 
-    if (_markerOverBallNow) {
+    // Pass-through detection: check BOTH the marker's smoothed path and the
+    // foot's true (unsmoothed) screen target path. The foot path catches
+    // fast curved swings where the marker lags behind the actual foot.
+    final markerSwept =
+        _segmentIntersectsCircle(prevMarker, nextMarker, ball, _passSweepRadius);
+    final footSwept =
+        _segmentIntersectsCircle(prevFoot, nextFoot, ball, _passSweepRadius);
+
+    if (_markerOverBallNow || markerSwept || footSwept) {
       _passedBallThisSwing = true;
       _framesAwayFromBall = 0;
-    } else if (distNext > _clearRadius) {
+      return;
+    }
+
+    if (distNext > _clearRadius) {
       _framesAwayFromBall++;
       if (_framesAwayFromBall >= _framesToClearPass) {
         _passedBallThisSwing = false;
       }
     } else {
-      _framesAwayFromBall = 0;
-    }
-
-    final distPrev = (prev - ball).distance;
-    final nearBall = distPrev <= _strikeEligibilityRadius ||
-        distNext <= _strikeEligibilityRadius;
-    if (nearBall &&
-        _segmentIntersectsCircle(prev, next, ball, _contactRadius)) {
-      _passedBallThisSwing = true;
       _framesAwayFromBall = 0;
     }
   }
