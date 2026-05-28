@@ -61,7 +61,6 @@ class GameFootMarkerController extends ChangeNotifier {
   static const double _maxShrinkFraction = 0.50;
 
   Offset? _prevFootNorm;
-  Offset? _prevFootScreenTarget;
 
   bool _gameMode = false;
   MarkerPositionState _state = MarkerPositionState.anchored;
@@ -87,9 +86,10 @@ class GameFootMarkerController extends ChangeNotifier {
   /// only shows on actual contact.
   double get _contactRadius => ballHitRadiusPx + markerRadiusPx * 0.4;
 
-  /// Larger radius for the pass-through swing test. Curved natural swings
-  /// don't cross the exact center — give them generous room.
-  double get _passSweepRadius => ballHitRadiusPx + markerRadiusPx + 18;
+  /// Pass-through swing radius. The marker and ball circles must visibly
+  /// overlap (centers ≤ ~80% of summed radii) for a pass to register. This
+  /// prevents shots when the marker is clearly to the side of the ball.
+  double get _passSweepRadius => (ballHitRadiusPx + markerRadiusPx) * 0.8;
 
   double get _clearRadius => ballHitRadiusPx + markerRadiusPx + 14;
 
@@ -101,7 +101,6 @@ class GameFootMarkerController extends ChangeNotifier {
     _smoothedScale = null;
     _scaleDebugCounter = 0;
     _prevFootNorm = null;
-    _prevFootScreenTarget = null;
     _state = MarkerPositionState.anchored;
     _screenPosition = _restMarkerScreen;
     notifyListeners();
@@ -159,7 +158,6 @@ class GameFootMarkerController extends ChangeNotifier {
     if (_state == MarkerPositionState.recovering) {
       _advanceRecovering();
       _prevFootNorm = footNorm;
-      _prevFootScreenTarget = null;
       return;
     }
 
@@ -170,11 +168,7 @@ class GameFootMarkerController extends ChangeNotifier {
       _state = MarkerPositionState.tracking;
     }
 
-    // Foot's true unsmoothed screen target this frame. Pass detection uses
-    // this path so fast / curved swings register even when the visual marker
-    // is still catching up via lerp.
     final footScreenTarget = _footToGameScreen(delta);
-
     final baseTarget = _state == MarkerPositionState.tracking
         ? footScreenTarget
         : _anchoredTarget(delta);
@@ -193,15 +187,11 @@ class GameFootMarkerController extends ChangeNotifier {
     );
 
     _screenPosition = Offset(newX, newY);
-    final prevFootTarget = _prevFootScreenTarget ?? footScreenTarget;
     _prevFootNorm = footNorm;
-    _prevFootScreenTarget = footScreenTarget;
 
     _updatePassDetection(
       prevMarker: prev,
       nextMarker: _screenPosition!,
-      prevFoot: prevFootTarget,
-      nextFoot: footScreenTarget,
     );
     notifyListeners();
   }
@@ -345,8 +335,6 @@ class GameFootMarkerController extends ChangeNotifier {
   void _updatePassDetection({
     required Offset prevMarker,
     required Offset nextMarker,
-    required Offset prevFoot,
-    required Offset nextFoot,
   }) {
     final ball = _ballCenterScreen;
     if (ball == null) return;
@@ -355,15 +343,13 @@ class GameFootMarkerController extends ChangeNotifier {
     final distNext = (nextMarker - ball).distance;
     _markerOverBallNow = distNext <= _contactRadius;
 
-    // Pass-through detection: check BOTH the marker's smoothed path and the
-    // foot's true (unsmoothed) screen target path. The foot path catches
-    // fast curved swings where the marker lags behind the actual foot.
+    // Pass-through detection: ONLY the visible marker path counts. If the
+    // player sees the marker crossing the ball, that's a valid pass; if it
+    // didn't, no shot — regardless of how the foot landmark moved.
     final markerSwept =
         _segmentIntersectsCircle(prevMarker, nextMarker, ball, _passSweepRadius);
-    final footSwept =
-        _segmentIntersectsCircle(prevFoot, nextFoot, ball, _passSweepRadius);
 
-    if (_markerOverBallNow || markerSwept || footSwept) {
+    if (_markerOverBallNow || markerSwept) {
       _passedBallThisSwing = true;
       _framesAwayFromBall = 0;
       return;

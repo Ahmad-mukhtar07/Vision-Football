@@ -265,6 +265,13 @@ class KickDetector {
 
     if (metrics.isKick) {
       _emitStrike(metrics);
+    } else if (metrics.runupRejected &&
+        (_gameFootMarker?.isEligibleForStrike ?? false)) {
+      // The marker has visibly crossed the ball during this swing. That's
+      // strong evidence of a real kick; bypass the planted-foot check (which
+      // can fail when the support foot is occluded or slightly shifting).
+      debugPrint('[KD] strike via marker pass — plant check bypassed');
+      _emitStrike(metrics);
     }
   }
 
