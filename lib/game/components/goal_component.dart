@@ -33,6 +33,20 @@ class GoalComponent extends PositionComponent {
     _visualScale = scale;
   }
 
+  double get visualScale => _visualScale;
+
+  /// Goal rect adjusted for the current visual scale (scaled around the
+  /// goal's center). Used for scoring decisions and keeper movement so the
+  /// gameplay area matches what the player visually sees.
+  Rect get effectiveGoalRect {
+    final r = _layout.goalRect;
+    return Rect.fromCenter(
+      center: r.center,
+      width: r.width * _visualScale,
+      height: r.height * _visualScale,
+    );
+  }
+
   /// Screen-space Y where the goal image visually ends (accounting for
   /// letterboxing and visual scale).
   double get visualBottomY {
@@ -127,7 +141,7 @@ class GoalComponent extends PositionComponent {
     canvas.restore();
   }
 
-  bool containsScreenPoint(Offset point) => _layout.goalRect.contains(point);
+  bool containsScreenPoint(Offset point) => effectiveGoalRect.contains(point);
 
   /// Visual celebration on goal (flash + particles). API unchanged for callers.
   void flashColor(Color color, Duration duration, {Offset? particleOrigin}) {

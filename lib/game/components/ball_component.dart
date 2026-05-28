@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
@@ -47,6 +48,13 @@ class BallComponent extends PositionComponent {
 
   BallState _state = BallState.idle;
   bool get isReadyForKick => _state == BallState.idle;
+
+  /// Probability (0..1) that an otherwise on-target shot is nudged slightly
+  /// outside the goal — used to introduce rare misses for free kicks.
+  /// Penalties leave this at 0.
+  double missProbability = 0;
+
+  final Random _random = Random();
   // TODO: insert LOCKED state here for run-up flow (Step N)
 
   late Vector2 _spawnPosition;
@@ -103,28 +111,56 @@ class BallComponent extends PositionComponent {
   TrajectoryParams _resolveTrajectory(KickEvent event) {
     final strike = event.strikeDeltaNormalized;
     final h = layout.height;
-    final goalRect = layout.goalRect;
+    // Use the visually-scaled goal rect so aim, scoring, and gameplay all
+    // share the same goal mouth (especially smaller for free kicks).
+    final goalRect = goal.effectiveGoalRect;
 
     // Lateral aim (screen-space, mirrored in PoseCoordinateMapper)
     final lateral = strike.dx.clamp(-1.0, 1.0);
     final halfWidth =
         goalRect.width * KickDetectionConfig.defaults.aimGoalHalfWidthFraction;
-    final clampedX = (goalRect.center.dx + lateral * halfWidth).clamp(
+    var clampedX = (goalRect.center.dx + lateral * halfWidth).clamp(
       goalRect.left + goalRect.width * 0.05,
       goalRect.right - goalRect.width * 0.05,
     );
 
-    // Fix 7: vertical aim from strike.dy
+    // Vertical aim from strike.dy. Clamp using the ball's actual visual
+    // radius at landing so the ball never appears poking above the crossbar
+    // or below the goal line.
     double targetYBase = event.type == KickType.aerial
         ? goalRect.top + goalRect.height * 0.15
         : goalRect.top + goalRect.height * 0.72;
     final verticalAim = (-strike.dy).clamp(-1.0, 1.0);
     final verticalRange = goalRect.height * 0.45;
-    final targetY = (targetYBase - verticalAim * verticalRange)
+    final landingScale = _landingScaleFor(event.type);
+    final landingRadius = (size.x * 0.5) * landingScale;
+    // The goal PNG has a thick crossbar drawn near the top of the rect, and
+    // the image is letterboxed inside `goalRect`. Push the ball center down
+    // by a full ball diameter + a fraction of goal height so high shots
+    // clearly land inside the goal mouth, not on/above the crossbar.
+    final topPad = landingRadius * 2.0 + goalRect.height * 0.10;
+    final bottomPad = landingRadius + 2.0;
+    var targetY = (targetYBase - verticalAim * verticalRange)
         .clamp(
-          goalRect.top + goalRect.height * 0.05,
-          goalRect.bottom - goalRect.height * 0.05,
+          goalRect.top + topPad,
+          goalRect.bottom - bottomPad,
         );
+
+    // Rare miss: nudge the target just outside the goal frame. Direction is
+    // weighted toward the side the player was aiming to (e.g. a left shot
+    // misses left of the post) for a natural feel.
+    if (missProbability > 0 && _random.nextDouble() < missProbability) {
+      final missSide = _pickMissSide(lateral);
+      switch (missSide) {
+        case _MissSide.left:
+          clampedX = goalRect.left - goalRect.width * 0.10;
+        case _MissSide.right:
+          clampedX = goalRect.right + goalRect.width * 0.10;
+        case _MissSide.over:
+          targetY = goalRect.top - goalRect.height * 0.18;
+      }
+      debugPrint('[BALL] free-kick miss → $missSide');
+    }
 
     final targetPosition = Offset(clampedX, targetY);
 
@@ -306,6 +342,32 @@ class BallComponent extends PositionComponent {
     }
   }
 
+  /// Ball's [_baseScale] at landing for each kick type. Mirrors the
+  /// `targetScale` set in [_resolveTrajectory]'s switch.
+  double _landingScaleFor(KickType type) {
+    switch (type) {
+      case KickType.ground:
+        return 0.72;
+      case KickType.aerial:
+        return 0.52;
+      case KickType.chip:
+        return 0.65;
+    }
+  }
+
+  /// Choose which side of the goal a miss flies over / past, biased toward
+  /// the side the player was aiming. Occasional cross-side or over misses
+  /// keep the variety realistic.
+  _MissSide _pickMissSide(double lateralAim) {
+    final r = _random.nextDouble();
+    // 18% over-the-bar regardless of lateral
+    if (r < 0.18) return _MissSide.over;
+    // 70% miss on the same side the player aimed, 12% on the opposite
+    final preferred = lateralAim >= 0 ? _MissSide.right : _MissSide.left;
+    final opposite = lateralAim >= 0 ? _MissSide.left : _MissSide.right;
+    return (r < 0.88) ? preferred : opposite;
+  }
+
   @override
   void render(Canvas canvas) {
     final radius = 18 * _baseScale;
@@ -317,3 +379,5 @@ class BallComponent extends PositionComponent {
     ).paint(canvas, center);
   }
 }
+
+enum _MissSide { left, right, over }

@@ -49,7 +49,24 @@ class GoalkeeperComponent extends PositionComponent {
   double _saveFlashOpacity = 0;
   double _visualScale = 1.0;
 
-  set visualScale(double s) => _visualScale = s;
+  set visualScale(double s) {
+    _visualScale = s;
+    // Recompute center/size against the scaled goal so the keeper aligns
+    // with the visible goal mouth (especially for free kicks).
+    if (_phase == GoalkeeperPhase.idle) {
+      _resetToCenter();
+    }
+  }
+
+  /// Goal rect adjusted for current visual scale.
+  Rect get _effectiveGoalRect {
+    final r = _layout.goalRect;
+    return Rect.fromCenter(
+      center: r.center,
+      width: r.width * _visualScale,
+      height: r.height * _visualScale,
+    );
+  }
 
   static const double _reactionDelayMinMs = 200;
   static const double _reactionDelayMaxMs = 400;
@@ -89,20 +106,27 @@ class GoalkeeperComponent extends PositionComponent {
 
   void _resetToCenter() {
     final goal = _layout.goalRect;
+    // Underlying size is full-goal-relative; _visualScale shrinks the visual
+    // and the effective collision rect symmetrically.
     size = Vector2(
       goal.width * LayoutConstants.gkWidthInGoalFraction,
       goal.height * LayoutConstants.gkHeightInGoalFraction,
     );
-    _centerPosition = Vector2(goal.center.dx, goal.bottom);
+    final effective = _effectiveGoalRect;
+    _centerPosition = Vector2(effective.center.dx, effective.bottom);
     position = _centerPosition.clone();
   }
 
+  /// Collision rect for ball-vs-keeper. Uses the visible (scaled) keeper
+  /// dimensions so the keeper can't "save" balls outside its visible body.
   Rect get bodyRect {
+    final w = size.x * _visualScale;
+    final h = size.y * _visualScale;
     return Rect.fromLTWH(
-      position.x - size.x / 2,
-      position.y - size.y,
-      size.x,
-      size.y,
+      position.x - w / 2,
+      position.y - h,
+      w,
+      h,
     );
   }
 
@@ -150,7 +174,7 @@ class GoalkeeperComponent extends PositionComponent {
   }
 
   Vector2 _computeDivePosition(KickEvent event) {
-    final goal = _layout.goalRect;
+    final goal = _effectiveGoalRect;
     final foot = event.footPositionNormalized;
     final strike = event.strikeDeltaNormalized;
 
@@ -168,7 +192,7 @@ class GoalkeeperComponent extends PositionComponent {
     final usePrediction = _random.nextDouble() < gkPredictionAccuracy;
     final diveCenterX = usePrediction ? tellX : randomX;
 
-    final halfW = size.x * 0.5;
+    final halfW = size.x * _visualScale * 0.5;
     final clampedX = diveCenterX.clamp(
       goal.left + halfW,
       goal.right - halfW,
@@ -269,11 +293,13 @@ class GoalkeeperComponent extends PositionComponent {
     if (sprite == null) return;
 
     canvas.save();
-    final cx = size.x / 2;
-    final cy = size.y / 2;
-    canvas.translate(cx, cy);
+    // Scale around the bottom-center so the visible keeper stays anchored
+    // to the goal line / dive target regardless of [_visualScale].
+    final bx = size.x / 2;
+    final by = size.y;
+    canvas.translate(bx, by);
     canvas.scale(_visualScale, _visualScale);
-    canvas.translate(-cx, -cy);
+    canvas.translate(-bx, -by);
 
     final imgW = sprite.width.toDouble();
     final imgH = sprite.height.toDouble();

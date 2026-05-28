@@ -265,13 +265,24 @@ class KickDetector {
 
     if (metrics.isKick) {
       _emitStrike(metrics);
-    } else if (metrics.runupRejected &&
-        (_gameFootMarker?.isEligibleForStrike ?? false)) {
-      // The marker has visibly crossed the ball during this swing. That's
-      // strong evidence of a real kick; bypass the planted-foot check (which
-      // can fail when the support foot is occluded or slightly shifting).
-      debugPrint('[KD] strike via marker pass — plant check bypassed');
-      _emitStrike(metrics);
+    } else {
+      final marker = _gameFootMarker;
+      final eligible = marker?.isEligibleForStrike ?? false;
+      if (eligible) {
+        // The marker has visibly crossed the ball this swing. Treat the
+        // pass + meaningful foot motion as authoritative evidence of a
+        // real kick, bypassing the stricter z-thrust / planted-foot gates
+        // that can miss pure lateral swings or curve-through follow-throughs.
+        if (metrics.runupRejected) {
+          debugPrint('[KD] strike via marker pass — plant check bypassed');
+          _emitStrike(metrics);
+        } else if (metrics.xySpeed >=
+            _config.strikeSpeedThreshold * 0.6) {
+          debugPrint('[KD] strike via marker pass — z-thrust skipped '
+              '(xySpeed=${metrics.xySpeed.toStringAsFixed(3)})');
+          _emitStrike(metrics);
+        }
+      }
     }
   }
 

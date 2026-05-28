@@ -138,6 +138,9 @@ class VisionFootballGame extends FlameGame {
       _layout.width * LayoutConstants.ballSpawnXFraction,
       spawnY,
     ));
+    // Free kicks are tougher: rare chance the shot misses just outside the
+    // post / over the bar. Penalties always stay on target.
+    _ball.missProbability = isPenalty ? 0.0 : 0.15;
   }
 
   @override
