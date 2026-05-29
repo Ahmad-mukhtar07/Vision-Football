@@ -30,7 +30,7 @@ class GameFootMarkerController extends ChangeNotifier {
   double _runUpMaxDownPx = 110;
   double _strikeMaxUpPx = 90;
 
-  static const double belowBallOffsetPx = 72;
+  static const double belowBallOffsetPx = 95;
   static const double markerRadiusPx = 24;
   static const double ballHitRadiusPx = 26;
 
@@ -181,8 +181,13 @@ class GameFootMarkerController extends ChangeNotifier {
     var newY = prev.dy + (baseTarget.dy - prev.dy) * lerpT;
 
     final depthPx = _scaleDepthOffsetPx();
+    // In anchored state, don't let depth pull the marker above the ball —
+    // that would trigger pass detection and accidental shots.
+    final upperLimit = _state == MarkerPositionState.anchored
+        ? (_ballCenterScreen?.dy ?? _restMarkerScreen!.dy)
+        : _restMarkerScreen!.dy - _strikeMaxUpPx;
     newY = (newY + depthPx).clamp(
-      _restMarkerScreen!.dy - _strikeMaxUpPx,
+      upperLimit,
       _restMarkerScreen!.dy + _runUpMaxDownPx,
     );
 
