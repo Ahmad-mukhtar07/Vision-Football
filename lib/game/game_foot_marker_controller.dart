@@ -267,14 +267,17 @@ class GameFootMarkerController extends ChangeNotifier {
     return Offset(rest.dx + delta.dx * _lateralScale, y);
   }
 
-  /// Pre-kick target: lateral movement only (no vertical from delta).
-  /// Vertical depth is applied separately via [_scaleDepthOffsetPx].
+  /// Pre-kick target: lateral movement + optional vertical mapping.
   ///
-  /// Rolling-ball mode (depth tracking off) maps both X and Y of the foot
-  /// directly so the player can see their boot rise/fall on screen.
+  /// Fixed-ball mode (strike gate on): lateral only; vertical depth is
+  /// applied separately via [_scaleDepthOffsetPx].
+  ///
+  /// Rolling-ball mode (strike gate off): maps both X and Y of the foot
+  /// directly so the player sees their boot rise/fall on screen. Depth
+  /// offset from [_scaleDepthOffsetPx] is added on top in [updateFromFoot].
   Offset _anchoredTarget(Offset delta) {
     final rest = _restMarkerScreen!;
-    if (!_depthTrackingEnabled) {
+    if (!_useAsStrikeGate) {
       final ball = _ballCenterScreen;
       var y = rest.dy + delta.dy * _activeForwardScale;
       if (ball != null) {

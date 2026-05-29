@@ -124,13 +124,13 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _calibration.neutralPosition!,
       neutralZ: _calibration.neutralZ,
     );
-    // Foot marker is always shown during play. In rolling mode it's purely
-    // visual feedback (no depth tracking, no strike gating); the strike
-    // window on the rolling ball decides whether a swing connects.
+    // Both modes use depth tracking (marker moves up/down with distance from
+    // camera). Only fixed-ball mode uses the marker as a strike gate; rolling
+    // mode relies on the ball's strike-window timing instead.
     final isRolling = (_ballMode ?? BallMode.fixed) == BallMode.rolling;
     _gameFootMarker.beginGameMode(
       _calibration.neutralPosition!,
-      depthTracking: !isRolling,
+      depthTracking: true,
       useAsStrikeGate: !isRolling,
     );
 
