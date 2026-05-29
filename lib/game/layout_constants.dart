@@ -39,6 +39,12 @@ abstract final class LayoutConstants {
   static const double freeKickBallSpawnYFraction = 0.83;
   /// Slight crowd zoom for penalty (closer feel); free kick uses 1.0.
   static const double penaltyCrowdZoom = 1.12;
+
+  /// Maximum lateral curve (as a fraction of screen width) applied to the
+  /// ball at `KickEvent.spinX = ±1.0`. INCREASE → more dramatic swing in
+  /// flight; DECREASE → subtler curve. Apex of the curve sits at ~half of
+  /// this value laterally because the spin offsets the Bézier control point.
+  static const double ballMaxCurveWidthFraction = 0.18;
 }
 
 /// Pixel layout derived from [screenSize] and [LayoutConstants].

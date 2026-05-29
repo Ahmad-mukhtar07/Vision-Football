@@ -546,6 +546,17 @@ class KickDetector {
       xySpeed: xySpeed,
     );
 
+    // --- Curve / swing detection ---
+    //
+    // Measure how much the foot path bent away from a straight line drawn
+    // from swing-start to swing-end. We look at the X-coordinate of the
+    // peak-speed frame compared to the X you'd expect if the foot had
+    // travelled in a perfectly straight line over the same time fraction.
+    // Positive deviation → foot arced to screen-right → ball curves right.
+    // Negative deviation → foot arced to screen-left  → ball curves left.
+    // A dead zone keeps tiny natural curves from producing any spin.
+    final spinX = _computeSpinX(frames, peakIdx);
+
     return _KickMetrics(
       xySpeed: xySpeed,
       zDelta: zDelta,
@@ -559,7 +570,53 @@ class KickDetector {
       sensorDegrees: sensorDegrees,
       zThrustCandidate: zThrustCandidate,
       kickPower: combinedPower,
+      spinX: spinX,
     );
+  }
+
+  /// Compute curve / swing factor in [-1, +1] from the foot trajectory.
+  ///
+  /// For every intermediate frame we measure the **signed perpendicular
+  /// distance** from that frame to the straight line drawn from swing-start
+  /// to swing-end. Perpendicular distance is invariant to where along the
+  /// line the foot is at each frame, so a kick that simply accelerates from
+  /// rest (real biomechanics!) registers zero curve — only an actual bowed
+  /// foot path produces non-zero spin.
+  ///
+  /// Sign convention: positive perpendicular distance → foot bowed to the
+  /// right of the A→B line in the mirrored selfie view → ball curves right.
+  /// Negative → bowed to the left → ball curves left.
+  double _computeSpinX(List<_FootFrame> frames, int peakIdx) {
+    if (frames.length < 3) return 0;
+    final start = frames.first.positionNormalized;
+    final end = frames.last.positionNormalized;
+    final swing = end - start;
+    final swingLen = swing.distance;
+    if (swingLen < _config.curveMinSwingLength) return 0;
+
+    // Signed perpendicular distance of each intermediate frame from line A→B.
+    // Using the 2D cross product divided by the swing length:
+    //   cross(swing, AM) / |swing|
+    // gives the magnitude AND the side the foot is on (independent of how
+    // fast it was moving along the line at that moment).
+    double maxAbs = 0;
+    double signedAtMax = 0;
+    final total = frames.length - 1;
+    for (int i = 1; i < total; i++) {
+      final am = frames[i].positionNormalized - start;
+      final cross = swing.dx * am.dy - swing.dy * am.dx;
+      final signedDist = cross / swingLen;
+      if (signedDist.abs() > maxAbs) {
+        maxAbs = signedDist.abs();
+        signedAtMax = signedDist;
+      }
+    }
+
+    if (maxAbs < _config.curveDeadZone) return 0;
+    final excess = maxAbs - _config.curveDeadZone;
+    final normalized = (excess / _config.curveReferenceDeviation)
+        .clamp(0.0, 1.0);
+    return signedAtMax.sign * normalized;
   }
 
   // ---------------------------------------------------------------------------
@@ -649,6 +706,7 @@ class KickDetector {
       kickPower: metrics.kickPower,
       type: metrics.type,
       timestamp: DateTime.now(),
+      spinX: metrics.spinX,
     );
 
     debugPrint('');
@@ -661,6 +719,7 @@ class KickDetector {
       'sensor=${metrics.sensorDegrees} '
       'speed=${metrics.xySpeed.toStringAsFixed(3)} '
       'power=${metrics.kickPower.toStringAsFixed(2)} '
+      'spin=${metrics.spinX.toStringAsFixed(2)} '
       'type=${metrics.type.name}',
     );
     debugPrint('[KD] ══════════════════════════');
@@ -901,6 +960,7 @@ class _KickMetrics {
     required this.sensorDegrees,
     required this.zThrustCandidate,
     required this.kickPower,
+    this.spinX = 0,
   });
 
   static const _KickMetrics idle = _KickMetrics(
@@ -916,6 +976,7 @@ class _KickMetrics {
     sensorDegrees: 0,
     zThrustCandidate: false,
     kickPower: 0,
+    spinX: 0,
   );
 
   static _KickMetrics emptyAt(_FootFrame curr) => _KickMetrics(
@@ -931,6 +992,7 @@ class _KickMetrics {
         sensorDegrees: 0,
         zThrustCandidate: false,
         kickPower: 0,
+        spinX: 0,
       );
 
   final double xySpeed;
@@ -945,4 +1007,5 @@ class _KickMetrics {
   final int sensorDegrees;
   final bool zThrustCandidate;
   final double kickPower;
+  final double spinX;
 }

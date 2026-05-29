@@ -16,6 +16,7 @@ class KickEvent {
     required this.kickPower,
     required this.type,
     required this.timestamp,
+    this.spinX = 0,
   });
 
   /// Where on screen the kick registered (0.0–1.0, origin top-left).
@@ -32,6 +33,13 @@ class KickEvent {
 
   final KickType type;
 
+  /// Lateral spin amount in range [-1.0, +1.0].
+  ///  - 0  → no swing, ball flies straight
+  ///  - >0 → ball curves to the right (in screen / camera view)
+  ///  - <0 → ball curves to the left
+  /// Magnitude scales how pronounced the in-flight curve is.
+  final double spinX;
+
   final DateTime timestamp;
 
   @override
@@ -42,6 +50,7 @@ class KickEvent {
         '${timestamp.millisecond.toString().padLeft(3, '0')}';
     return '[KICK] type=${type.name} speed=${strikeSpeed.toStringAsFixed(3)} '
         'power=${kickPower.toStringAsFixed(2)} '
+        'spin=${spinX.toStringAsFixed(2)} '
         'position=(${footPositionNormalized.dx.toStringAsFixed(2)}, '
         '${footPositionNormalized.dy.toStringAsFixed(2)}) '
         'delta=(${strikeDeltaNormalized.dx.toStringAsFixed(3)}, '

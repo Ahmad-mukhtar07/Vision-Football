@@ -27,6 +27,20 @@ class KickDetectionConfig {
     // Power
     this.maxXyVelocityNorm = 2.5,
 
+    // Curve / swing detection
+    // curveDeadZone — INCREASE: less accidental curve; straight kicks stay straighter.
+    //                  DECREASE: easier to register any curve (more sensitive).
+    //                          0.012 → less accidental curve; straight kicks stay straighter.
+    this.curveDeadZone = 1.0,
+    // curveReferenceDeviation — INCREASE: need a bigger foot arc for max curve (spinX = ±1).
+    //                           DECREASE: smaller arc produces full curve.
+    //                          0.04 → need a bigger foot arc for max curve (spinX = ±1).
+    this.curveReferenceDeviation = 1.0,
+    // curveMinSwingLength — INCREASE: only longer swings can curve; taps ignored for spin.
+    //                       DECREASE: shorter swings can still induce curve.
+    //                        0.03 → only longer swings can curve; taps ignored for spin.
+    this.curveMinSwingLength = 1.0,
+
     // Planted foot
     this.maxPlantedMissingFrames = 5,
 
@@ -71,6 +85,25 @@ class KickDetectionConfig {
 
   /// XY velocity (norm units / sec) that maps to power = 1.0.
   final double maxXyVelocityNorm;
+
+  /// Minimum signed lateral deviation of the foot path (in normalized coords)
+  /// before any swing/curve is registered. Below this, `spinX` is forced to 0
+  /// so small natural curves or jitter never induce unintended ball swing.
+  /// INCREASE → less sensitive; player must arc foot more pronounced to curve.
+  /// DECREASE → easier to induce curve.
+  final double curveDeadZone;
+
+  /// Lateral deviation (in normalized coords) above the dead zone that maps
+  /// to `spinX = ±1.0` (maximum curve). Smaller → reach max curve with less
+  /// arc; larger → very pronounced arcs required for max curve.
+  final double curveReferenceDeviation;
+
+  /// Minimum swing path length (start→end normalized distance) required to
+  /// even consider curvature detection. Prevents micro-taps from producing
+  /// spurious spin.
+  /// INCREASE → only longer swings can curve; taps ignored for spin.
+  /// DECREASE → shorter swings can still induce curve.
+  final double curveMinSwingLength;
 
   /// How many frames the planted foot can be invisible before blocking kicks.
   final int maxPlantedMissingFrames;

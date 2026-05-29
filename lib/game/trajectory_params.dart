@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-/// Flight path shape — extend for inswing/outswing later.
+/// Flight path shape.
 enum CurveType {
   straight,
   swervLeft,
@@ -15,6 +15,7 @@ class TrajectoryParams {
     required this.peakArcHeight,
     required this.targetScale,
     required this.curveType,
+    this.spinOffsetPx = 0,
   });
 
   final Offset targetPosition;
@@ -22,4 +23,8 @@ class TrajectoryParams {
   final double peakArcHeight;
   final double targetScale;
   final CurveType curveType;
+
+  /// Signed lateral offset (in screen pixels) applied to the Bézier control
+  /// point. Positive = curves right; negative = curves left; zero = straight.
+  final double spinOffsetPx;
 }

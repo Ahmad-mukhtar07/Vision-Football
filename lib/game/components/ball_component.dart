@@ -182,6 +182,21 @@ class BallComponent extends PositionComponent {
       aerialArc *= 1.0 + speedT * 0.5;
     }
 
+    // Resolve in-flight lateral curve from spin. Chips dampen the swing
+    // (delicate touch shots curve less than driven aerials).
+    final spin = event.spinX.clamp(-1.0, 1.0);
+    final maxCurvePx = layout.width *
+        LayoutConstants.ballMaxCurveWidthFraction;
+    final curveDamping = switch (event.type) {
+      KickType.chip => 0.55,
+      KickType.ground => 0.95,
+      KickType.aerial => 1.0,
+    };
+    final spinOffsetPx = spin * maxCurvePx * curveDamping;
+    final curveType = spin > 0
+        ? CurveType.swervRight
+        : (spin < 0 ? CurveType.swervLeft : CurveType.straight);
+
     switch (event.type) {
       case KickType.ground:
         return TrajectoryParams(
@@ -189,7 +204,8 @@ class BallComponent extends PositionComponent {
           flightDurationSeconds: flightDurationSeconds,
           peakArcHeight: h * groundArc,
           targetScale: 0.72,
-          curveType: CurveType.straight,
+          curveType: curveType,
+          spinOffsetPx: spinOffsetPx,
         );
       case KickType.aerial:
         return TrajectoryParams(
@@ -197,7 +213,8 @@ class BallComponent extends PositionComponent {
           flightDurationSeconds: flightDurationSeconds * 0.95,
           peakArcHeight: h * aerialArc,
           targetScale: 0.52,
-          curveType: CurveType.straight,
+          curveType: curveType,
+          spinOffsetPx: spinOffsetPx,
         );
       case KickType.chip:
         return TrajectoryParams(
@@ -205,7 +222,8 @@ class BallComponent extends PositionComponent {
           flightDurationSeconds: flightDurationSeconds * 0.75,
           peakArcHeight: h * LayoutConstants.ballChipArcHeightFraction,
           targetScale: 0.65,
-          curveType: CurveType.straight,
+          curveType: curveType,
+          spinOffsetPx: spinOffsetPx,
         );
     }
   }
@@ -237,7 +255,10 @@ class BallComponent extends PositionComponent {
 
     final duration = trajectory.flightDurationSeconds;
     _flightT = (_flightT + dt / duration).clamp(0.0, 1.0);
-    _spinAngle += _spinDirection * 0.15 * dt * 60;
+
+    // Visual ball-spin animation: faster spin when the trajectory is curving.
+    final spinBoost = 1.0 + trajectory.spinOffsetPx.abs() / 60.0;
+    _spinAngle += _spinDirection * 0.15 * spinBoost * dt * 60;
     final t = _flightT;
 
     final end = Vector2(
@@ -245,7 +266,13 @@ class BallComponent extends PositionComponent {
       trajectory.targetPosition.dy,
     );
 
-    position = _quadraticBezier(start, end, trajectory.peakArcHeight, t);
+    position = _quadraticBezier(
+      start,
+      end,
+      trajectory.peakArcHeight,
+      trajectory.spinOffsetPx,
+      t,
+    );
     _baseScale = 1.0 + (trajectory.targetScale - 1.0) * t;
 
     if (t >= 1.0) {
@@ -253,17 +280,24 @@ class BallComponent extends PositionComponent {
     }
   }
 
+  /// Quadratic Bézier with a single control point that lifts the curve up
+  /// (`peakArcHeight`) AND nudges it laterally (`spinOffsetPx`) — yielding a
+  /// pseudo-3D outswing/inswing as the ball flies toward the goal.
   Vector2 _quadraticBezier(
     Vector2 start,
     Vector2 end,
     double peakArcHeight,
+    double spinOffsetPx,
     double t,
   ) {
     final mid = Offset(
       (start.x + end.x) * 0.5,
       (start.y + end.y) * 0.5,
     );
-    final control = Offset(mid.dx, mid.dy - peakArcHeight);
+    final control = Offset(
+      mid.dx + spinOffsetPx,
+      mid.dy - peakArcHeight,
+    );
     final p0 = Offset(start.x, start.y);
     final p2 = Offset(end.x, end.y);
     final oneMinusT = 1 - t;
