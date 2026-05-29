@@ -63,9 +63,16 @@ class GameFootMarkerController extends ChangeNotifier {
   Offset? _prevFootNorm;
 
   bool _gameMode = false;
+  bool _depthTrackingEnabled = true;
+  bool _useAsStrikeGate = true;
   MarkerPositionState _state = MarkerPositionState.anchored;
 
   bool get isGameMode => _gameMode;
+
+  /// If false, the kick detector should NOT block strikes based on whether
+  /// the marker passed the ball. Used in rolling-ball mode where the strike
+  /// gate is timing-based, not marker-pass-based.
+  bool get useAsStrikeGate => _useAsStrikeGate;
   MarkerPositionState get state => _state;
   Offset? get screenPosition => _screenPosition;
   Offset? get ballCenterScreen => _ballCenterScreen;
@@ -93,9 +100,15 @@ class GameFootMarkerController extends ChangeNotifier {
 
   double get _clearRadius => ballHitRadiusPx + markerRadiusPx + 14;
 
-  void beginGameMode(Offset neutralNorm) {
+  void beginGameMode(
+    Offset neutralNorm, {
+    bool depthTracking = true,
+    bool useAsStrikeGate = true,
+  }) {
     _neutralNorm = neutralNorm;
     _gameMode = true;
+    _depthTrackingEnabled = depthTracking;
+    _useAsStrikeGate = useAsStrikeGate;
     _clearPassState();
     _neutralScale = null;
     _smoothedScale = null;
@@ -182,7 +195,7 @@ class GameFootMarkerController extends ChangeNotifier {
 
     final depthPx = _scaleDepthOffsetPx();
     newY = (newY + depthPx).clamp(
-      _restMarkerScreen!.dy - _strikeMaxUpPx,
+      _restMarkerScreen!.dy - _activeStrikeMaxUpPx,
       _restMarkerScreen!.dy + _runUpMaxDownPx,
     );
 
@@ -233,21 +246,42 @@ class GameFootMarkerController extends ChangeNotifier {
     _framesAwayFromBall = 0;
   }
 
+  /// Vertical Y scale — much larger in rolling mode so the marker visibly
+  /// rises and falls with the foot (no depth tracking to interfere).
+  double get _activeForwardScale =>
+      _depthTrackingEnabled ? _forwardScale : _forwardScale * 2.5;
+
+  /// Upward travel limit — bigger in rolling mode so the marker can pass
+  /// well above the ball during a follow-through.
+  double get _activeStrikeMaxUpPx =>
+      _depthTrackingEnabled ? _strikeMaxUpPx : _strikeMaxUpPx * 2.5;
+
   /// Full-range mapping used during tracking / strike.
   Offset _footToGameScreen(Offset delta) {
     final rest = _restMarkerScreen!;
     final ball = _ballCenterScreen;
-    var y = rest.dy + delta.dy * _forwardScale;
+    var y = rest.dy + delta.dy * _activeForwardScale;
     if (ball != null) {
-      y = y.clamp(ball.dy - _strikeMaxUpPx, rest.dy + _runUpMaxDownPx);
+      y = y.clamp(ball.dy - _activeStrikeMaxUpPx, rest.dy + _runUpMaxDownPx);
     }
     return Offset(rest.dx + delta.dx * _lateralScale, y);
   }
 
   /// Pre-kick target: lateral movement only (no vertical from delta).
   /// Vertical depth is applied separately via [_scaleDepthOffsetPx].
+  ///
+  /// Rolling-ball mode (depth tracking off) maps both X and Y of the foot
+  /// directly so the player can see their boot rise/fall on screen.
   Offset _anchoredTarget(Offset delta) {
     final rest = _restMarkerScreen!;
+    if (!_depthTrackingEnabled) {
+      final ball = _ballCenterScreen;
+      var y = rest.dy + delta.dy * _activeForwardScale;
+      if (ball != null) {
+        y = y.clamp(ball.dy - _activeStrikeMaxUpPx, rest.dy + _runUpMaxDownPx);
+      }
+      return Offset(rest.dx + delta.dx * _lateralScale, y);
+    }
     return Offset(rest.dx + delta.dx * _lateralScale, rest.dy);
   }
 
@@ -256,6 +290,7 @@ class GameFootMarkerController extends ChangeNotifier {
   /// Negative = marker moves up (player walked closer, body appears bigger).
   /// Both directions use the same travel range for symmetry.
   double _scaleDepthOffsetPx() {
+    if (!_depthTrackingEnabled) return 0;
     final neutral = _neutralScale;
     final current = _smoothedScale;
     if (neutral == null || current == null || neutral <= 0) return 0;

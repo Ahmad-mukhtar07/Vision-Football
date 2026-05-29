@@ -14,6 +14,7 @@ import 'goal_component.dart';
 
 enum BallState {
   idle,
+  rolling,
   inFlight,
   scored,
   missed,
@@ -47,7 +48,18 @@ class BallComponent extends PositionComponent {
   final VoidCallback? onBecameIdle;
 
   BallState _state = BallState.idle;
+  BallState get state => _state;
   bool get isReadyForKick => _state == BallState.idle;
+
+  /// True if a rolling ball is currently within the strike window — the
+  /// timing zone where the player's swing can connect.
+  bool get isInStrikeWindow {
+    if (_state != BallState.rolling) return false;
+    return _rollingT >= _strikeWindowStart && _rollingT <= _strikeWindowEnd;
+  }
+
+  /// 0 → ball just started rolling; 1 → ball reached the end of its roll.
+  double get rollingProgress => _rollingT;
 
   /// Probability (0..1) that an otherwise on-target shot is nudged slightly
   /// outside the goal — used to introduce rare misses for free kicks.
@@ -55,6 +67,24 @@ class BallComponent extends PositionComponent {
   double missProbability = 0;
 
   final Random _random = Random();
+
+  // ── Rolling-ball state ──
+  Vector2? _rollStart;
+  Vector2? _rollEnd;
+  double _rollDuration = 2.0;
+  double _rollingT = 0;
+  bool _rollingSwingUsed = false;
+  static const double _rollStartScale = 0.45;
+  static const double _rollEndScale = 1.20;
+  // Strike window — the ball reaches the cyan ring at ~t=0.70.
+  // Open the window just before that so the player can swing when the ball
+  // visually arrives, accounting for ~100-200ms of ML Kit detection latency.
+  static const double _strikeWindowStart = 0.62;
+  static const double _strikeWindowEnd = 0.98;
+
+  /// True once the player has swung at this rolling ball, in or out of
+  /// window. Prevents multiple swings per delivery.
+  bool get rollingSwingUsed => _rollingSwingUsed;
   // TODO: insert LOCKED state here for run-up flow (Step N)
 
   late Vector2 _spawnPosition;
@@ -92,8 +122,49 @@ class BallComponent extends PositionComponent {
     }
   }
 
+  /// Starts a rolling-ball delivery: ball travels from [from] to [to] over
+  /// [duration] seconds while spinning and growing in apparent size.
+  void startRolling({
+    required Vector2 from,
+    required Vector2 to,
+    double duration = 2.0,
+  }) {
+    _rollStart = from.clone();
+    _rollEnd = to.clone();
+    _rollDuration = duration;
+    _rollingT = 0;
+    _rollingSwingUsed = false;
+    _activeKick = null;
+    _ballTint = null;
+    _spinAngle = 0;
+    _spinDirection = 1;
+    position = from.clone();
+    _baseScale = _rollStartScale;
+    _state = BallState.rolling;
+  }
+
+  /// Player swung while the ball was rolling, but the timing was outside the
+  /// strike window. The ball continues its roll and will be marked as a miss
+  /// when it passes the strike zone.
+  void recordMissedSwing(KickEvent attempt) {
+    if (_state != BallState.rolling) return;
+    _rollingSwingUsed = true;
+    _activeKick = attempt;
+  }
+
   void strike(KickEvent event) {
-    if (_state != BallState.idle) return;
+    if (_state == BallState.rolling) {
+      if (!isInStrikeWindow) {
+        recordMissedSwing(event);
+        return;
+      }
+      _rollingSwingUsed = true;
+      // Connecting strike — launch from the ball's current position with the
+      // visual scale it has at this moment, so it looks like the ball is
+      // simply re-directed toward goal.
+    } else if (_state != BallState.idle) {
+      return;
+    }
 
     _activeKick = event;
     final trajectory = _resolveTrajectory(event);
@@ -215,6 +286,8 @@ class BallComponent extends PositionComponent {
     super.update(dt);
 
     switch (_state) {
+      case BallState.rolling:
+        _updateRolling(dt);
       case BallState.inFlight:
         _updateInFlight(dt);
       case BallState.scored:
@@ -228,6 +301,53 @@ class BallComponent extends PositionComponent {
       case BallState.idle:
         break;
     }
+  }
+
+  void _updateRolling(double dt) {
+    final start = _rollStart;
+    final end = _rollEnd;
+    if (start == null || end == null) return;
+
+    _rollingT = (_rollingT + dt / _rollDuration).clamp(0.0, 1.0);
+    position = start + (end - start) * _rollingT;
+    _baseScale = _rollStartScale +
+        (_rollEndScale - _rollStartScale) * _rollingT;
+    // Spin proportional to roll speed for a natural rolling look.
+    _spinAngle += dt * 12.0;
+
+    if (_rollingT >= 1.0) {
+      _finishMissedRoll();
+    }
+  }
+
+  /// Ball reached the end of its roll without being struck — the player
+  /// either swung outside the strike window or didn't swing at all. Mark as
+  /// a miss and report through the normal flight-end channel.
+  ///
+  /// Note: no red tint here. The visual feedback IS the ball rolling past
+  /// the player; tinting it would just look like the shot got intercepted.
+  void _finishMissedRoll() {
+    _state = BallState.missed;
+    _ballTint = null;
+    _postResultTimer = 0;
+    final landing = Offset(position.x, position.y);
+    onFlightEnd(
+      isGoal: false,
+      isSave: false,
+      kick: _activeKick ?? _syntheticMissKick(landing),
+      landingPosition: landing,
+    );
+  }
+
+  KickEvent _syntheticMissKick(Offset landing) {
+    return KickEvent(
+      footPositionNormalized: Offset.zero,
+      strikeDeltaNormalized: Offset.zero,
+      strikeSpeed: 0,
+      kickPower: 0,
+      type: KickType.ground,
+      timestamp: DateTime.now(),
+    );
   }
 
   void _updateInFlight(double dt) {

@@ -12,6 +12,7 @@ import '../models/kicking_foot.dart';
 import '../pose/kick_detector.dart';
 import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
+import 'ball_mode_selection_overlay.dart';
 import 'calibration_overlay.dart';
 import 'camera_preview_widget.dart';
 import 'foot_selection_overlay.dart';
@@ -21,6 +22,7 @@ import 'match_over_overlay.dart';
 import 'positioning_overlay.dart';
 
 enum _SetupPhase {
+  selectingBallMode,
   positioning,
   calibrating,
   playing,
@@ -47,6 +49,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   final GameFootMarkerController _gameFootMarker = GameFootMarkerController();
 
   KickingFoot? _kickingFoot;
+  BallMode? _ballMode;
   _SetupPhase? _setupPhase;
   StreamSubscription<MatchState>? _matchStateSub;
 
@@ -72,6 +75,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       kickStream: _kickDetector.kickStream,
       matchController: _matchController,
       onBallBecameIdle: _gameFootMarker.snapToAnchored,
+      onRollingKickWhiffed: _kickDetector.cancelCooldown,
     );
     _kickDetector.setGameCanAcceptKick(false);
     _kickDetector.disarm();
@@ -89,9 +93,16 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _kickDetector.setGameCanAcceptKick(false);
     setState(() {
       _kickingFoot = foot;
-      _setupPhase = _SetupPhase.positioning;
+      _setupPhase = _SetupPhase.selectingBallMode;
     });
     _kickDetector.setKickingFoot(foot);
+  }
+
+  void _onBallModeSelected(BallMode mode) {
+    setState(() {
+      _ballMode = mode;
+      _setupPhase = _SetupPhase.positioning;
+    });
   }
 
   void _beginCalibration() {
@@ -113,10 +124,18 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _calibration.neutralPosition!,
       neutralZ: _calibration.neutralZ,
     );
-    _gameFootMarker.beginGameMode(_calibration.neutralPosition!);
+    // Foot marker is always shown during play. In rolling mode it's purely
+    // visual feedback (no depth tracking, no strike gating); the strike
+    // window on the rolling ball decides whether a swing connects.
+    final isRolling = (_ballMode ?? BallMode.fixed) == BallMode.rolling;
+    _gameFootMarker.beginGameMode(
+      _calibration.neutralPosition!,
+      depthTracking: !isRolling,
+      useAsStrikeGate: !isRolling,
+    );
 
     setState(() => _setupPhase = _SetupPhase.playing);
-    _matchController.startMatch();
+    _matchController.startMatch(ballMode: _ballMode ?? BallMode.fixed);
   }
 
   void _recalibrate() {
@@ -134,6 +153,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _calibration.clearKickingFoot();
     setState(() {
       _kickingFoot = null;
+      _ballMode = null;
       _setupPhase = null;
     });
   }
@@ -171,6 +191,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     final playing = _setupPhase == _SetupPhase.playing;
     final matchOver = playing && _matchController.state.phase == MatchPhase.matchOver;
     final showCameraPreview = _kickingFoot == null ||
+        _setupPhase == _SetupPhase.selectingBallMode ||
         _setupPhase == _SetupPhase.positioning;
 
     return Stack(
@@ -200,6 +221,8 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           HudOverlay(matchStateStream: _matchController.stateStream),
         if (_kickingFoot == null)
           FootSelectionOverlay(onFootSelected: _onFootSelected)
+        else if (_setupPhase == _SetupPhase.selectingBallMode)
+          BallModeSelectionOverlay(onModeSelected: _onBallModeSelected)
         else if (_setupPhase == _SetupPhase.positioning)
           PositioningOverlay(
             kickingFoot: _kickingFoot!,

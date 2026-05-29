@@ -4,6 +4,15 @@ import 'dart:math';
 /// Whether the current kick is a penalty or a free kick.
 enum ShotType { penalty, freeKick }
 
+/// Ball delivery style selected by the player at game start.
+enum BallMode {
+  /// Ball sits stationary at the spawn point (classic penalty/free kick).
+  fixed,
+
+  /// Ball rolls toward the player; kick happens when it reaches them.
+  rolling,
+}
+
 /// Outcome of a single penalty kick.
 enum KickResult {
   goal,
@@ -31,6 +40,7 @@ class MatchState {
     this.phase = MatchPhase.notStarted,
     this.lastResult,
     this.shotType = ShotType.penalty,
+    this.ballMode = BallMode.fixed,
   });
 
   final int totalKicks;
@@ -40,6 +50,7 @@ class MatchState {
   final MatchPhase phase;
   final KickResult? lastResult;
   final ShotType shotType;
+  final BallMode ballMode;
 
   MatchState copyWith({
     int? totalKicks,
@@ -50,6 +61,7 @@ class MatchState {
     KickResult? lastResult,
     bool clearLastResult = false,
     ShotType? shotType,
+    BallMode? ballMode,
   }) {
     return MatchState(
       totalKicks: totalKicks ?? this.totalKicks,
@@ -59,6 +71,7 @@ class MatchState {
       phase: phase ?? this.phase,
       lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
       shotType: shotType ?? this.shotType,
+      ballMode: ballMode ?? this.ballMode,
     );
   }
 }
@@ -108,21 +121,25 @@ class MatchController {
     _stateController.close();
   }
 
-  void startMatch() {
+  BallMode _ballMode = BallMode.fixed;
+
+  void startMatch({BallMode ballMode = BallMode.fixed}) {
+    _ballMode = ballMode;
     _phaseTimer?.cancel();
     _runUpTimeoutTimer?.cancel();
-    _state = const MatchState(
+    _state = MatchState(
       phase: MatchPhase.runUp,
       kicksTaken: 0,
       goalsScored: 0,
       savesMade: 0,
+      ballMode: ballMode,
     );
     _emit();
     _enterRunUp();
   }
 
   void restartMatch() {
-    startMatch();
+    startMatch(ballMode: _ballMode);
   }
 
   void playerInPosition() {
@@ -195,6 +212,7 @@ class MatchController {
       phase: MatchPhase.runUp,
       clearLastResult: true,
       shotType: nextShot,
+      ballMode: _ballMode,
     );
     _emit();
     onDisarmKickDetection?.call();

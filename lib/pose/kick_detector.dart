@@ -267,19 +267,37 @@ class KickDetector {
       _emitStrike(metrics);
     } else {
       final marker = _gameFootMarker;
-      final eligible = marker?.isEligibleForStrike ?? false;
-      if (eligible) {
-        // The marker has visibly crossed the ball this swing. Treat the
-        // pass + meaningful foot motion as authoritative evidence of a
-        // real kick, bypassing the stricter z-thrust / planted-foot gates
-        // that can miss pure lateral swings or curve-through follow-throughs.
-        if (metrics.runupRejected) {
-          debugPrint('[KD] strike via marker pass — plant check bypassed');
-          _emitStrike(metrics);
-        } else if (metrics.xySpeed >=
-            _config.strikeSpeedThreshold * 0.6) {
-          debugPrint('[KD] strike via marker pass — z-thrust skipped '
-              '(xySpeed=${metrics.xySpeed.toStringAsFixed(3)})');
+      final markerActsAsGate = marker?.useAsStrikeGate ?? false;
+
+      if (markerActsAsGate) {
+        // Fixed-ball mode: the marker has visibly crossed the ball this
+        // swing → treat the pass + meaningful foot motion as authoritative
+        // evidence of a real kick, bypassing stricter z-thrust / plant gates.
+        final eligible = marker?.isEligibleForStrike ?? false;
+        if (eligible) {
+          if (metrics.runupRejected) {
+            debugPrint('[KD] strike via marker pass — plant check bypassed');
+            _emitStrike(metrics);
+          } else if (metrics.xySpeed >=
+              _config.strikeSpeedThreshold * 0.6) {
+            debugPrint('[KD] strike via marker pass — z-thrust skipped '
+                '(xySpeed=${metrics.xySpeed.toStringAsFixed(3)})');
+            _emitStrike(metrics);
+          }
+        }
+      } else if (marker != null && marker.isGameMode) {
+        // Rolling-ball mode: the player stands still and just swings, so
+        // z-thrust + plant are almost never satisfied. Any swing with
+        // meaningful foot speed is treated as a kick; the ball's strike
+        // window decides whether it actually connects.
+        //
+        // Threshold is set well above the standing-still noise floor
+        // (which is typically 0.008–0.020). Real swings register at
+        // 0.03+, so this catches every real swing while filtering jitter.
+        const rollingSwingMinSpeed = 0.025;
+        if (metrics.xySpeed >= rollingSwingMinSpeed) {
+          debugPrint('[KD] rolling-mode strike — xySpeed='
+              '${metrics.xySpeed.toStringAsFixed(3)}');
           _emitStrike(metrics);
         }
       }
@@ -634,7 +652,10 @@ class KickDetector {
 
   void _emitStrike(_KickMetrics metrics) {
     final marker = _gameFootMarker;
-    if (marker != null && marker.isGameMode && !marker.isEligibleForStrike) {
+    if (marker != null &&
+        marker.isGameMode &&
+        marker.useAsStrikeGate &&
+        !marker.isEligibleForStrike) {
       debugPrint('[KD] strike ignored — marker did not pass the ball');
       return;
     }
@@ -673,6 +694,20 @@ class KickDetector {
   // ---------------------------------------------------------------------------
   // Cooldown
   // ---------------------------------------------------------------------------
+
+  /// Cancel cooldown early so the detector is immediately ready for the next
+  /// kick. Used in rolling-ball mode when the game layer rejects a kick that
+  /// happened outside the strike window — we don't want a noise-triggered
+  /// cooldown to block the player's real swing.
+  void cancelCooldown() {
+    if (_phase != KickPhase.cooldown) return;
+    _cooldownTimer?.cancel();
+    _cooldownUiTimer?.cancel();
+    _cooldownEndsAt = null;
+    _phase = KickPhase.idle;
+    _emitCooldownUi(inactive: true);
+    debugPrint('[KD] cooldown cancelled (rolling whiff)');
+  }
 
   void _enterCooldown() {
     _phase = KickPhase.cooldown;

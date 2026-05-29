@@ -18,11 +18,13 @@ class VisionFootballGame extends FlameGame {
     required Stream<KickEvent> kickStream,
     required this.matchController,
     this.onBallBecameIdle,
+    this.onRollingKickWhiffed,
   }) : _kickStream = kickStream;
 
   final Stream<KickEvent> _kickStream;
   final MatchController matchController;
   final VoidCallback? onBallBecameIdle;
+  final VoidCallback? onRollingKickWhiffed;
 
   final StreamController<GoalEvent> _goalController =
       StreamController<GoalEvent>.broadcast();
@@ -71,6 +73,12 @@ class VisionFootballGame extends FlameGame {
   }
 
   void _onKick(KickEvent event) {
+    // Rolling-ball mode: kick must connect inside the strike window.
+    if (matchController.state.ballMode == BallMode.rolling) {
+      _onKickRolling(event);
+      return;
+    }
+
     if (!_ball.isReadyForKick) {
       debugPrint('[KD] strike ignored (ball busy)');
       return;
@@ -79,6 +87,28 @@ class VisionFootballGame extends FlameGame {
     matchController.onBallInFlight();
     _ball.strike(event);
     _goalkeeper.reactToKick(event);
+  }
+
+  void _onKickRolling(KickEvent event) {
+    if (_ball.state != BallState.rolling) {
+      // Ball already struck (now in flight) or finished — swings ignored.
+      debugPrint('[KD] rolling kick ignored (ball not rolling)');
+      return;
+    }
+    if (_ball.isInStrikeWindow) {
+      debugPrint('[KD] >>> ROLLING BALL CONNECT <<<');
+      matchController.onBallInFlight();
+      _ball.strike(event);
+      _goalkeeper.reactToKick(event);
+    } else {
+      // Out-of-window swing: the foot whiffed (ball isn't where the player
+      // kicked). Cancel the kick detector's cooldown so it stays armed for
+      // the real swing. Without this, a noise-triggered strike eats the
+      // cooldown and silently drops the player's actual kick.
+      debugPrint('[KD] rolling swing whiffed — outside strike window '
+          '(t=${_ball.rollingProgress.toStringAsFixed(2)})');
+      onRollingKickWhiffed?.call();
+    }
   }
 
   void _onFlightEnd({
@@ -93,6 +123,12 @@ class VisionFootballGame extends FlameGame {
             ? KickResult.saved
             : KickResult.miss;
 
+    // Rolling-ball misses report flight-end without ever passing through
+    // [onBallInFlight] (the ball was never struck). Advance the phase here so
+    // the match doesn't deadlock in `readyToKick`.
+    if (matchController.state.phase != MatchPhase.ballInFlight) {
+      matchController.onBallInFlight();
+    }
     matchController.kickTaken(result);
 
     _goalController.add(
@@ -115,7 +151,44 @@ class VisionFootballGame extends FlameGame {
   void _onMatchState(MatchState state) {
     if (state.phase == MatchPhase.runUp) {
       _applyShotType(state.shotType);
+      if (state.ballMode == BallMode.rolling) {
+        _prepareRollingBall(state.shotType);
+      }
+    } else if (state.phase == MatchPhase.readyToKick &&
+        state.ballMode == BallMode.rolling) {
+      _beginRollingBall(state.shotType);
     }
+  }
+
+  void _prepareRollingBall(ShotType shotType) {
+    // Position the ball at the start of its roll (just inside the goal mouth)
+    // so it doesn't sit on the spawn point while the player gets ready.
+    final start = _rollingStartPosition();
+    _ball.resetToSpawn(start);
+  }
+
+  void _beginRollingBall(ShotType shotType) {
+    final start = _rollingStartPosition();
+    final spawnY = _rollingPlayerY(shotType);
+    // End point sits just past the player so an unstruck ball clearly rolls
+    // off-screen (a clean visual miss).
+    final endY = (spawnY + _layout.height * 0.10).clamp(0.0, _layout.height);
+    final end = Vector2(
+      _layout.width * LayoutConstants.ballSpawnXFraction,
+      endY,
+    );
+    _ball.startRolling(from: start, to: end, duration: 3.5);
+  }
+
+  Vector2 _rollingStartPosition() {
+    final goalRect = _goal.effectiveGoalRect;
+    return Vector2(goalRect.center.dx, goalRect.bottom - 4);
+  }
+
+  double _rollingPlayerY(ShotType shotType) {
+    return shotType == ShotType.penalty
+        ? _layout.height * LayoutConstants.ballSpawnYFraction
+        : _layout.height * LayoutConstants.freeKickBallSpawnYFraction;
   }
 
   void _applyShotType(ShotType shotType) {
