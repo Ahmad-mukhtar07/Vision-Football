@@ -103,18 +103,32 @@ class KeeperGame extends FlameGame {
   /// Clears the ball and camera so no stale visuals carry into a new round.
   void resetScene() {
     if (isLoaded) _ball.reset();
+    _pendingTarget = null;
     cameraXOffset.value = 0;
   }
 
-  /// Launch a new shot at a random target inside the goal mouth.
-  void launchShot() {
+  /// Pre-place the ball at the shooter's feet while the keeper gets ready.
+  void prepareShot() {
+    if (!isLoaded) return;
     final mouth = _goal.mouthRect;
     final r = Random();
-    // Random target within the inner 80% of the mouth so the ball lands
-    // clearly inside the frame.
     final tx = mouth.left + mouth.width * (0.10 + r.nextDouble() * 0.80);
     final ty = mouth.top + mouth.height * (0.10 + r.nextDouble() * 0.80);
-    final target = Offset(tx, ty);
+    _pendingTarget = Offset(tx, ty);
+    _ball.showAtShooter(_shooter.ballEmitPoint, _pendingTarget!);
+  }
+
+  Offset? _pendingTarget;
+
+  /// Launch a new shot at a random target inside the goal mouth.
+  void launchShot() {
+    if (!isLoaded) return;
+    final mouth = _goal.mouthRect;
+    final target = _pendingTarget ??
+        Offset(
+          mouth.left + mouth.width * 0.5,
+          mouth.top + mouth.height * 0.5,
+        );
     final startWorld = _shooter.ballEmitPoint;
     _ball.launch(
       startWorld: startWorld,
@@ -122,6 +136,7 @@ class KeeperGame extends FlameGame {
       durationSeconds: 1.2,
       onArrived: _resolveShot,
     );
+    _pendingTarget = null;
     controller.onShotLaunched();
   }
 
@@ -265,6 +280,10 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   _BallComponent({required this.area});
   final Vector2 area;
 
+  // Ball sprite images loaded in onLoad.
+  Image? _imgLeft;
+  Image? _imgRight;
+
   Offset? _startWorld;
   Offset? _targetScreen;
   double _t = 0;
@@ -273,7 +292,7 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   bool _hidden = false;
   void Function(Offset landing, bool saved)? _onArrived;
 
-  // Frozen save position — where the ball was at the moment the glove caught it.
+  // Frozen save position.
   Offset? _savedPos;
   double _savedRadius = 0;
 
@@ -281,10 +300,25 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   bool _postMiss = false;
   double _postMissT = 0;
   Offset? _postMissPos;
-  static const double _postMissDuration = 0.35; // seconds
-  static const double _maxRadius = 38.0;
+  static const double _postMissDuration = 0.35;
+  static const double _minRadius = 10.0;
+  static const double _maxRadius = 46.0;
 
-  /// Clears all ball state so nothing renders until the next [launch].
+  // Accumulated spin angle (radians) for texture alternation.
+  double _spinAngle = 0;
+  static const double _spinSpeed = 20.0; // radians per second
+
+  // true = ball travelling right, false = left.
+  bool _movingRight = true;
+  bool _waitingAtShooter = false;
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    _imgLeft = await game.images.load('ball/Ball-left.png');
+    _imgRight = await game.images.load('ball/Ball-right.png');
+  }
+
   void reset() {
     _startWorld = null;
     _targetScreen = null;
@@ -297,6 +331,24 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     _postMiss = false;
     _postMissT = 0;
     _postMissPos = null;
+    _spinAngle = 0;
+    _waitingAtShooter = false;
+  }
+
+  /// Show the ball resting at the shooter's feet before the shot is taken.
+  void showAtShooter(Offset shooterPos, Offset plannedTarget) {
+    _startWorld = shooterPos;
+    _targetScreen = plannedTarget;
+    _t = 0;
+    _inFlight = false;
+    _hidden = false;
+    _waitingAtShooter = true;
+    _postMiss = false;
+    _postMissT = 0;
+    _postMissPos = null;
+    _savedPos = null;
+    _spinAngle = 0;
+    _movingRight = plannedTarget.dx >= shooterPos.dx;
   }
 
   void launch({
@@ -312,10 +364,13 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     _t = 0;
     _inFlight = true;
     _hidden = false;
+    _waitingAtShooter = false;
     _postMiss = false;
     _postMissT = 0;
     _postMissPos = null;
     _savedPos = null;
+    _spinAngle = 0;
+    _movingRight = targetScreen.dx >= startWorld.dx;
   }
 
   Offset _currentPos() => Offset(
@@ -323,10 +378,8 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
         _startWorld!.dy + (_targetScreen!.dy - _startWorld!.dy) * _t,
       );
 
-  double _currentRadius() => lerpDouble(6, _maxRadius, _t)!;
+  double _currentRadius() => lerpDouble(_minRadius, _maxRadius, _t)!;
 
-  /// Where the ball is on screen right now, or null if it's not visible.
-  /// Used by the game to drive the dynamic camera pan.
   Offset? get currentScreenPos {
     if (_hidden) return null;
     if (_savedPos != null) return _savedPos;
@@ -335,12 +388,12 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
       final dropY = 120.0 * p * p;
       return Offset(_postMissPos!.dx, _postMissPos!.dy + dropY);
     }
+    if (_waitingAtShooter && _startWorld != null) return _startWorld;
     if (!_inFlight) return null;
     if (_startWorld == null || _targetScreen == null) return null;
     return _currentPos();
   }
 
-  /// Returns the glove center that overlaps the ball, or null.
   Offset? _gloveTouchingBall(Offset pos, double ballRadius) {
     final keeper = game;
     final touchDistance = keeper.gloveCatchRadius + ballRadius * 0.6;
@@ -354,6 +407,11 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   @override
   void update(double dt) {
     super.update(dt);
+
+    // Spin alternation only while the ball is travelling toward the goal.
+    if (_inFlight && !_postMiss) {
+      _spinAngle += dt * _spinSpeed;
+    }
 
     // ── Post-miss fly-past phase ──────────────────────────────────────────
     if (_postMiss) {
@@ -370,18 +428,13 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     if (!_inFlight) return;
     _t = (_t + dt / _duration).clamp(0.0, 1.0);
 
-    // Check for a glove save once the ball has travelled past the half-way
-    // point — this avoids the gloves "catching" the ball back at the
-    // shooter while still letting the keeper intercept on time.
     if (_t >= 0.55) {
       final pos = _currentPos();
       final radius = _currentRadius();
       final glove = _gloveTouchingBall(pos, radius);
       if (glove != null) {
         _inFlight = false;
-        // Freeze the ball at its current flight position, not the glove center.
         _savedPos = pos;
-        // Slightly enlarge so the catch reads clearly on the glove.
         _savedRadius = (radius * 1.25).clamp(radius, _maxRadius * 1.08);
         _onArrived?.call(pos, true);
         return;
@@ -397,32 +450,29 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
 
   @override
   void render(Canvas canvas) {
-    // Ball is completely hidden after animations finish.
     if (_hidden) return;
 
-    // ── Saved: frozen at the catch position ─────────────────────────────
     if (_savedPos != null) {
       _drawBall(canvas, _savedPos!, _savedRadius, 1.0);
       return;
     }
 
-    // ── Post-miss fly-past rendering ────────────────────────────────────
+    if (_waitingAtShooter && _startWorld != null) {
+      _drawBall(canvas, _startWorld!, _minRadius, 1.0);
+      return;
+    }
+
     if (_postMiss && _postMissPos != null) {
       final p = _postMissT;
-
       final scale = 1.0 + 0.20 * (1.0 - p);
       final radius = _maxRadius * scale;
-
       final opacity = (1.0 - p).clamp(0.0, 1.0);
-
       final dropY = 120.0 * p * p;
       final pos = Offset(_postMissPos!.dx, _postMissPos!.dy + dropY);
-
       _drawBall(canvas, pos, radius, opacity);
       return;
     }
 
-    // ── Normal in-flight rendering ──────────────────────────────────────
     final start = _startWorld;
     final end = _targetScreen;
     if (start == null || end == null) return;
@@ -431,23 +481,47 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
       start.dx + (end.dx - start.dx) * _t,
       start.dy + (end.dy - start.dy) * _t,
     );
-    final radius = lerpDouble(6, _maxRadius, _t)!;
+    final radius = lerpDouble(_minRadius, _maxRadius, _t)!;
     _drawBall(canvas, pos, radius, 1.0);
   }
 
   void _drawBall(Canvas canvas, Offset pos, double radius, double opacity) {
     if (opacity <= 0.01) return;
 
-    final fill = Paint()..color = Colors.white.withValues(alpha: opacity);
-    final stroke = Paint()
-      ..color = Colors.black87.withValues(alpha: opacity)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    final dot = Paint()..color = Colors.black87.withValues(alpha: opacity);
+    final left = _imgLeft;
+    final right = _imgRight;
+    if (left == null || right == null) return;
 
-    canvas.drawCircle(pos, radius, fill);
-    canvas.drawCircle(pos, radius, stroke);
-    canvas.drawCircle(pos, radius * 0.25, dot);
+    final diameter = radius * 2;
+    final ballBounds = Rect.fromCircle(center: pos, radius: radius);
+
+    // Hard-swap between the two ball views every half spin — no blending.
+    final primary = _movingRight ? right : left;
+    final secondary = _movingRight ? left : right;
+    final img = sin(_spinAngle) >= 0 ? primary : secondary;
+
+    final paint = Paint();
+    if (opacity < 1.0) {
+      paint.color = Color.fromRGBO(255, 255, 255, opacity);
+      paint.colorFilter = ColorFilter.mode(paint.color, BlendMode.modulate);
+    }
+
+    final src = Rect.fromLTWH(
+      0,
+      0,
+      img.width.toDouble(),
+      img.height.toDouble(),
+    );
+    final dst = Rect.fromCenter(
+      center: pos,
+      width: diameter,
+      height: diameter,
+    );
+
+    canvas.save();
+    canvas.clipPath(Path()..addOval(ballBounds));
+    canvas.drawImageRect(img, src, dst, paint);
+    canvas.restore();
   }
 }
 
