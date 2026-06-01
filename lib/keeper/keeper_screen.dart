@@ -78,10 +78,14 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   void _onShotResolved(KeeperShotResult result) {
     _phaseTimer?.cancel();
-    _phaseTimer = Timer(const Duration(milliseconds: 1400), () {
+    final isLastShot =
+        _controller.state.shotsTaken >= _controller.state.totalShots;
+    // Extra time on the final shot so the save/goal banner is readable.
+    final pauseMs = isLastShot ? 2000 : 1400;
+    _phaseTimer = Timer(Duration(milliseconds: pauseMs), () {
       if (!mounted || _isPaused) return;
-      if (_controller.state.phase == KeeperPhase.matchOver) return;
       _controller.readyForNextShot();
+      if (_controller.state.phase == KeeperPhase.matchOver) return;
       _scheduleNextShot();
     });
   }

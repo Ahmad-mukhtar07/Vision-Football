@@ -86,29 +86,27 @@ class KeeperMatchController extends ChangeNotifier {
     final saves = _state.saves + (result == KeeperShotResult.saved ? 1 : 0);
     final goals = _state.goalsConceded +
         (result == KeeperShotResult.conceded ? 1 : 0);
-    final allDone = taken >= _state.totalShots;
     _state = _state.copyWith(
       shotsTaken: taken,
       saves: saves,
       goalsConceded: goals,
       lastResult: result,
-      phase: allDone ? KeeperPhase.resultPause : KeeperPhase.resultPause,
+      phase: KeeperPhase.resultPause,
     );
     notifyListeners();
-
-    if (allDone) {
-      _state = _state.copyWith(phase: KeeperPhase.matchOver);
-      notifyListeners();
-    }
   }
 
-  /// Move on to the next round (or do nothing if the match is over).
+  /// After the result pause, advance to the next round or full time.
   void readyForNextShot() {
     if (_state.phase != KeeperPhase.resultPause) return;
-    _state = _state.copyWith(
-      phase: KeeperPhase.waitingForReady,
-      clearLastResult: true,
-    );
+    if (_state.shotsTaken >= _state.totalShots) {
+      _state = _state.copyWith(phase: KeeperPhase.matchOver);
+    } else {
+      _state = _state.copyWith(
+        phase: KeeperPhase.waitingForReady,
+        clearLastResult: true,
+      );
+    }
     notifyListeners();
   }
 
