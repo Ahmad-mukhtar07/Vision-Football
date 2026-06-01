@@ -104,7 +104,10 @@ class _AppBootstrapState extends State<AppBootstrap> {
     } else if (_selectedMode == null) {
       body = ModeSelectionOverlay(onModeSelected: _onModeSelected);
     } else if (_selectedMode == GameMode.takeShots) {
-      body = VisionFootballScreen(cameras: _cameras!);
+      body = VisionFootballScreen(
+        cameras: _cameras!,
+        onReturnToMenu: _returnToMainMenu,
+      );
     } else {
       body = KeeperScreen(
         cameras: _cameras!,

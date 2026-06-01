@@ -32,9 +32,11 @@ class VisionFootballScreen extends StatefulWidget {
   const VisionFootballScreen({
     super.key,
     required this.cameras,
+    required this.onReturnToMenu,
   });
 
   final List<CameraDescription> cameras;
+  final VoidCallback onReturnToMenu;
 
   @override
   State<VisionFootballScreen> createState() => _VisionFootballScreenState();
@@ -174,6 +176,14 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _changeFoot();
   }
 
+  void _goToMainMenu() {
+    _matchController.abandonMatch();
+    _gameFootMarker.endGameMode();
+    _kickDetector.disarm();
+    _kickDetector.setGameCanAcceptKick(false);
+    widget.onReturnToMenu();
+  }
+
   void _syncMarkerBallCenter(ShotType shotType) {
     final screen = MediaQuery.of(context).size;
     final isPenalty = shotType == ShotType.penalty;
@@ -255,6 +265,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             state: _matchController.state,
             onPlayAgain: _playAgain,
             onChangeFoot: _changeFoot,
+            onMainMenu: _goToMainMenu,
           ),
       ],
     );

@@ -16,9 +16,15 @@ class KeeperCameraPreview extends StatefulWidget {
   const KeeperCameraPreview({
     super.key,
     required this.cameras,
+    this.showPreview = false,
   });
 
   final List<CameraDescription> cameras;
+
+  /// When true the live camera feed is rendered full-screen (used during
+  /// calibration so the player can see themselves). When false only the
+  /// detection pipeline runs — nothing is drawn.
+  final bool showPreview;
 
   @override
   State<KeeperCameraPreview> createState() => _KeeperCameraPreviewState();
@@ -91,7 +97,24 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
 
   @override
   Widget build(BuildContext context) {
-    // The keeper scene is drawn by Flame; we don't render the camera preview.
-    return const SizedBox.expand();
+    final ctrl = _controller;
+    if (!widget.showPreview || ctrl == null || !ctrl.value.isInitialized) {
+      return const SizedBox.expand();
+    }
+
+    return SizedBox.expand(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: ctrl.value.previewSize!.height,
+          height: ctrl.value.previewSize!.width,
+          child: Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.diagonal3Values(-1.0, 1.0, 1.0),
+            child: CameraPreview(ctrl),
+          ),
+        ),
+      ),
+    );
   }
 }

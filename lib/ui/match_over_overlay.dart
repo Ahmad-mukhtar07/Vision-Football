@@ -11,11 +11,13 @@ class MatchOverOverlay extends StatelessWidget {
     required this.state,
     required this.onPlayAgain,
     required this.onChangeFoot,
+    required this.onMainMenu,
   });
 
   final MatchState state;
   final VoidCallback onPlayAgain;
   final VoidCallback onChangeFoot;
+  final VoidCallback onMainMenu;
 
   static const _gold = Color(0xFFFFD700);
   static const _orange = Color(0xFFFF6B00);
@@ -129,6 +131,29 @@ class MatchOverOverlay extends StatelessWidget {
                       ),
                       child: const Text(
                         'Change Foot',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: 260,
+                    height: 48,
+                    child: OutlinedButton(
+                      onPressed: onMainMenu,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(
+                            color: Colors.white38, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                      child: const Text(
+                        'Main Menu',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,

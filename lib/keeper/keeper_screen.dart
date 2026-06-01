@@ -152,17 +152,23 @@ class _KeeperScreenState extends State<KeeperScreen> {
   Widget build(BuildContext context) {
     final state = _controller.state;
     final matchOver = state.phase == KeeperPhase.matchOver;
+    final isCalibrating = state.phase == KeeperPhase.calibrating;
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Camera capture (hidden — only feeds hand-tracking).
-        KeeperCameraPreview(cameras: widget.cameras),
-        // Placeholder scene + ball animation.
-        GameWidget(
-          game: _game,
-          backgroundBuilder: (context) => const SizedBox.shrink(),
+        // Camera capture — visible during calibration so the player can
+        // see themselves; hidden once gameplay begins.
+        KeeperCameraPreview(
+          cameras: widget.cameras,
+          showPreview: isCalibrating,
         ),
+        // Placeholder scene + ball animation (hidden during calibration).
+        if (!isCalibrating)
+          GameWidget(
+            game: _game,
+            backgroundBuilder: (context) => const SizedBox.shrink(),
+          ),
         // Glove markers.
         GloveOverlay(onGlovesChanged: _onGlovesChanged),
         // HUD (hidden during pause + match over).
