@@ -39,3 +39,5 @@ flutter:
     - assets/images/keeper/Keeper-straight-top.png
     - assets/images/keeper/Keeper-recovery-left.png
     - assets/images/keeper/Keeper-recovery-right.png
+    - assets/images/keeper/gloves/Keeper-glove-left.png
+    - assets/images/keeper/gloves/Keeper-glove-right.png

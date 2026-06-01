@@ -9,11 +9,13 @@ class KeeperHud extends StatelessWidget {
     required this.state,
     required this.onPausePressed,
     this.calibrationSecondsLeft = 0,
+    this.calibrationWaitingForHands = false,
   });
 
   final KeeperMatchState state;
   final VoidCallback onPausePressed;
   final int calibrationSecondsLeft;
+  final bool calibrationWaitingForHands;
 
   static const _saveGreen = Color(0xFF7CFF7C);
   static const _goalRed = Color(0xFFFF3333);
@@ -136,14 +138,31 @@ class KeeperHud extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 14),
-                Text(
-                  '$calibrationSecondsLeft',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 42,
-                    fontWeight: FontWeight.bold,
+                if (calibrationWaitingForHands)
+                  const Icon(
+                    Icons.back_hand_outlined,
+                    color: Colors.white54,
+                    size: 48,
+                  )
+                else
+                  Text(
+                    '$calibrationSecondsLeft',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 42,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
+                if (calibrationWaitingForHands) ...[
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Waiting for both hands…',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

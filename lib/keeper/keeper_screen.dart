@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../ui/pause_menu_overlay.dart';
 import 'glove_overlay.dart';
+import 'hand_detector_service.dart';
 import 'keeper_camera_preview.dart';
 import 'keeper_game.dart';
 import 'keeper_hud.dart';
@@ -36,7 +37,10 @@ class _KeeperScreenState extends State<KeeperScreen> {
   late final KeeperGame _game;
   Timer? _phaseTimer;
   Timer? _calibrationTimer;
+  StreamSubscription<HandFrame>? _handSub;
   bool _isPaused = false;
+  bool _calibrationCountdownActive = false;
+  bool _bothHandsVisible = false;
   int _calibrationSecondsLeft = 0;
 
   static const int _calibrationDurationSeconds = 4;
@@ -50,13 +54,32 @@ class _KeeperScreenState extends State<KeeperScreen> {
       controller: _controller,
       onShotResolved: _onShotResolved,
     );
+    _handSub = HandDetectorService.instance.handFrames.listen(_onHandFrame);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _controller.startMatch();
-      _startCalibrationCountdown();
     });
   }
 
+  void _onHandFrame(HandFrame frame) {
+    if (_controller.state.phase != KeeperPhase.calibrating) return;
+    if (_isPaused) return;
+
+    final bothVisible =
+        frame.leftHand != null && frame.rightHand != null;
+
+    if (bothVisible && !_calibrationCountdownActive) {
+      _startCalibrationCountdown();
+    } else if (!bothVisible && _calibrationCountdownActive) {
+      _stopCalibrationCountdown();
+    }
+
+    if (_bothHandsVisible != bothVisible) {
+      setState(() => _bothHandsVisible = bothVisible);
+    }
+  }
+
   void _startCalibrationCountdown() {
+    _calibrationCountdownActive = true;
     _calibrationSecondsLeft = _calibrationDurationSeconds;
     _calibrationTimer?.cancel();
     _calibrationTimer =
@@ -65,10 +88,24 @@ class _KeeperScreenState extends State<KeeperScreen> {
       setState(() => _calibrationSecondsLeft--);
       if (_calibrationSecondsLeft <= 0) {
         timer.cancel();
+        _calibrationCountdownActive = false;
         _controller.finishCalibration();
         _scheduleNextShot();
       }
     });
+    setState(() {});
+  }
+
+  void _stopCalibrationCountdown() {
+    _calibrationTimer?.cancel();
+    _calibrationCountdownActive = false;
+    _calibrationSecondsLeft = 0;
+    setState(() {});
+  }
+
+  void _resetCalibrationGate() {
+    _stopCalibrationCountdown();
+    _bothHandsVisible = false;
   }
 
   void _onMatchChanged() {
@@ -118,7 +155,10 @@ class _KeeperScreenState extends State<KeeperScreen> {
     setState(() => _isPaused = false);
     _game.resumeEngine();
     if (_controller.state.phase == KeeperPhase.calibrating) {
-      _startCalibrationCountdown();
+      // Countdown resumes only once both hands are visible again.
+      if (_bothHandsVisible) {
+        _startCalibrationCountdown();
+      }
     } else if (_controller.state.phase == KeeperPhase.waitingForReady) {
       _scheduleNextShot();
     } else if (_controller.state.phase == KeeperPhase.resultPause) {
@@ -138,15 +178,15 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   void _playAgain() {
     _phaseTimer?.cancel();
-    _calibrationTimer?.cancel();
+    _resetCalibrationGate();
     _controller.startMatch();
-    _startCalibrationCountdown();
   }
 
   @override
   void dispose() {
     _phaseTimer?.cancel();
     _calibrationTimer?.cancel();
+    _handSub?.cancel();
     _controller.removeListener(_onMatchChanged);
     _controller.dispose();
     super.dispose();
@@ -181,6 +221,8 @@ class _KeeperScreenState extends State<KeeperScreen> {
             state: state,
             onPausePressed: _pauseGame,
             calibrationSecondsLeft: _calibrationSecondsLeft,
+            calibrationWaitingForHands:
+                isCalibrating && !_calibrationCountdownActive,
           ),
         // Pause menu.
         if (_isPaused)

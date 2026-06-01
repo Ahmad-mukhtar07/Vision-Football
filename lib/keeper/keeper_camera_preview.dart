@@ -102,12 +102,12 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
       return const SizedBox.expand();
     }
 
-    return SizedBox.expand(
+    return ClipRect(
       child: FittedBox(
         fit: BoxFit.cover,
         child: SizedBox(
-          width: ctrl.value.previewSize!.height,
-          height: ctrl.value.previewSize!.width,
+          width: ctrl.value.previewSize?.width ?? 1,
+          height: ctrl.value.previewSize?.height ?? 1,
           child: Transform(
             alignment: Alignment.center,
             transform: Matrix4.diagonal3Values(-1.0, 1.0, 1.0),

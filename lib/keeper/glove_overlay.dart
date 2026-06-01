@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -91,8 +92,12 @@ class _GloveOverlayState extends State<GloveOverlay> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (left != null) _GloveMarker(position: left, isLeft: true),
-              if (right != null) _GloveMarker(position: right, isLeft: false),
+              if (left != null)
+                _GloveMarker(
+                    position: left, isLeft: true, screenWidth: size.width),
+              if (right != null)
+                _GloveMarker(
+                    position: right, isLeft: false, screenWidth: size.width),
             ],
           ),
         );
@@ -107,42 +112,46 @@ class _GloveOverlayState extends State<GloveOverlay> {
 }
 
 class _GloveMarker extends StatelessWidget {
-  const _GloveMarker({required this.position, required this.isLeft});
+  const _GloveMarker({
+    required this.position,
+    required this.isLeft,
+    required this.screenWidth,
+  });
 
   final Offset position;
   final bool isLeft;
+  final double screenWidth;
 
-  static const double _radius = 36;
+  static const double _gloveHeight = 100;
+  static const double _gloveWidth = 80;
+
+  /// Max tilt in radians (~20 degrees).
+  static const double _maxTilt = 20 * math.pi / 180;
 
   @override
   Widget build(BuildContext context) {
-    final color = isLeft
-        ? const Color(0xFFFFB300) // amber for left
-        : const Color(0xFF42A5F5); // blue for right
+    // Normalized position: -1 (left edge) to +1 (right edge).
+    final nx = screenWidth > 0
+        ? (position.dx / screenWidth) * 2.0 - 1.0
+        : 0.0;
+    final tilt = nx * _maxTilt;
+
+    final asset = isLeft
+        ? 'assets/images/keeper/gloves/Keeper-glove-left.png'
+        : 'assets/images/keeper/gloves/Keeper-glove-right.png';
+
     return Positioned(
-      left: position.dx - _radius,
-      top: position.dy - _radius,
-      width: _radius * 2,
-      height: _radius * 2,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color.withValues(alpha: 0.85),
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.6),
-              blurRadius: 14,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: const Center(
-          child: Icon(
-            Icons.sports_handball,
-            color: Colors.white,
-            size: 30,
-          ),
+      left: position.dx - _gloveWidth / 2,
+      top: position.dy - _gloveHeight / 2,
+      width: _gloveWidth,
+      height: _gloveHeight,
+      child: Transform.rotate(
+        angle: tilt,
+        child: Image.asset(
+          asset,
+          width: _gloveWidth,
+          height: _gloveHeight,
+          fit: BoxFit.contain,
         ),
       ),
     );
