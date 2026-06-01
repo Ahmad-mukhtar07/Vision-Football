@@ -37,6 +37,17 @@ class KeeperGame extends FlameGame {
   Offset? rightGloveScreen;
   double gloveCatchRadius = 60;
 
+  /// Live horizontal pan offset for the stadium / goal background widgets.
+  /// Negative when the ball moves right (so the background slides left,
+  /// creating a camera-follow illusion), and vice versa.
+  final ValueNotifier<double> cameraXOffset = ValueNotifier<double>(0);
+
+  /// How strongly the camera tracks the ball. Lower = subtler pan.
+  static const double _panSensitivity = 0.25;
+
+  /// Per-frame smoothing toward the target offset (0..1). Lower = smoother.
+  static const double _panSmoothing = 0.18;
+
   void updateGloves(Offset? left, Offset? right) {
     leftGloveScreen = left;
     rightGloveScreen = right;
@@ -44,6 +55,30 @@ class KeeperGame extends FlameGame {
 
   @override
   Color backgroundColor() => const Color(0x00000000);
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    _updateCameraPan();
+  }
+
+  void _updateCameraPan() {
+    if (!isLoaded) return;
+    final ballPos = _ball.currentScreenPos;
+    double target = 0;
+    if (ballPos != null) {
+      // Background pans opposite to ball horizontal travel from center.
+      final deltaX = ballPos.dx - size.x * 0.5;
+      target = -deltaX * _panSensitivity;
+    }
+    final current = cameraXOffset.value;
+    var next = current + (target - current) * _panSmoothing;
+    // Snap to target once we're within a sub-pixel of it so we stop notifying.
+    if ((next - target).abs() < 0.1) next = target;
+    if (next != current) {
+      cameraXOffset.value = next;
+    }
+  }
 
   @override
   Future<void> onLoad() async {
@@ -268,6 +303,21 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
       );
 
   double _currentRadius() => lerpDouble(6, _maxRadius, _t)!;
+
+  /// Where the ball is on screen right now, or null if it's not visible.
+  /// Used by the game to drive the dynamic camera pan.
+  Offset? get currentScreenPos {
+    if (_hidden) return null;
+    if (_savedPos != null) return _savedPos;
+    if (_postMiss && _postMissPos != null) {
+      final p = _postMissT;
+      final dropY = 120.0 * p * p;
+      return Offset(_postMissPos!.dx, _postMissPos!.dy + dropY);
+    }
+    if (!_inFlight) return null;
+    if (_startWorld == null || _targetScreen == null) return null;
+    return _currentPos();
+  }
 
   /// Returns the glove center that overlaps the ball, or null.
   Offset? _gloveTouchingBall(Offset pos, double ballRadius) {

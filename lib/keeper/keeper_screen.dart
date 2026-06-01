@@ -195,6 +195,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _handSub?.cancel();
     _controller.removeListener(_onMatchChanged);
     _controller.dispose();
+    _game.cameraXOffset.dispose();
     super.dispose();
   }
 
@@ -212,8 +213,9 @@ class _KeeperScreenState extends State<KeeperScreen> {
           cameras: widget.cameras,
           showPreview: isCalibrating,
         ),
-        // 2. Stadium background — center vertical slice, full screen height.
-        if (!isCalibrating) const KeeperStadiumImage(),
+        // 2. Stadium background — pans horizontally to follow the ball.
+        if (!isCalibrating)
+          KeeperStadiumImage(shiftListenable: _game.cameraXOffset),
         // 3. Gameplay scene (shooter, ball — transparent background so the
         //    stadium image shows through).
         if (!isCalibrating)
@@ -221,16 +223,16 @@ class _KeeperScreenState extends State<KeeperScreen> {
             game: _game,
             backgroundBuilder: (context) => const SizedBox.shrink(),
           ),
-        // 3. Gloves — drawn above the field but behind the goal frame.
+        // 4. Gloves — anchored to the screen (do not pan with the camera).
         GloveOverlay(
           onGlovesChanged: _onGlovesChanged,
           calibrationMode: isCalibrating,
           goalMouthRect:
               isCalibrating ? null : _game.goalMouthRect,
         ),
-        // 4. Goal image — center vertical chunk, full screen height, sits
-        //    on top of every gameplay layer.
-        if (!isCalibrating) const KeeperGoalImage(),
+        // 5. Goal image — pans with the same camera offset as the stadium.
+        if (!isCalibrating)
+          KeeperGoalImage(shiftListenable: _game.cameraXOffset),
         // 5. HUD (above the goal image).
         if (!matchOver && !_isPaused)
           KeeperHud(
