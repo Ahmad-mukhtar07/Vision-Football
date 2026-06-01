@@ -9,9 +9,11 @@ class HudOverlay extends StatefulWidget {
   const HudOverlay({
     super.key,
     required this.matchStateStream,
+    required this.onPausePressed,
   });
 
   final Stream<MatchState> matchStateStream;
+  final VoidCallback onPausePressed;
 
   @override
   State<HudOverlay> createState() => _HudOverlayState();
@@ -149,9 +151,24 @@ class _HudOverlayState extends State<HudOverlay>
       child: Stack(
         children: [
           Positioned(
+            top: 4,
+            right: 8,
+            child: Material(
+              color: Colors.black45,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: IconButton(
+                icon: const Icon(Icons.pause_rounded, color: Colors.white),
+                iconSize: 28,
+                tooltip: 'Pause',
+                onPressed: widget.onPausePressed,
+              ),
+            ),
+          ),
+          Positioned(
             top: 8,
             left: 16,
-            right: 16,
+            right: 56,
             child: Column(
               children: [
                 Container(

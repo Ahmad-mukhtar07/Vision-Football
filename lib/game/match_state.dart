@@ -96,6 +96,10 @@ class MatchController {
   Timer? _phaseTimer;
   Timer? _runUpTimeoutTimer;
 
+  bool _isPaused = false;
+  MatchPhase? _pausedPhase;
+  bool get isPaused => _isPaused;
+
   /// Only [VisionFootballGame] should call these — no other file arms detection.
   void Function()? onArmKickDetection;
   void Function()? onDisarmKickDetection;
@@ -109,6 +113,8 @@ class MatchController {
   }
 
   void startMatch() {
+    _isPaused = false;
+    _pausedPhase = null;
     _phaseTimer?.cancel();
     _runUpTimeoutTimer?.cancel();
     _state = const MatchState(
@@ -125,7 +131,67 @@ class MatchController {
     startMatch();
   }
 
+  /// Freezes phase timers and disarms kick detection until [resumeMatch].
+  void pauseMatch() {
+    if (_isPaused) return;
+    if (_state.phase == MatchPhase.matchOver ||
+        _state.phase == MatchPhase.notStarted) {
+      return;
+    }
+    _isPaused = true;
+    _pausedPhase = _state.phase;
+    _phaseTimer?.cancel();
+    _runUpTimeoutTimer?.cancel();
+    onDisarmKickDetection?.call();
+    onBallKickGate?.call(false);
+  }
+
+  /// Restores timers and kick arming for the phase that was active at pause.
+  void resumeMatch() {
+    if (!_isPaused) return;
+    final phase = _pausedPhase ?? _state.phase;
+    _isPaused = false;
+    _pausedPhase = null;
+
+    switch (phase) {
+      case MatchPhase.runUp:
+        _runUpTimeoutTimer = Timer(runUpTimeout, () {
+          if (!_isPaused && _state.phase == MatchPhase.runUp) {
+            playerInPosition();
+          }
+        });
+      case MatchPhase.readyToKick:
+        onArmKickDetection?.call();
+        onBallKickGate?.call(true);
+      case MatchPhase.resultPause:
+        final kicksAtPause = _state.kicksTaken;
+        _phaseTimer = Timer(resultPauseDuration, () {
+          if (_isPaused) return;
+          _advanceAfterResultPause(kicksAtPause);
+        });
+      case MatchPhase.ballInFlight:
+        // Ball may still be in the air; kick detection stays off until landing.
+        onBallKickGate?.call(false);
+      case MatchPhase.matchOver:
+      case MatchPhase.notStarted:
+        break;
+    }
+  }
+
+  /// Ends the current match and resets to [MatchPhase.notStarted].
+  void abandonMatch() {
+    _isPaused = false;
+    _pausedPhase = null;
+    _phaseTimer?.cancel();
+    _runUpTimeoutTimer?.cancel();
+    _state = const MatchState(phase: MatchPhase.notStarted);
+    _emit();
+    onDisarmKickDetection?.call();
+    onBallKickGate?.call(false);
+  }
+
   void playerInPosition() {
+    if (_isPaused) return;
     if (_state.phase != MatchPhase.runUp) return;
     _runUpTimeoutTimer?.cancel();
     _enterReadyToKick();
@@ -172,17 +238,23 @@ class MatchController {
 
     _phaseTimer?.cancel();
     _phaseTimer = Timer(resultPauseDuration, () {
-      if (kicksTaken >= _state.totalKicks) {
-        _state = _state.copyWith(phase: MatchPhase.matchOver);
-        _emit();
-        onDisarmKickDetection?.call();
-        return;
-      }
-      _enterRunUp();
+      if (_isPaused) return;
+      _advanceAfterResultPause(kicksTaken);
     });
   }
 
+  void _advanceAfterResultPause(int kicksTaken) {
+    if (kicksTaken >= _state.totalKicks) {
+      _state = _state.copyWith(phase: MatchPhase.matchOver);
+      _emit();
+      onDisarmKickDetection?.call();
+      return;
+    }
+    _enterRunUp();
+  }
+
   void _onPlayerStill(bool still) {
+    if (_isPaused) return;
     if (_state.phase == MatchPhase.runUp && still) {
       playerInPosition();
     }
@@ -202,13 +274,14 @@ class MatchController {
 
     _runUpTimeoutTimer?.cancel();
     _runUpTimeoutTimer = Timer(runUpTimeout, () {
-      if (_state.phase == MatchPhase.runUp) {
+      if (!_isPaused && _state.phase == MatchPhase.runUp) {
         playerInPosition();
       }
     });
   }
 
   void _enterReadyToKick() {
+    if (_isPaused) return;
     _runUpTimeoutTimer?.cancel();
     _state = _state.copyWith(phase: MatchPhase.readyToKick);
     _emit();

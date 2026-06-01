@@ -18,6 +18,7 @@ import 'foot_selection_overlay.dart';
 import 'foot_marker_overlay.dart';
 import 'hud_overlay.dart';
 import 'match_over_overlay.dart';
+import 'pause_menu_overlay.dart';
 import 'positioning_overlay.dart';
 
 enum _SetupPhase {
@@ -48,6 +49,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
 
   KickingFoot? _kickingFoot;
   _SetupPhase? _setupPhase;
+  bool _isPaused = false;
   StreamSubscription<MatchState>? _matchStateSub;
 
   @override
@@ -144,6 +146,34 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _matchController.restartMatch();
   }
 
+  void _pauseGame() {
+    if (_setupPhase != _SetupPhase.playing || _isPaused) return;
+    setState(() => _isPaused = true);
+    _matchController.pauseMatch();
+    _kickDetector.disarm();
+    _kickDetector.setGameCanAcceptKick(false);
+    _game.pauseEngine();
+  }
+
+  void _resumeGame() {
+    if (!_isPaused) return;
+    setState(() => _isPaused = false);
+    _game.resumeEngine();
+    _matchController.resumeMatch();
+  }
+
+  void _quitGame() {
+    if (_isPaused) {
+      _game.resumeEngine();
+    }
+    _matchController.abandonMatch();
+    _gameFootMarker.endGameMode();
+    _kickDetector.disarm();
+    _kickDetector.setGameCanAcceptKick(false);
+    setState(() => _isPaused = false);
+    _changeFoot();
+  }
+
   void _syncMarkerBallCenter(ShotType shotType) {
     final screen = MediaQuery.of(context).size;
     final isPenalty = shotType == ShotType.penalty;
@@ -196,8 +226,16 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             gameFootMarker: _gameFootMarker,
             gameAligned: playing,
           ),
-        if (playing && !matchOver)
-          HudOverlay(matchStateStream: _matchController.stateStream),
+        if (playing && !matchOver && !_isPaused)
+          HudOverlay(
+            matchStateStream: _matchController.stateStream,
+            onPausePressed: _pauseGame,
+          ),
+        if (_isPaused)
+          PauseMenuOverlay(
+            onResume: _resumeGame,
+            onQuit: _quitGame,
+          ),
         if (_kickingFoot == null)
           FootSelectionOverlay(onFootSelected: _onFootSelected)
         else if (_setupPhase == _SetupPhase.positioning)
