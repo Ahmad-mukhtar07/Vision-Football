@@ -43,6 +43,9 @@ class KeeperGame extends FlameGame {
   }
 
   @override
+  Color backgroundColor() => const Color(0x00000000);
+
+  @override
   Future<void> onLoad() async {
     await super.onLoad();
     _ground = _GroundComponent(area: size);
@@ -105,48 +108,15 @@ class KeeperGame extends FlameGame {
 // Placeholder scene components
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Kept as a no-op so the Flame component tree stays valid. The actual
+/// background is rendered by a Flutter image overlay (`KeeperStadiumImage`).
 class _GroundComponent extends PositionComponent {
   _GroundComponent({required this.area});
   final Vector2 area;
 
   @override
   void render(Canvas canvas) {
-    // Sky.
-    final sky = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF1B2A4E), Color(0xFF294B7D)],
-      ).createShader(Rect.fromLTWH(0, 0, area.x, area.y * 0.55));
-    canvas.drawRect(Rect.fromLTWH(0, 0, area.x, area.y * 0.55), sky);
-
-    // Ground.
-    final groundTop = area.y * 0.55;
-    final ground = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF3D7B41), Color(0xFF1C4A23)],
-      ).createShader(Rect.fromLTWH(0, groundTop, area.x, area.y - groundTop));
-    canvas.drawRect(
-      Rect.fromLTWH(0, groundTop, area.x, area.y - groundTop),
-      ground,
-    );
-
-    // Penalty arc placeholder (a faint ellipse on the ground).
-    final arcPaint = Paint()
-      ..color = Colors.white24
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-    canvas.drawOval(
-      Rect.fromLTWH(
-        area.x * 0.10,
-        area.y * 0.66,
-        area.x * 0.80,
-        area.y * 0.10,
-      ),
-      arcPaint,
-    );
+    // Intentionally empty — background drawn by Flutter widget layer.
   }
 }
 
@@ -207,8 +177,11 @@ class _ShooterComponent extends PositionComponent {
   _ShooterComponent({required this.area});
   final Vector2 area;
 
+  /// Penalty-spot depth on the pitch (fraction of screen height).
+  static const double _emitYFraction = 0.52;
+
   /// Where the ball should appear to leave from.
-  Offset get ballEmitPoint => Offset(area.x * 0.5, area.y * 0.32);
+  Offset get ballEmitPoint => Offset(area.x * 0.5, area.y * _emitYFraction);
 
   @override
   void render(Canvas canvas) {

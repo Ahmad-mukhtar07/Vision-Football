@@ -11,6 +11,7 @@ import 'keeper_camera_preview.dart';
 import 'keeper_game.dart';
 import 'keeper_goal_image.dart';
 import 'keeper_hud.dart';
+import 'keeper_stadium_image.dart';
 import 'keeper_match_over_overlay.dart';
 import 'keeper_match_state.dart';
 
@@ -211,8 +212,10 @@ class _KeeperScreenState extends State<KeeperScreen> {
           cameras: widget.cameras,
           showPreview: isCalibrating,
         ),
-        // 2. Gameplay scene (ground, shooter, ball — the Flame goal is now
-        //    invisible; the goal frame is drawn by the image overlay below).
+        // 2. Stadium background — center vertical slice, full screen height.
+        if (!isCalibrating) const KeeperStadiumImage(),
+        // 3. Gameplay scene (shooter, ball — transparent background so the
+        //    stadium image shows through).
         if (!isCalibrating)
           GameWidget(
             game: _game,
