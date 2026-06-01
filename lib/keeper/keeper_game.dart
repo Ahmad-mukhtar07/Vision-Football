@@ -43,10 +43,10 @@ class KeeperGame extends FlameGame {
   final ValueNotifier<double> cameraXOffset = ValueNotifier<double>(0);
 
   /// How strongly the camera tracks the ball. Lower = subtler pan.
-  static const double _panSensitivity = 0.25;
+  static const double _panSensitivity = 0.65;
 
   /// Per-frame smoothing toward the target offset (0..1). Lower = smoother.
-  static const double _panSmoothing = 0.18;
+  static const double _panSmoothing = 0.22;
 
   void updateGloves(Offset? left, Offset? right) {
     leftGloveScreen = left;
@@ -113,7 +113,7 @@ class KeeperGame extends FlameGame {
     _ball.launch(
       startWorld: startWorld,
       targetScreen: target,
-      durationSeconds: 1.0,
+      durationSeconds: 1.2,
       onArrived: _resolveShot,
     );
     controller.onShotLaunched();
@@ -169,7 +169,7 @@ class _GoalFrameComponent extends PositionComponent {
   static const double _mouthBottomYFraction = 0.92;
 
   // Horizontal extension beyond screen edges so side shots can exit.
-  static const double _sideOverflow = 0.15;
+  static const double _sideOverflow = 0.28;
 
   /// Save / goal hitbox — extends slightly beyond screen edges for side shots.
   Rect get mouthRect => Rect.fromLTRB(
