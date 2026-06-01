@@ -84,8 +84,7 @@ class KeeperGame extends FlameGame {
     controller.onShotLaunched();
   }
 
-  void _resolveShot(Offset ballLandingScreen) {
-    final saved = _checkGloveCatch(ballLandingScreen);
+  void _resolveShot(Offset ballLandingScreen, bool saved) {
     if (saved) {
       _flash.flash(Colors.greenAccent);
     } else {
@@ -95,12 +94,6 @@ class KeeperGame extends FlameGame {
     final result = saved ? KeeperShotResult.saved : KeeperShotResult.conceded;
     controller.onShotResolved(result);
     onShotResolved(result);
-  }
-
-  bool _checkGloveCatch(Offset ballLanding) {
-    bool inRange(Offset? glove) =>
-        glove != null && (glove - ballLanding).distance <= gloveCatchRadius;
-    return inRange(leftGloveScreen) || inRange(rightGloveScreen);
   }
 }
 
@@ -133,17 +126,21 @@ class _GoalFrameComponent extends PositionComponent {
   bool _redFlash = false;
   double _flashT = 0;
 
-  // Vertical band of the goal mouth as it appears in the new goal image
-  // when the image is fitted to full screen height. Tweak these if the
-  // mouth visually shifts after asset updates.
+  // Vertical band where the ball can travel toward the keeper. The top
+  // matches the crossbar height in the goal image (~12%). The bottom
+  // extends nearly to the bottom of the screen so the ball really comes
+  // "into" the camera view before being saved/missed.
   static const double _mouthTopYFraction = 0.12;
-  static const double _mouthBottomYFraction = 0.58;
+  static const double _mouthBottomYFraction = 0.92;
 
-  /// Save / goal hitbox — full screen width, matching the image overlay.
+  // Horizontal extension beyond screen edges so side shots can exit.
+  static const double _sideOverflow = 0.15;
+
+  /// Save / goal hitbox — extends slightly beyond screen edges for side shots.
   Rect get mouthRect => Rect.fromLTRB(
-        0,
+        -area.x * _sideOverflow,
         area.y * _mouthTopYFraction,
-        area.x,
+        area.x * (1 + _sideOverflow),
         area.y * _mouthBottomYFraction,
       );
 
@@ -223,7 +220,7 @@ class _ShooterComponent extends PositionComponent {
   }
 }
 
-class _BallComponent extends PositionComponent {
+class _BallComponent extends PositionComponent with HasGameReference<KeeperGame> {
   _BallComponent({required this.area});
   final Vector2 area;
 
@@ -232,13 +229,25 @@ class _BallComponent extends PositionComponent {
   double _t = 0;
   double _duration = 1.0;
   bool _inFlight = false;
-  void Function(Offset landing)? _onArrived;
+  bool _hidden = false;
+  void Function(Offset landing, bool saved)? _onArrived;
+
+  // Frozen save position — where the ball was at the moment the glove caught it.
+  Offset? _savedPos;
+  double _savedRadius = 0;
+
+  // Post-miss "fly past keeper" animation state.
+  bool _postMiss = false;
+  double _postMissT = 0;
+  Offset? _postMissPos;
+  static const double _postMissDuration = 0.35; // seconds
+  static const double _maxRadius = 38.0;
 
   void launch({
     required Offset startWorld,
     required Offset targetScreen,
     required double durationSeconds,
-    required void Function(Offset landing) onArrived,
+    required void Function(Offset landing, bool saved) onArrived,
   }) {
     _startWorld = startWorld;
     _targetScreen = targetScreen;
@@ -246,22 +255,103 @@ class _BallComponent extends PositionComponent {
     _onArrived = onArrived;
     _t = 0;
     _inFlight = true;
+    _hidden = false;
+    _postMiss = false;
+    _postMissT = 0;
+    _postMissPos = null;
+    _savedPos = null;
+  }
+
+  Offset _currentPos() => Offset(
+        _startWorld!.dx + (_targetScreen!.dx - _startWorld!.dx) * _t,
+        _startWorld!.dy + (_targetScreen!.dy - _startWorld!.dy) * _t,
+      );
+
+  double _currentRadius() => lerpDouble(6, _maxRadius, _t)!;
+
+  /// Returns the glove center that overlaps the ball, or null.
+  Offset? _gloveTouchingBall(Offset pos, double ballRadius) {
+    final keeper = game;
+    final touchDistance = keeper.gloveCatchRadius + ballRadius * 0.6;
+    bool overlaps(Offset? g) =>
+        g != null && (g - pos).distance <= touchDistance;
+    if (overlaps(keeper.leftGloveScreen)) return keeper.leftGloveScreen;
+    if (overlaps(keeper.rightGloveScreen)) return keeper.rightGloveScreen;
+    return null;
   }
 
   @override
   void update(double dt) {
     super.update(dt);
+
+    // ── Post-miss fly-past phase ──────────────────────────────────────────
+    if (_postMiss) {
+      _postMissT = (_postMissT + dt / _postMissDuration).clamp(0.0, 1.0);
+      if (_postMissT >= 1.0) {
+        _postMiss = false;
+        _inFlight = false;
+        _hidden = true;
+        _onArrived?.call(_targetScreen!, false);
+      }
+      return;
+    }
+
     if (!_inFlight) return;
     _t = (_t + dt / _duration).clamp(0.0, 1.0);
+
+    // Check for a glove save once the ball has travelled past the half-way
+    // point — this avoids the gloves "catching" the ball back at the
+    // shooter while still letting the keeper intercept on time.
+    if (_t >= 0.55) {
+      final pos = _currentPos();
+      final radius = _currentRadius();
+      final glove = _gloveTouchingBall(pos, radius);
+      if (glove != null) {
+        _inFlight = false;
+        // Freeze the ball at its current flight position, not the glove center.
+        _savedPos = pos;
+        // Slightly enlarge so the catch reads clearly on the glove.
+        _savedRadius = (radius * 1.25).clamp(radius, _maxRadius * 1.08);
+        _onArrived?.call(pos, true);
+        return;
+      }
+    }
+
     if (_t >= 1.0) {
-      _inFlight = false;
-      final landing = _targetScreen!;
-      _onArrived?.call(landing);
+      _postMissPos = _targetScreen;
+      _postMiss = true;
+      _postMissT = 0;
     }
   }
 
   @override
   void render(Canvas canvas) {
+    // Ball is completely hidden after animations finish.
+    if (_hidden) return;
+
+    // ── Saved: frozen at the catch position ─────────────────────────────
+    if (_savedPos != null) {
+      _drawBall(canvas, _savedPos!, _savedRadius, 1.0);
+      return;
+    }
+
+    // ── Post-miss fly-past rendering ────────────────────────────────────
+    if (_postMiss && _postMissPos != null) {
+      final p = _postMissT;
+
+      final scale = 1.0 + 0.20 * (1.0 - p);
+      final radius = _maxRadius * scale;
+
+      final opacity = (1.0 - p).clamp(0.0, 1.0);
+
+      final dropY = 120.0 * p * p;
+      final pos = Offset(_postMissPos!.dx, _postMissPos!.dy + dropY);
+
+      _drawBall(canvas, pos, radius, opacity);
+      return;
+    }
+
+    // ── Normal in-flight rendering ──────────────────────────────────────
     final start = _startWorld;
     final end = _targetScreen;
     if (start == null || end == null) return;
@@ -270,27 +360,23 @@ class _BallComponent extends PositionComponent {
       start.dx + (end.dx - start.dx) * _t,
       start.dy + (end.dy - start.dy) * _t,
     );
-    final radius = lerpDouble(6, 22, _t)!;
+    final radius = lerpDouble(6, _maxRadius, _t)!;
+    _drawBall(canvas, pos, radius, 1.0);
+  }
 
-    canvas.drawCircle(
-      pos,
-      radius,
-      Paint()..color = Colors.white,
-    );
-    canvas.drawCircle(
-      pos,
-      radius,
-      Paint()
-        ..color = Colors.black87
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    // Crude pentagon pattern hint — single dark dot in center to read as a ball.
-    canvas.drawCircle(
-      pos,
-      radius * 0.25,
-      Paint()..color = Colors.black87,
-    );
+  void _drawBall(Canvas canvas, Offset pos, double radius, double opacity) {
+    if (opacity <= 0.01) return;
+
+    final fill = Paint()..color = Colors.white.withValues(alpha: opacity);
+    final stroke = Paint()
+      ..color = Colors.black87.withValues(alpha: opacity)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    final dot = Paint()..color = Colors.black87.withValues(alpha: opacity);
+
+    canvas.drawCircle(pos, radius, fill);
+    canvas.drawCircle(pos, radius, stroke);
+    canvas.drawCircle(pos, radius * 0.25, dot);
   }
 }
 

@@ -172,21 +172,26 @@ class KeeperHud extends StatelessWidget {
   }
 
   Widget _buildHint(String text, {Color color = Colors.white}) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.7)),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: color,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 2,
+    return Positioned(
+      top: 60,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.7)),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+            ),
           ),
         ),
       ),
@@ -197,16 +202,28 @@ class KeeperHud extends StatelessWidget {
     final result = state.lastResult;
     if (result == null) return const SizedBox.shrink();
     final saved = result == KeeperShotResult.saved;
-    return Center(
-      child: Text(
-        saved ? 'SAVED! 🧤' : 'GOAL CONCEDED!',
-        style: TextStyle(
-          color: saved ? _saveGreen : _goalRed,
-          fontSize: 50,
-          fontWeight: FontWeight.w900,
-          shadows: const [
-            Shadow(blurRadius: 10, color: Colors.black),
-          ],
+    return Positioned(
+      top: 60,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            saved ? 'SAVED! 🧤' : 'GOAL CONCEDED!',
+            style: TextStyle(
+              color: saved ? _saveGreen : _goalRed,
+              fontSize: 36,
+              fontWeight: FontWeight.w900,
+              shadows: const [
+                Shadow(blurRadius: 10, color: Colors.black),
+              ],
+            ),
+          ),
         ),
       ),
     );
