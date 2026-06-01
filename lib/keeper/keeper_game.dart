@@ -58,7 +58,9 @@ class KeeperGame extends FlameGame {
   }
 
   /// Public-facing rect of the goal mouth, in screen pixels.
-  Rect get goalMouthRect => _goal.mouthRect;
+  ///
+  /// Null until [onLoad] has finished — do not read during the first frame.
+  Rect? get goalMouthRect => isLoaded ? _goal.mouthRect : null;
 
   /// Launch a new shot at a random target inside the goal mouth.
   void launchShot() {

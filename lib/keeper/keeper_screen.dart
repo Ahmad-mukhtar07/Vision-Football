@@ -58,6 +58,10 @@ class _KeeperScreenState extends State<KeeperScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _controller.startMatch();
     });
+    // Rebuild once Flame has loaded scene components (goal mouth rect, etc.).
+    unawaited(_game.ready().then((_) {
+      if (mounted) setState(() {});
+    }));
   }
 
   void _onHandFrame(HandFrame frame) {
@@ -214,7 +218,12 @@ class _KeeperScreenState extends State<KeeperScreen> {
             backgroundBuilder: (context) => const SizedBox.shrink(),
           ),
         // Glove markers.
-        GloveOverlay(onGlovesChanged: _onGlovesChanged),
+        GloveOverlay(
+          onGlovesChanged: _onGlovesChanged,
+          calibrationMode: isCalibrating,
+          goalMouthRect:
+              isCalibrating ? null : _game.goalMouthRect,
+        ),
         // HUD (hidden during pause + match over).
         if (!matchOver && !_isPaused)
           KeeperHud(

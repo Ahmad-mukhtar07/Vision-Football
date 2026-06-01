@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import 'hand_detector_service.dart';
+import 'keeper_glove_rotation.dart';
+import 'keeper_preview_layout.dart';
 
 /// On-screen positions of both glove markers in screen pixels.
 class GlovePositions {
@@ -24,9 +24,18 @@ class GloveOverlay extends StatefulWidget {
   const GloveOverlay({
     super.key,
     required this.onGlovesChanged,
+    this.calibrationMode = false,
+    this.goalMouthRect,
   });
 
   final ValueChanged<GlovePositions> onGlovesChanged;
+
+  /// When true, glove positions are mapped into the calibration preview box
+  /// (unmirrored video) instead of full-screen mirrored coordinates.
+  final bool calibrationMode;
+
+  /// Goal mouth in screen pixels — used for gameplay glove rotation.
+  final Rect? goalMouthRect;
 
   @override
   State<GloveOverlay> createState() => _GloveOverlayState();
@@ -76,8 +85,11 @@ class _GloveOverlayState extends State<GloveOverlay> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = constraints.biggest;
-        final left = _toScreen(_leftNorm, size);
-        final right = _toScreen(_rightNorm, size);
+        final previewRect = widget.calibrationMode && _imageSize != null
+            ? KeeperPreviewLayout.calibrationRect(size, _imageSize!)
+            : null;
+        final left = _toScreen(_leftNorm, size, previewRect);
+        final right = _toScreen(_rightNorm, size, previewRect);
         // Push out the latest positions after layout so the game can read them.
         if (left != _leftScreen || right != _rightScreen) {
           _leftScreen = left;
@@ -94,10 +106,20 @@ class _GloveOverlayState extends State<GloveOverlay> {
             children: [
               if (left != null)
                 _GloveMarker(
-                    position: left, isLeft: true, screenWidth: size.width),
+                  position: left,
+                  isLeft: true,
+                  screenSize: size,
+                  goalMouthRect: widget.goalMouthRect,
+                  calibrationReference: previewRect,
+                ),
               if (right != null)
                 _GloveMarker(
-                    position: right, isLeft: false, screenWidth: size.width),
+                  position: right,
+                  isLeft: false,
+                  screenSize: size,
+                  goalMouthRect: widget.goalMouthRect,
+                  calibrationReference: previewRect,
+                ),
             ],
           ),
         );
@@ -105,8 +127,19 @@ class _GloveOverlayState extends State<GloveOverlay> {
     );
   }
 
-  Offset? _toScreen(Offset? norm, Size screen) {
+  Offset? _toScreen(Offset? norm, Size screen, Rect? previewRect) {
     if (norm == null) return null;
+
+    if (previewRect != null) {
+      // Preview is unmirrored; detector coords are mirrored for gameplay.
+      final nx = 1.0 - norm.dx;
+      final ny = norm.dy;
+      return Offset(
+        previewRect.left + nx * previewRect.width,
+        previewRect.top + ny * previewRect.height,
+      );
+    }
+
     return Offset(norm.dx * screen.width, norm.dy * screen.height);
   }
 }
@@ -115,38 +148,53 @@ class _GloveMarker extends StatelessWidget {
   const _GloveMarker({
     required this.position,
     required this.isLeft,
-    required this.screenWidth,
+    required this.screenSize,
+    required this.goalMouthRect,
+    required this.calibrationReference,
   });
 
   final Offset position;
   final bool isLeft;
-  final double screenWidth;
+  final Size screenSize;
+  final Rect? goalMouthRect;
+  final Rect? calibrationReference;
 
   static const double _gloveHeight = 100;
   static const double _gloveWidth = 80;
 
-  /// Max tilt in radians (~20 degrees).
-  static const double _maxTilt = 20 * math.pi / 180;
+  double _rotationAngle() {
+    if (goalMouthRect != null) {
+      return KeeperGloveRotation.forGameplay(
+        position: position,
+        screen: screenSize,
+        goalMouth: goalMouthRect!,
+      );
+    }
+    final ref = calibrationReference ??
+        Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
+    return KeeperGloveRotation.forCalibration(
+      position: position,
+      referenceRect: ref,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Normalized position: -1 (left edge) to +1 (right edge).
-    final nx = screenWidth > 0
-        ? (position.dx / screenWidth) * 2.0 - 1.0
-        : 0.0;
-    final tilt = nx * _maxTilt;
+    final angle = _rotationAngle();
 
     final asset = isLeft
         ? 'assets/images/keeper/gloves/Keeper-glove-left.png'
         : 'assets/images/keeper/gloves/Keeper-glove-right.png';
 
+    // Pivot at the bottom of the glove (wrist / reach point).
     return Positioned(
       left: position.dx - _gloveWidth / 2,
-      top: position.dy - _gloveHeight / 2,
+      top: position.dy - _gloveHeight,
       width: _gloveWidth,
       height: _gloveHeight,
       child: Transform.rotate(
-        angle: tilt,
+        angle: angle,
+        alignment: Alignment.bottomCenter,
         child: Image.asset(
           asset,
           width: _gloveWidth,

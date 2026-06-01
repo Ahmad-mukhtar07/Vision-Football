@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'hand_detector_service.dart';
+import 'keeper_preview_layout.dart';
 
 /// Camera capture used by goalkeeper mode.
 ///
@@ -21,9 +22,8 @@ class KeeperCameraPreview extends StatefulWidget {
 
   final List<CameraDescription> cameras;
 
-  /// When true the live camera feed is rendered full-screen (used during
-  /// calibration so the player can see themselves). When false only the
-  /// detection pipeline runs — nothing is drawn.
+  /// When true the live camera feed is shown in a centered box (calibration).
+  /// When false only the detection pipeline runs — nothing is drawn.
   final bool showPreview;
 
   @override
@@ -97,24 +97,59 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = _controller;
-    if (!widget.showPreview || ctrl == null || !ctrl.value.isInitialized) {
+    if (!widget.showPreview) {
       return const SizedBox.expand();
     }
 
-    return ClipRect(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: ctrl.value.previewSize?.width ?? 1,
-          height: ctrl.value.previewSize?.height ?? 1,
-          child: Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.diagonal3Values(-1.0, 1.0, 1.0),
-            child: CameraPreview(ctrl),
-          ),
+    final ctrl = _controller;
+    if (ctrl == null || !ctrl.value.isInitialized) {
+      return const ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: CircularProgressIndicator(color: Colors.white54),
         ),
-      ),
+      );
+    }
+
+    final previewSize = ctrl.value.previewSize;
+    if (previewSize == null) {
+      return const SizedBox.expand();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screen = constraints.biggest;
+        final rect = KeeperPreviewLayout.calibrationRect(screen, previewSize);
+
+        return ColoredBox(
+          color: Colors.black,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fromRect(
+                rect: rect,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white24, width: 2),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: SizedBox(
+                        width: previewSize.width,
+                        height: previewSize.height,
+                        child: CameraPreview(ctrl),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
