@@ -47,6 +47,9 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   static const int _calibrationDurationSeconds = 4;
 
+  /// Pause before each shot so the keeper can get ready.
+  static const int _preShotDelayMs = 2200;
+
   @override
   void initState() {
     super.initState();
@@ -116,6 +119,10 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   void _onMatchChanged() {
     if (!mounted) return;
+    // Hide any frozen ball once the match ends.
+    if (_controller.state.phase == KeeperPhase.matchOver) {
+      _game.resetScene();
+    }
     setState(() {});
   }
 
@@ -135,7 +142,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   void _scheduleNextShot() {
     _phaseTimer?.cancel();
-    _phaseTimer = Timer(const Duration(milliseconds: 1100), () {
+    _phaseTimer = Timer(const Duration(milliseconds: _preShotDelayMs), () {
       if (!mounted || _isPaused) return;
       if (_controller.state.phase != KeeperPhase.waitingForReady) return;
       _game.launchShot();
@@ -184,6 +191,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   void _playAgain() {
     _phaseTimer?.cancel();
+    _game.resetScene();
     _resetCalibrationGate();
     _controller.startMatch();
   }

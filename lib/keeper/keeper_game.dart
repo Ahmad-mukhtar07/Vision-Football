@@ -100,6 +100,12 @@ class KeeperGame extends FlameGame {
   /// Null until [onLoad] has finished — do not read during the first frame.
   Rect? get goalMouthRect => isLoaded ? _goal.mouthRect : null;
 
+  /// Clears the ball and camera so no stale visuals carry into a new round.
+  void resetScene() {
+    if (isLoaded) _ball.reset();
+    cameraXOffset.value = 0;
+  }
+
   /// Launch a new shot at a random target inside the goal mouth.
   void launchShot() {
     final mouth = _goal.mouthRect;
@@ -277,6 +283,21 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   Offset? _postMissPos;
   static const double _postMissDuration = 0.35; // seconds
   static const double _maxRadius = 38.0;
+
+  /// Clears all ball state so nothing renders until the next [launch].
+  void reset() {
+    _startWorld = null;
+    _targetScreen = null;
+    _t = 0;
+    _inFlight = false;
+    _hidden = true;
+    _onArrived = null;
+    _savedPos = null;
+    _savedRadius = 0;
+    _postMiss = false;
+    _postMissT = 0;
+    _postMissPos = null;
+  }
 
   void launch({
     required Offset startWorld,
