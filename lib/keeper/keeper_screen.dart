@@ -9,6 +9,7 @@ import 'glove_overlay.dart';
 import 'hand_detector_service.dart';
 import 'keeper_camera_preview.dart';
 import 'keeper_game.dart';
+import 'keeper_goal_image.dart';
 import 'keeper_hud.dart';
 import 'keeper_match_over_overlay.dart';
 import 'keeper_match_state.dart';
@@ -205,26 +206,29 @@ class _KeeperScreenState extends State<KeeperScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Camera capture — visible during calibration so the player can
-        // see themselves; hidden once gameplay begins.
+        // 1. Camera capture — visible during calibration.
         KeeperCameraPreview(
           cameras: widget.cameras,
           showPreview: isCalibrating,
         ),
-        // Placeholder scene + ball animation (hidden during calibration).
+        // 2. Gameplay scene (ground, shooter, ball — the Flame goal is now
+        //    invisible; the goal frame is drawn by the image overlay below).
         if (!isCalibrating)
           GameWidget(
             game: _game,
             backgroundBuilder: (context) => const SizedBox.shrink(),
           ),
-        // Glove markers.
+        // 3. Gloves — drawn above the field but behind the goal frame.
         GloveOverlay(
           onGlovesChanged: _onGlovesChanged,
           calibrationMode: isCalibrating,
           goalMouthRect:
               isCalibrating ? null : _game.goalMouthRect,
         ),
-        // HUD (hidden during pause + match over).
+        // 4. Goal image — center vertical chunk, full screen height, sits
+        //    on top of every gameplay layer.
+        if (!isCalibrating) const KeeperGoalImage(),
+        // 5. HUD (above the goal image).
         if (!matchOver && !_isPaused)
           KeeperHud(
             state: state,
@@ -233,13 +237,12 @@ class _KeeperScreenState extends State<KeeperScreen> {
             calibrationWaitingForHands:
                 isCalibrating && !_calibrationCountdownActive,
           ),
-        // Pause menu.
+        // 6. Modal overlays.
         if (_isPaused)
           PauseMenuOverlay(
             onResume: _resumeGame,
             onQuit: _quitToMenu,
           ),
-        // Match over.
         if (matchOver)
           KeeperMatchOverOverlay(
             state: state,

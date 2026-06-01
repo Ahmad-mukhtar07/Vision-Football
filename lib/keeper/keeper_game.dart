@@ -150,26 +150,35 @@ class _GroundComponent extends PositionComponent {
   }
 }
 
-/// Goal frame as seen from inside (player stands within the goal).
+/// Logical goal hitbox component.
+///
+/// The visible crossbar / posts / netting are rendered separately by
+/// `KeeperGoalImage` as a full-screen-height Flutter overlay. This Flame
+/// component renders nothing on its own — it only exposes [mouthRect] so
+/// save / goal math (target picking and glove-catch checks) stays decoupled
+/// from the visual layer.
 class _GoalFrameComponent extends PositionComponent {
   _GoalFrameComponent({required this.area});
   final Vector2 area;
   bool _redFlash = false;
   double _flashT = 0;
 
-  /// Inner rect of the goal mouth — where the ball can land.
-  Rect get mouthRect {
-    final left = area.x * _postInsetFraction;
-    final right = area.x * (1 - _postInsetFraction);
-    final top = area.y * _crossbarYFraction + _frameThickness * 0.5;
-    final bottom = area.y * _goalLineYFraction;
-    return Rect.fromLTRB(left, top, right, bottom);
-  }
+  // Vertical band of the goal mouth as it appears in the new goal image
+  // when the image is fitted to full screen height. Tweak these if the
+  // mouth visually shifts after asset updates.
+  static const double _mouthTopYFraction = 0.12;
+  static const double _mouthBottomYFraction = 0.58;
 
-  static const double _postInsetFraction = 0.05;
-  static const double _crossbarYFraction = 0.08;
-  static const double _goalLineYFraction = 0.55;
-  static const double _frameThickness = 14;
+  /// Save / goal hitbox — full screen width, matching the image overlay.
+  Rect get mouthRect => Rect.fromLTRB(
+        0,
+        area.y * _mouthTopYFraction,
+        area.x,
+        area.y * _mouthBottomYFraction,
+      );
+
+  /// Whether the goal is currently flashing red (signaled to overlays).
+  bool get isFlashingRed => _redFlash;
 
   void flashRed() {
     _redFlash = true;
@@ -190,59 +199,7 @@ class _GoalFrameComponent extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    final mouth = mouthRect;
-    final color = _redFlash
-        ? Color.lerp(Colors.white, Colors.red, 1 - (_flashT / 0.5))!
-        : Colors.white;
-
-    final framePaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _frameThickness
-      ..strokeCap = StrokeCap.square;
-
-    // Left post.
-    canvas.drawLine(
-      Offset(mouth.left, mouth.top),
-      Offset(mouth.left, mouth.bottom),
-      framePaint,
-    );
-    // Right post.
-    canvas.drawLine(
-      Offset(mouth.right, mouth.top),
-      Offset(mouth.right, mouth.bottom),
-      framePaint,
-    );
-    // Crossbar.
-    canvas.drawLine(
-      Offset(mouth.left - _frameThickness * 0.5, mouth.top),
-      Offset(mouth.right + _frameThickness * 0.5, mouth.top),
-      framePaint,
-    );
-
-    // Net pattern (placeholder cross-hatch behind the frame).
-    final net = Paint()
-      ..color = Colors.white24
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-    const int verticals = 12;
-    const int horizontals = 8;
-    for (int i = 1; i < verticals; i++) {
-      final x = mouth.left + mouth.width * (i / verticals);
-      canvas.drawLine(
-        Offset(x, mouth.top),
-        Offset(x, mouth.bottom),
-        net,
-      );
-    }
-    for (int i = 1; i < horizontals; i++) {
-      final y = mouth.top + mouth.height * (i / horizontals);
-      canvas.drawLine(
-        Offset(mouth.left, y),
-        Offset(mouth.right, y),
-        net,
-      );
-    }
+    // Intentionally empty — the goal is drawn by the Flutter image overlay.
   }
 }
 
