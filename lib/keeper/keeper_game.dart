@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart' hide Image;
 
+import '../game/ball_sprite.dart';
 import 'keeper_match_state.dart';
 
 /// Flame layer for goalkeeper mode.
@@ -306,7 +307,7 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
 
   // Accumulated spin angle (radians) for texture alternation.
   double _spinAngle = 0;
-  static const double _spinSpeed = 20.0; // radians per second
+  static const double _spinSpeed = BallSprite.spinSpeed; // radians per second
 
   // true = ball travelling right, false = left.
   bool _movingRight = true;
@@ -315,8 +316,9 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    _imgLeft = await game.images.load('ball/Ball-left.png');
-    _imgRight = await game.images.load('ball/Ball-right.png');
+    final imgs = await BallSprite.loadImages(game.images);
+    _imgLeft = imgs.left;
+    _imgRight = imgs.right;
   }
 
   void reset() {
@@ -486,42 +488,20 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   }
 
   void _drawBall(Canvas canvas, Offset pos, double radius, double opacity) {
-    if (opacity <= 0.01) return;
-
     final left = _imgLeft;
     final right = _imgRight;
     if (left == null || right == null) return;
 
-    final diameter = radius * 2;
-    final ballBounds = Rect.fromCircle(center: pos, radius: radius);
-
-    // Hard-swap between the two ball views every half spin — no blending.
-    final primary = _movingRight ? right : left;
-    final secondary = _movingRight ? left : right;
-    final img = sin(_spinAngle) >= 0 ? primary : secondary;
-
-    final paint = Paint();
-    if (opacity < 1.0) {
-      paint.color = Color.fromRGBO(255, 255, 255, opacity);
-      paint.colorFilter = ColorFilter.mode(paint.color, BlendMode.modulate);
-    }
-
-    final src = Rect.fromLTWH(
-      0,
-      0,
-      img.width.toDouble(),
-      img.height.toDouble(),
-    );
-    final dst = Rect.fromCenter(
+    BallSprite.draw(
+      canvas,
       center: pos,
-      width: diameter,
-      height: diameter,
+      radius: radius,
+      left: left,
+      right: right,
+      spinAngle: _spinAngle,
+      movingRight: _movingRight,
+      opacity: opacity,
     );
-
-    canvas.save();
-    canvas.clipPath(Path()..addOval(ballBounds));
-    canvas.drawImageRect(img, src, dst, paint);
-    canvas.restore();
   }
 }
 

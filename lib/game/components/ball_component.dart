@@ -2,14 +2,15 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
-import 'package:flutter/material.dart';
+import 'package:flame/game.dart';
+import 'package:flutter/material.dart' hide Image;
 
 import '../../models/kick_event.dart';
+import '../ball_sprite.dart';
 import '../goalkeeper_component.dart';
 import '../../pose/kick_detection_config.dart';
 import '../layout_constants.dart';
 import '../trajectory_params.dart';
-import '../painters/football_painter.dart';
 import 'goal_component.dart';
 
 enum BallState {
@@ -21,7 +22,7 @@ enum BallState {
 }
 
 /// Penalty ball — flies on kick, scores or misses, then resets.
-class BallComponent extends PositionComponent {
+class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   BallComponent({
     required this.goal,
     required this.goalkeeper,
@@ -30,7 +31,7 @@ class BallComponent extends PositionComponent {
     this.onBecameIdle,
   }) : super(
          anchor: Anchor.center,
-         size: Vector2.all(36),
+         size: Vector2.all(42),
        );
 
   final GoalComponent goal;
@@ -66,8 +67,11 @@ class BallComponent extends PositionComponent {
   double _resetStartScale = 1;
   double _baseScale = 1;
   double _spinAngle = 0;
-  double _spinDirection = 1;
+  bool _movingRight = true;
   Color? _ballTint;
+
+  Image? _imgLeft;
+  Image? _imgRight;
 
   static const double _minFlightDuration = 0.5;
   static const double _maxFlightDuration = 1.2;
@@ -80,6 +84,10 @@ class BallComponent extends PositionComponent {
 
   @override
   Future<void> onLoad() async {
+    await super.onLoad();
+    final imgs = await BallSprite.loadImages(game.images);
+    _imgLeft = imgs.left;
+    _imgRight = imgs.right;
     _spawnPosition = layout.ballSpawn.clone();
     position = _spawnPosition.clone();
     _baseScale = 1;
@@ -103,8 +111,7 @@ class BallComponent extends PositionComponent {
     _baseScale = 1;
     _ballTint = null;
     _spinAngle = 0;
-    _spinDirection =
-        trajectory.targetPosition.dx >= position.x ? 1 : -1;
+    _movingRight = trajectory.targetPosition.dx >= position.x;
     _state = BallState.inFlight;
   }
 
@@ -256,9 +263,9 @@ class BallComponent extends PositionComponent {
     final duration = trajectory.flightDurationSeconds;
     _flightT = (_flightT + dt / duration).clamp(0.0, 1.0);
 
-    // Visual ball-spin animation: faster spin when the trajectory is curving.
+    // Spin alternation only while in flight (same PNG swap as keeper mode).
     final spinBoost = 1.0 + trajectory.spinOffsetPx.abs() / 60.0;
-    _spinAngle += _spinDirection * 0.15 * spinBoost * dt * 60;
+    _spinAngle += BallSprite.spinSpeed * spinBoost * dt;
     final t = _flightT;
 
     final end = Vector2(
@@ -404,13 +411,22 @@ class BallComponent extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    final radius = 18 * _baseScale;
+    final left = _imgLeft;
+    final right = _imgRight;
+    if (left == null || right == null) return;
+
+    final radius = size.x * 0.5 * _baseScale;
     final center = Offset(size.x * 0.5, size.y * 0.5);
-    FootballPainter(
+    BallSprite.draw(
+      canvas,
+      center: center,
       radius: radius,
-      rotationRadians: _spinAngle,
+      left: left,
+      right: right,
+      spinAngle: _spinAngle,
+      movingRight: _movingRight,
       tintColor: _ballTint,
-    ).paint(canvas, center);
+    );
   }
 }
 
