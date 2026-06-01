@@ -1,0 +1,119 @@
+import 'package:flutter/foundation.dart';
+
+/// Outcome of a single keeper round.
+enum KeeperShotResult { saved, conceded }
+
+/// Lifecycle of the goalkeeper match.
+enum KeeperPhase {
+  notStarted,
+  calibrating,
+  waitingForReady,
+  shotIncoming,
+  resultPause,
+  matchOver,
+}
+
+/// Immutable snapshot of keeper match progress.
+@immutable
+class KeeperMatchState {
+  const KeeperMatchState({
+    this.totalShots = 5,
+    this.shotsTaken = 0,
+    this.saves = 0,
+    this.goalsConceded = 0,
+    this.phase = KeeperPhase.notStarted,
+    this.lastResult,
+  });
+
+  final int totalShots;
+  final int shotsTaken;
+  final int saves;
+  final int goalsConceded;
+  final KeeperPhase phase;
+  final KeeperShotResult? lastResult;
+
+  KeeperMatchState copyWith({
+    int? totalShots,
+    int? shotsTaken,
+    int? saves,
+    int? goalsConceded,
+    KeeperPhase? phase,
+    KeeperShotResult? lastResult,
+    bool clearLastResult = false,
+  }) {
+    return KeeperMatchState(
+      totalShots: totalShots ?? this.totalShots,
+      shotsTaken: shotsTaken ?? this.shotsTaken,
+      saves: saves ?? this.saves,
+      goalsConceded: goalsConceded ?? this.goalsConceded,
+      phase: phase ?? this.phase,
+      lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
+    );
+  }
+}
+
+/// Owns keeper match lifecycle (round counter, save/goal tally, phases).
+///
+/// Entirely independent of the shooting-mode `MatchController` — no shared
+/// state, no shared phase enums, no shared restart logic.
+class KeeperMatchController extends ChangeNotifier {
+  KeeperMatchState _state = const KeeperMatchState();
+  KeeperMatchState get state => _state;
+
+  void startMatch() {
+    _state = const KeeperMatchState(phase: KeeperPhase.calibrating);
+    notifyListeners();
+  }
+
+  /// Transition out of calibration into the first round.
+  void finishCalibration() {
+    if (_state.phase != KeeperPhase.calibrating) return;
+    _state = _state.copyWith(phase: KeeperPhase.waitingForReady);
+    notifyListeners();
+  }
+
+  void restart() => startMatch();
+
+  void onShotLaunched() {
+    if (_state.phase != KeeperPhase.waitingForReady) return;
+    _state = _state.copyWith(phase: KeeperPhase.shotIncoming);
+    notifyListeners();
+  }
+
+  void onShotResolved(KeeperShotResult result) {
+    if (_state.phase != KeeperPhase.shotIncoming) return;
+    final taken = _state.shotsTaken + 1;
+    final saves = _state.saves + (result == KeeperShotResult.saved ? 1 : 0);
+    final goals = _state.goalsConceded +
+        (result == KeeperShotResult.conceded ? 1 : 0);
+    final allDone = taken >= _state.totalShots;
+    _state = _state.copyWith(
+      shotsTaken: taken,
+      saves: saves,
+      goalsConceded: goals,
+      lastResult: result,
+      phase: allDone ? KeeperPhase.resultPause : KeeperPhase.resultPause,
+    );
+    notifyListeners();
+
+    if (allDone) {
+      _state = _state.copyWith(phase: KeeperPhase.matchOver);
+      notifyListeners();
+    }
+  }
+
+  /// Move on to the next round (or do nothing if the match is over).
+  void readyForNextShot() {
+    if (_state.phase != KeeperPhase.resultPause) return;
+    _state = _state.copyWith(
+      phase: KeeperPhase.waitingForReady,
+      clearLastResult: true,
+    );
+    notifyListeners();
+  }
+
+  void abandon() {
+    _state = const KeeperMatchState(phase: KeeperPhase.notStarted);
+    notifyListeners();
+  }
+}

@@ -31,15 +31,15 @@ class KickDetectionConfig {
     // curveDeadZone — INCREASE: less accidental curve; straight kicks stay straighter.
     //                  DECREASE: easier to register any curve (more sensitive).
     //                          0.012 → less accidental curve; straight kicks stay straighter.
-    this.curveDeadZone = 0.12,
+    this.curveDeadZone = 1.0,
     // curveReferenceDeviation — INCREASE: need a bigger foot arc for max curve (spinX = ±1).
     //                           DECREASE: smaller arc produces full curve.
     //                          0.04 → need a bigger foot arc for max curve (spinX = ±1).
-    this.curveReferenceDeviation = 0.04,
+    this.curveReferenceDeviation = 1.0,
     // curveMinSwingLength — INCREASE: only longer swings can curve; taps ignored for spin.
     //                       DECREASE: shorter swings can still induce curve.
     //                        0.03 → only longer swings can curve; taps ignored for spin.
-    this.curveMinSwingLength = 0.03,
+    this.curveMinSwingLength = 1.0,
 
     // Planted foot
     this.maxPlantedMissingFrames = 5,

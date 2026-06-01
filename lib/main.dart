@@ -3,6 +3,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'keeper/keeper_screen.dart';
+import 'ui/mode_selection_overlay.dart';
 import 'ui/vision_football_screen.dart';
 
 Future<void> main() async {
@@ -35,7 +37,9 @@ class AppBootstrap extends StatefulWidget {
 }
 
 class _AppBootstrapState extends State<AppBootstrap> {
-  Widget _body = const _LoadingScreen();
+  List<CameraDescription>? _cameras;
+  bool _cameraFailed = false;
+  GameMode? _selectedMode;
 
   @override
   void initState() {
@@ -70,25 +74,47 @@ class _AppBootstrapState extends State<AppBootstrap> {
       );
 
       if (!mounted) return;
-      setState(() {
-        _body = VisionFootballScreen(cameras: cameras);
-      });
+      setState(() => _cameras = cameras);
     } on CameraException catch (e) {
       debugPrint('Camera startup failed: ${e.code} ${e.description}');
       if (!mounted) return;
-      setState(() => _body = const CameraPermissionRequiredScreen());
+      setState(() => _cameraFailed = true);
     } catch (e, st) {
       debugPrint('Camera startup failed: $e\n$st');
       if (!mounted) return;
-      setState(() => _body = const CameraPermissionRequiredScreen());
+      setState(() => _cameraFailed = true);
     }
+  }
+
+  void _onModeSelected(GameMode mode) {
+    setState(() => _selectedMode = mode);
+  }
+
+  void _returnToMainMenu() {
+    setState(() => _selectedMode = null);
   }
 
   @override
   Widget build(BuildContext context) {
+    final Widget body;
+    if (_cameraFailed) {
+      body = const CameraPermissionRequiredScreen();
+    } else if (_cameras == null) {
+      body = const _LoadingScreen();
+    } else if (_selectedMode == null) {
+      body = ModeSelectionOverlay(onModeSelected: _onModeSelected);
+    } else if (_selectedMode == GameMode.takeShots) {
+      body = VisionFootballScreen(cameras: _cameras!);
+    } else {
+      body = KeeperScreen(
+        cameras: _cameras!,
+        onReturnToMenu: _returnToMainMenu,
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: _body,
+      body: body,
     );
   }
 }
