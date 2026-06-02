@@ -148,7 +148,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _phaseTimer = Timer(const Duration(milliseconds: _preShotDelayMs), () {
       if (!mounted || _isPaused) return;
       if (_controller.state.phase != KeeperPhase.waitingForReady) return;
-      _game.launchShot();
+      _game.beginKickSequence();
     });
   }
 

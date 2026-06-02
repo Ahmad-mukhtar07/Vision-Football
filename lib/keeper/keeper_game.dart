@@ -7,6 +7,7 @@ import 'package:flutter/material.dart' hide Image;
 
 import '../game/ball_sprite.dart';
 import 'keeper_match_state.dart';
+import 'shooter_component.dart';
 
 /// Flame layer for goalkeeper mode.
 ///
@@ -28,7 +29,7 @@ class KeeperGame extends FlameGame {
 
   late final _GroundComponent _ground;
   late final _GoalFrameComponent _goal;
-  late final _ShooterComponent _shooter;
+  late final ShooterComponent _shooter;
   late final _BallComponent _ball;
   late final _FlashComponent _flash;
 
@@ -86,7 +87,7 @@ class KeeperGame extends FlameGame {
     await super.onLoad();
     _ground = _GroundComponent(area: size);
     _goal = _GoalFrameComponent(area: size);
-    _shooter = _ShooterComponent(area: size);
+    _shooter = ShooterComponent(area: size);
     _ball = _BallComponent(area: size);
     _flash = _FlashComponent(area: size);
     await add(_ground);
@@ -103,14 +104,26 @@ class KeeperGame extends FlameGame {
 
   /// Clears the ball and camera so no stale visuals carry into a new round.
   void resetScene() {
-    if (isLoaded) _ball.reset();
+    if (isLoaded) {
+      _ball.reset();
+      _shooter.resetToIdle();
+    }
     _pendingTarget = null;
     cameraXOffset.value = 0;
   }
 
+  /// Penalty-spot position for the resting ball (centered in front of shooter).
+  Offset get ballRestPosition => _shooter.ballEmitPoint;
+
+  /// True while the ball is visible and not waiting at the penalty spot.
+  bool get ballUsesCameraParallax =>
+      isLoaded && _ball.isVisibleAndNotAtPenaltySpot;
+
   /// Pre-place the ball at the shooter's feet while the keeper gets ready.
   void prepareShot() {
     if (!isLoaded) return;
+    cameraXOffset.value = 0;
+    _shooter.resetToIdle();
     final mouth = _goal.mouthRect;
     final r = Random();
     final tx = mouth.left + mouth.width * (0.10 + r.nextDouble() * 0.80);
@@ -121,7 +134,13 @@ class KeeperGame extends FlameGame {
 
   Offset? _pendingTarget;
 
-  /// Launch a new shot at a random target inside the goal mouth.
+  /// Plays the shooter run-up / strike animation; ball launches on impact.
+  void beginKickSequence() {
+    if (!isLoaded) return;
+    _shooter.beginKickSequence();
+  }
+
+  /// Launches the ball toward the goal — called from shooter impact frame.
   void launchShot() {
     if (!isLoaded) return;
     final mouth = _goal.mouthRect;
@@ -227,58 +246,9 @@ class _GoalFrameComponent extends PositionComponent {
   }
 }
 
-class _ShooterComponent extends PositionComponent {
-  _ShooterComponent({required this.area});
-  final Vector2 area;
-
-  /// Penalty-spot depth on the pitch (fraction of screen height).
-  static const double _emitYFraction = 0.52;
-
-  /// Where the ball should appear to leave from.
-  Offset get ballEmitPoint => Offset(area.x * 0.5, area.y * _emitYFraction);
-
-  @override
-  void render(Canvas canvas) {
-    final p = ballEmitPoint;
-    final body = Paint()..color = const Color(0xFFE6E6E6);
-    final outline = Paint()
-      ..color = Colors.black87
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    // Head.
-    canvas.drawCircle(Offset(p.dx, p.dy - 28), 9, body);
-    canvas.drawCircle(Offset(p.dx, p.dy - 28), 9, outline);
-    // Body.
-    final torso = Rect.fromCenter(
-      center: Offset(p.dx, p.dy - 6),
-      width: 16,
-      height: 24,
-    );
-    canvas.drawRect(torso, body);
-    canvas.drawRect(torso, outline);
-    // Legs.
-    canvas.drawLine(
-      Offset(p.dx - 4, p.dy + 6),
-      Offset(p.dx - 6, p.dy + 22),
-      Paint()
-        ..color = Colors.black87
-        ..strokeWidth = 4
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawLine(
-      Offset(p.dx + 4, p.dy + 6),
-      Offset(p.dx + 8, p.dy + 22),
-      Paint()
-        ..color = Colors.black87
-        ..strokeWidth = 4
-        ..strokeCap = StrokeCap.round,
-    );
-  }
-}
-
 class _BallComponent extends PositionComponent with HasGameReference<KeeperGame> {
-  _BallComponent({required this.area});
+  _BallComponent({required this.area}) : super(priority: 2);
+
   final Vector2 area;
 
   // Ball sprite images loaded in onLoad.
@@ -302,7 +272,7 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   double _postMissT = 0;
   Offset? _postMissPos;
   static const double _postMissDuration = 0.35;
-  static const double _minRadius = 10.0;
+  static const double _minRadius = 16.0;
   static const double _maxRadius = 46.0;
 
   // Accumulated spin angle (radians) for texture alternation.
@@ -312,6 +282,9 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   // true = ball travelling right, false = left.
   bool _movingRight = true;
   bool _waitingAtShooter = false;
+
+  bool get isVisibleAndNotAtPenaltySpot =>
+      !_hidden && !_waitingAtShooter;
 
   @override
   Future<void> onLoad() async {
@@ -409,6 +382,10 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   @override
   void update(double dt) {
     super.update(dt);
+
+    if (_waitingAtShooter) {
+      _startWorld = game.ballRestPosition;
+    }
 
     // Spin alternation only while the ball is travelling toward the goal.
     if (_inFlight && !_postMiss) {
