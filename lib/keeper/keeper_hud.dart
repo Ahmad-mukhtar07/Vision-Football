@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
 
 /// Top score bar + center status banner for goalkeeper mode.
@@ -91,7 +92,10 @@ class KeeperHud extends StatelessWidget {
           ),
           if (state.phase == KeeperPhase.calibrating)
             _buildCalibrationBanner(),
-          if (state.phase == KeeperPhase.waitingForReady) _buildHint('GET READY'),
+          if (state.phase == KeeperPhase.waitingForReady) ...[
+            _buildSpotLabel(state.spotType),
+            _buildHint('GET READY'),
+          ],
           if (state.phase == KeeperPhase.shotIncoming)
             _buildHint('INCOMING!', color: _gold),
           if (state.phase == KeeperPhase.resultPause) _buildResultBanner(),
@@ -171,9 +175,44 @@ class KeeperHud extends StatelessWidget {
     );
   }
 
-  Widget _buildHint(String text, {Color color = Colors.white}) {
+  Widget _buildSpotLabel(KeeperSpotType spot) {
+    final isFreeKick = spot == KeeperSpotType.freeKick;
     return Positioned(
       top: 60,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isFreeKick
+                  ? const Color(0xFF42A5F5)
+                  : const Color(0xFFFFD700),
+              width: 1.5,
+            ),
+          ),
+          child: Text(
+            isFreeKick ? 'FREE KICK' : 'PENALTY',
+            style: TextStyle(
+              color: isFreeKick
+                  ? const Color(0xFF42A5F5)
+                  : const Color(0xFFFFD700),
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHint(String text, {Color color = Colors.white}) {
+    return Positioned(
+      top: 100,
       left: 0,
       right: 0,
       child: Center(

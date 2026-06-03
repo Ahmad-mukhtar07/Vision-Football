@@ -6,6 +6,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart' hide Image;
 
 import '../game/ball_sprite.dart';
+import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
 import 'shooter_component.dart';
 
@@ -123,6 +124,10 @@ class KeeperGame extends FlameGame {
   void prepareShot() {
     if (!isLoaded) return;
     cameraXOffset.value = 0;
+    controller.assignRandomSpot();
+    final spot = controller.state.spotType;
+    _shooter.applySpot(spot);
+    _ball.applySpot(spot);
     _shooter.resetToIdle();
     final mouth = _goal.mouthRect;
     final r = Random();
@@ -272,8 +277,9 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   double _postMissT = 0;
   Offset? _postMissPos;
   static const double _postMissDuration = 0.35;
-  static const double _minRadius = 16.0;
-  static const double _maxRadius = 46.0;
+  static const double _maxRadius = KeeperLayoutConstants.penaltyBallMaxRadius;
+
+  double _minRadius = KeeperLayoutConstants.penaltyBallRestRadius;
 
   // Accumulated spin angle (radians) for texture alternation.
   double _spinAngle = 0;
@@ -285,6 +291,10 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
 
   bool get isVisibleAndNotAtPenaltySpot =>
       !_hidden && !_waitingAtShooter;
+
+  void applySpot(KeeperSpotType spot) {
+    _minRadius = KeeperLayoutConstants.ballRestRadius(spot);
+  }
 
   @override
   Future<void> onLoad() async {

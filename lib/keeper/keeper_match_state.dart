@@ -1,4 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
+
+import 'keeper_layout_constants.dart';
 
 /// Outcome of a single keeper round.
 enum KeeperShotResult { saved, conceded }
@@ -23,6 +27,7 @@ class KeeperMatchState {
     this.goalsConceded = 0,
     this.phase = KeeperPhase.notStarted,
     this.lastResult,
+    this.spotType = KeeperSpotType.penalty,
   });
 
   final int totalShots;
@@ -31,6 +36,7 @@ class KeeperMatchState {
   final int goalsConceded;
   final KeeperPhase phase;
   final KeeperShotResult? lastResult;
+  final KeeperSpotType spotType;
 
   KeeperMatchState copyWith({
     int? totalShots,
@@ -39,6 +45,7 @@ class KeeperMatchState {
     int? goalsConceded,
     KeeperPhase? phase,
     KeeperShotResult? lastResult,
+    KeeperSpotType? spotType,
     bool clearLastResult = false,
   }) {
     return KeeperMatchState(
@@ -48,6 +55,7 @@ class KeeperMatchState {
       goalsConceded: goalsConceded ?? this.goalsConceded,
       phase: phase ?? this.phase,
       lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
+      spotType: spotType ?? this.spotType,
     );
   }
 }
@@ -59,6 +67,7 @@ class KeeperMatchState {
 class KeeperMatchController extends ChangeNotifier {
   KeeperMatchState _state = const KeeperMatchState();
   KeeperMatchState get state => _state;
+  final Random _random = Random();
 
   void startMatch() {
     _state = const KeeperMatchState(phase: KeeperPhase.calibrating);
@@ -73,6 +82,15 @@ class KeeperMatchController extends ChangeNotifier {
   }
 
   void restart() => startMatch();
+
+  /// Picks penalty or free kick for the upcoming round.
+  void assignRandomSpot() {
+    final spot = _random.nextBool()
+        ? KeeperSpotType.penalty
+        : KeeperSpotType.freeKick;
+    _state = _state.copyWith(spotType: spot);
+    notifyListeners();
+  }
 
   void onShotLaunched() {
     if (_state.phase != KeeperPhase.waitingForReady) return;

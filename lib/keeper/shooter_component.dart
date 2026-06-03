@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flame/components.dart';
 
 import 'keeper_game.dart';
+import 'keeper_layout_constants.dart';
 
 enum _ShooterPhase { idle, kicking, recovery }
 
@@ -32,35 +33,45 @@ class ShooterComponent extends PositionComponent
     0.15, // 5 — follow-through
   ];
 
-  /// Foot line on the pitch (lower on screen = planted on grass).
-  static const double _emitYFraction = 0.62;
-
-  /// Ball sits on the turf, slightly toward the goal from the foot line.
-  static const double _ballOffsetY = 20;
-  static const double _ballOffsetTowardGoal = -10;
-
-  /// Base sprite height at full scale (run-up ends at [_approachScaleEnd]).
-  static const double _spriteHeightFraction = 0.22;
-
   /// Smallest at idle / first run-up step; grows as the player approaches.
   static const double _approachScaleStart = 0.76;
   static const double _approachScaleEnd = 1.0;
 
   final List<Image?> _frames = List.filled(7, null);
 
+  KeeperSpotType _spotType = KeeperSpotType.penalty;
   _ShooterPhase _phase = _ShooterPhase.idle;
   int _frameIndex = 0;
   double _segmentTimer = 0;
   bool _ballLaunched = false;
 
-  /// Fixed penalty-spot position in front of the player (screen center).
-  ///
-  /// Does not include camera pan — the spot stays centered between rounds
-  /// while the stadium alone pans during flight.
+  void applySpot(KeeperSpotType spot) {
+    _spotType = spot;
+  }
+
+  double get _layoutScale => KeeperLayoutConstants.visualScale(_spotType);
+
+  /// Live game viewport (avoids stale [area] after resize).
+  Vector2 get _viewport => game.isLoaded ? game.size : area;
+
+  double get _centerX =>
+      _viewport.x *
+      (0.5 + KeeperLayoutConstants.ballCenterXOffsetFraction);
+
+  /// Ball centre on the pitch marking for the current spot.
   Offset get ballEmitPoint => Offset(
-        area.x * 0.5,
-        area.y * _emitYFraction + _ballOffsetY + _ballOffsetTowardGoal,
+        _centerX,
+        _viewport.y * KeeperLayoutConstants.ballYFraction(_spotType),
       );
+
+  /// Bottom of the shooter sprite — slightly above the ball's lower edge.
+  Offset get _footAnchor {
+    final ball = ballEmitPoint;
+    final r = KeeperLayoutConstants.ballRestRadius(_spotType);
+    final lift =
+        2 * r * KeeperLayoutConstants.shooterFootAboveBallFraction;
+    return Offset(ball.dx, ball.dy + r - lift);
+  }
 
   @override
   Future<void> onLoad() async {
@@ -88,12 +99,13 @@ class ShooterComponent extends PositionComponent
   }
 
   double _visualScaleForFrame(int index) {
-    if (index <= 0) return _approachScaleStart;
-    if (index >= 5) return _approachScaleEnd;
-    // Frames 1–4: step up in size through the run-up and strike.
+    final layout = _layoutScale;
+    if (index <= 0) return _approachScaleStart * layout;
+    if (index >= 5) return _approachScaleEnd * layout;
     final t = index / 4.0;
-    return _approachScaleStart +
+    final approach = _approachScaleStart +
         (_approachScaleEnd - _approachScaleStart) * t;
+    return approach * layout;
   }
 
   @override
@@ -130,11 +142,11 @@ class ShooterComponent extends PositionComponent
     final img = _frames[_frameIndex];
     if (img == null) return;
 
-    // Parallax only while the ball is in play; penalty spot stays centered.
     final panX = game.ballUsesCameraParallax ? game.cameraXOffset.value : 0.0;
-    final foot = Offset(area.x * 0.5 + panX, area.y * _emitYFraction);
+    final foot = Offset(_footAnchor.dx + panX, _footAnchor.dy);
     final scale = _visualScaleForFrame(_frameIndex);
-    final height = area.y * _spriteHeightFraction * scale;
+    final height =
+        _viewport.y * KeeperLayoutConstants.shooterHeightFraction * scale;
     final width = height * (img.width / img.height);
 
     final dst = Rect.fromLTWH(
@@ -156,7 +168,7 @@ class ShooterComponent extends PositionComponent
   }
 
   void _drawGroundShadow(Canvas canvas, Offset foot, double scale) {
-    final shadowWidth = area.x * 0.13 * scale;
+    final shadowWidth = _viewport.x * 0.13 * scale;
     final shadowHeight = shadowWidth * 0.26;
     final shadowRect = Rect.fromCenter(
       center: Offset(foot.dx, foot.dy + 6),
