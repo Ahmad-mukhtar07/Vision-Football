@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import '../ui/penalty_score_bar.dart';
+
 /// Whether the current kick is a penalty or a free kick.
 enum ShotType { penalty, freeKick }
 
@@ -31,6 +33,7 @@ class MatchState {
     this.phase = MatchPhase.notStarted,
     this.lastResult,
     this.shotType = ShotType.penalty,
+    this.penaltySpots = const [],
   });
 
   final int totalKicks;
@@ -40,6 +43,7 @@ class MatchState {
   final MatchPhase phase;
   final KickResult? lastResult;
   final ShotType shotType;
+  final List<PenaltySpotStatus> penaltySpots;
 
   MatchState copyWith({
     int? totalKicks,
@@ -50,6 +54,7 @@ class MatchState {
     KickResult? lastResult,
     bool clearLastResult = false,
     ShotType? shotType,
+    List<PenaltySpotStatus>? penaltySpots,
   }) {
     return MatchState(
       totalKicks: totalKicks ?? this.totalKicks,
@@ -59,6 +64,7 @@ class MatchState {
       phase: phase ?? this.phase,
       lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
       shotType: shotType ?? this.shotType,
+      penaltySpots: penaltySpots ?? this.penaltySpots,
     );
   }
 }
@@ -117,11 +123,12 @@ class MatchController {
     _pausedPhase = null;
     _phaseTimer?.cancel();
     _runUpTimeoutTimer?.cancel();
-    _state = const MatchState(
+    _state = MatchState(
       phase: MatchPhase.runUp,
       kicksTaken: 0,
       goalsScored: 0,
       savesMade: 0,
+      penaltySpots: PenaltyScoreBar.initialSpots(5),
     );
     _emit();
     _enterRunUp();
@@ -225,12 +232,18 @@ class MatchController {
         break;
     }
 
+    final spots = List<PenaltySpotStatus>.from(_state.penaltySpots);
+    spots[kicksTaken - 1] = result == KickResult.goal
+        ? PenaltySpotStatus.scored
+        : PenaltySpotStatus.missed;
+
     _state = _state.copyWith(
       kicksTaken: kicksTaken,
       goalsScored: goals,
       savesMade: saves,
       phase: MatchPhase.resultPause,
       lastResult: result,
+      penaltySpots: spots,
     );
     _emit();
     onDisarmKickDetection?.call();

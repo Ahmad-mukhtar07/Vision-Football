@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../game/match_state.dart';
+import 'penalty_score_bar.dart';
 
 /// Match-aware HUD with styled top bar and phase animations.
 class HudOverlay extends StatefulWidget {
@@ -169,52 +170,11 @@ class _HudOverlayState extends State<HudOverlay>
             top: 8,
             left: 16,
             right: 56,
-            child: Column(
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      Text(
-                        '⚽ ${_state.kicksTaken} / ${_state.totalKicks}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '⚽ ${_state.goalsScored}',
-                        style: const TextStyle(
-                          color: Colors.lightGreenAccent,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        '🧤 ${_state.savesMade}',
-                        style: const TextStyle(
-                          color: _saveRed,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  height: 1,
-                  color: Colors.white24,
-                ),
-              ],
+            child: PenaltyScoreBar(
+              teamName: 'YOU',
+              spots: _state.penaltySpots.length >= _state.totalKicks
+                  ? _state.penaltySpots
+                  : PenaltyScoreBar.initialSpots(_state.totalKicks),
             ),
           ),
           if (_state.phase == MatchPhase.runUp) _buildRunUpHint(),

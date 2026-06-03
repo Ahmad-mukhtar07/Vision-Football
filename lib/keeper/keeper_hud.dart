@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../ui/penalty_score_bar.dart';
 import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
 
@@ -47,49 +48,17 @@ class KeeperHud extends StatelessWidget {
             ),
           ),
           if (state.phase != KeeperPhase.calibrating)
-          Positioned(
-            top: 8,
-            left: 16,
-            right: 56,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    '🥅 ${state.shotsTaken} / ${state.totalShots}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '🧤 ${state.saves}',
-                    style: const TextStyle(
-                      color: _saveGreen,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    '⚽ ${state.goalsConceded}',
-                    style: const TextStyle(
-                      color: _goalRed,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+            Positioned(
+              top: 8,
+              left: 16,
+              right: 56,
+              child: PenaltyScoreBar(
+                teamName: 'OPPONENT',
+                spots: state.penaltySpots.length >= state.totalShots
+                    ? state.penaltySpots
+                    : PenaltyScoreBar.initialSpots(state.totalShots),
               ),
             ),
-          ),
           if (state.phase == KeeperPhase.calibrating)
             _buildCalibrationBanner(),
           if (state.phase == KeeperPhase.waitingForReady) ...[

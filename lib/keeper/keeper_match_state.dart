@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../ui/penalty_score_bar.dart';
 import 'keeper_layout_constants.dart';
 
 /// Outcome of a single keeper round.
@@ -28,6 +29,7 @@ class KeeperMatchState {
     this.phase = KeeperPhase.notStarted,
     this.lastResult,
     this.spotType = KeeperSpotType.penalty,
+    this.penaltySpots = const [],
   });
 
   final int totalShots;
@@ -37,6 +39,7 @@ class KeeperMatchState {
   final KeeperPhase phase;
   final KeeperShotResult? lastResult;
   final KeeperSpotType spotType;
+  final List<PenaltySpotStatus> penaltySpots;
 
   KeeperMatchState copyWith({
     int? totalShots,
@@ -47,6 +50,7 @@ class KeeperMatchState {
     KeeperShotResult? lastResult,
     KeeperSpotType? spotType,
     bool clearLastResult = false,
+    List<PenaltySpotStatus>? penaltySpots,
   }) {
     return KeeperMatchState(
       totalShots: totalShots ?? this.totalShots,
@@ -56,6 +60,7 @@ class KeeperMatchState {
       phase: phase ?? this.phase,
       lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
       spotType: spotType ?? this.spotType,
+      penaltySpots: penaltySpots ?? this.penaltySpots,
     );
   }
 }
@@ -70,7 +75,10 @@ class KeeperMatchController extends ChangeNotifier {
   final Random _random = Random();
 
   void startMatch() {
-    _state = const KeeperMatchState(phase: KeeperPhase.calibrating);
+    _state = KeeperMatchState(
+      phase: KeeperPhase.calibrating,
+      penaltySpots: PenaltyScoreBar.initialSpots(5),
+    );
     notifyListeners();
   }
 
@@ -104,12 +112,18 @@ class KeeperMatchController extends ChangeNotifier {
     final saves = _state.saves + (result == KeeperShotResult.saved ? 1 : 0);
     final goals = _state.goalsConceded +
         (result == KeeperShotResult.conceded ? 1 : 0);
+    final spots = List<PenaltySpotStatus>.from(_state.penaltySpots);
+    spots[taken - 1] = result == KeeperShotResult.conceded
+        ? PenaltySpotStatus.scored
+        : PenaltySpotStatus.missed;
+
     _state = _state.copyWith(
       shotsTaken: taken,
       saves: saves,
       goalsConceded: goals,
       lastResult: result,
       phase: KeeperPhase.resultPause,
+      penaltySpots: spots,
     );
     notifyListeners();
   }
