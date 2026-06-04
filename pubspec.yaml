@@ -51,4 +51,5 @@ flutter:
     - assets/images/shooter/Player-Impact.png
     - assets/images/shooter/Player-FollowThrough.png
     - assets/images/shooter/Player-Recovery.png
+    - assets/images/outlines/upperbody-outline.png
     - assets/images/stadium/stadium-keeper-view.png

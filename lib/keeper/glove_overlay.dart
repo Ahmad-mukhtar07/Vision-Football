@@ -111,6 +111,7 @@ class _GloveOverlayState extends State<GloveOverlay> {
                   screenSize: size,
                   goalMouthRect: widget.goalMouthRect,
                   calibrationReference: previewRect,
+                  mirror: widget.calibrationMode,
                 ),
               if (right != null)
                 _GloveMarker(
@@ -119,6 +120,7 @@ class _GloveOverlayState extends State<GloveOverlay> {
                   screenSize: size,
                   goalMouthRect: widget.goalMouthRect,
                   calibrationReference: previewRect,
+                  mirror: widget.calibrationMode,
                 ),
             ],
           ),
@@ -151,6 +153,7 @@ class _GloveMarker extends StatelessWidget {
     required this.screenSize,
     required this.goalMouthRect,
     required this.calibrationReference,
+    this.mirror = false,
   });
 
   final Offset position;
@@ -158,6 +161,10 @@ class _GloveMarker extends StatelessWidget {
   final Size screenSize;
   final Rect? goalMouthRect;
   final Rect? calibrationReference;
+
+  /// Mirror the glove art horizontally (calibration shows an unmirrored feed,
+  /// so the glove graphic must be flipped to match the player's real hands).
+  final bool mirror;
 
   static const double _gloveHeight = 100;
   static const double _gloveWidth = 80;
@@ -186,6 +193,21 @@ class _GloveMarker extends StatelessWidget {
         ? 'assets/images/keeper/gloves/Keeper-glove-left.png'
         : 'assets/images/keeper/gloves/Keeper-glove-right.png';
 
+    Widget glove = Image.asset(
+      asset,
+      width: _gloveWidth,
+      height: _gloveHeight,
+      fit: BoxFit.contain,
+    );
+
+    if (mirror) {
+      glove = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()..scaleByDouble(-1.0, 1.0, 1.0, 1.0),
+        child: glove,
+      );
+    }
+
     // Pivot at the bottom of the glove (wrist / reach point).
     return Positioned(
       left: position.dx - _gloveWidth / 2,
@@ -193,14 +215,9 @@ class _GloveMarker extends StatelessWidget {
       width: _gloveWidth,
       height: _gloveHeight,
       child: Transform.rotate(
-        angle: angle,
+        angle: mirror ? -angle : angle,
         alignment: Alignment.bottomCenter,
-        child: Image.asset(
-          asset,
-          width: _gloveWidth,
-          height: _gloveHeight,
-          fit: BoxFit.contain,
-        ),
+        child: glove,
       ),
     );
   }

@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -119,7 +121,9 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final screen = constraints.biggest;
-        final rect = KeeperPreviewLayout.calibrationRect(screen, previewSize);
+        final portraitSize =
+            KeeperPreviewLayout.orientedPreviewSize(previewSize);
+        final rect = KeeperPreviewLayout.calibrationRect(screen, portraitSize);
 
         return ColoredBox(
           color: Colors.black,
@@ -135,13 +139,24 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      child: SizedBox(
-                        width: previewSize.width,
-                        height: previewSize.height,
-                        child: CameraPreview(ctrl),
-                      ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.cover,
+                          alignment: Alignment.center,
+                          child: SizedBox(
+                            width: previewSize.width,
+                            height: previewSize.height,
+                            child: CameraPreview(ctrl),
+                          ),
+                        ),
+                        const Positioned.fill(
+                          child: IgnorePointer(
+                            child: _UpperBodyOutlineOverlay(),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -152,4 +167,75 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
       },
     );
   }
+}
+
+/// Draws the upper-body outline PNG over the camera using [BlendMode.lighten]
+/// so black pixels pass through and only the golden lines are visible.
+class _UpperBodyOutlineOverlay extends StatefulWidget {
+  const _UpperBodyOutlineOverlay();
+
+  static const _asset = 'assets/images/outlines/upperbody-outline.png';
+
+  @override
+  State<_UpperBodyOutlineOverlay> createState() =>
+      _UpperBodyOutlineOverlayState();
+}
+
+class _UpperBodyOutlineOverlayState extends State<_UpperBodyOutlineOverlay> {
+  ui.Image? _image;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImage();
+  }
+
+  Future<void> _loadImage() async {
+    final data = await rootBundle.load(_UpperBodyOutlineOverlay._asset);
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    if (mounted) setState(() => _image = frame.image);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final image = _image;
+    if (image == null) return const SizedBox.shrink();
+    return CustomPaint(
+      painter: _UpperBodyOutlinePainter(image),
+      size: Size.infinite,
+    );
+  }
+}
+
+class _UpperBodyOutlinePainter extends CustomPainter {
+  _UpperBodyOutlinePainter(this.image);
+
+  final ui.Image image;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final src = Rect.fromLTWH(
+      0,
+      0,
+      image.width.toDouble(),
+      image.height.toDouble(),
+    );
+    final scale = math.min(size.width / src.width, size.height / src.height);
+    final dst = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: src.width * scale,
+      height: src.height * scale,
+    );
+
+    final paint = Paint()
+      ..blendMode = BlendMode.lighten
+      ..filterQuality = FilterQuality.medium;
+
+    canvas.drawImageRect(image, src, dst, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _UpperBodyOutlinePainter oldDelegate) =>
+      oldDelegate.image != image;
 }

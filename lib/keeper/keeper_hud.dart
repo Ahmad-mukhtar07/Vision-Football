@@ -74,7 +74,10 @@ class KeeperHud extends StatelessWidget {
   }
 
   Widget _buildCalibrationBanner() {
-    return Center(
+    return Positioned(
+      top: 12,
+      left: 16,
+      right: 16,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -92,17 +95,18 @@ class KeeperHud extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'POSITION YOURSELF',
+                  'SHOW YOUR UPPER BODY',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFF42A5F5),
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
+                    color: _gold,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Stand in front of the camera\nand raise both hands',
+                  'Line up with the outline,\nthen raise both hands',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white70,

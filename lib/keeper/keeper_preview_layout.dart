@@ -8,33 +8,31 @@ class KeeperPreviewLayout {
   KeeperPreviewLayout._();
 
   /// Fraction of screen width used for the preview box.
-  static const double widthFraction = 0.88;
+  static const double widthFraction = 0.96;
 
   /// Max fraction of screen height the preview may occupy.
-  static const double maxHeightFraction = 0.60;
+  static const double maxHeightFraction = 0.68;
 
   /// Extra vertical scale applied after aspect-ratio sizing.
   static const double heightScale = 1.08;
 
-  /// Vertical bias (pixels) to leave room for the HUD banner above center.
-  static const double verticalBias = 48;
+  /// Vertical bias (pixels). Negative nudges the box down so the top
+  /// instruction banner has room above it.
+  static const double verticalBias = -28;
 
-  /// Computes the on-screen rect for a portrait-oriented front-camera preview.
-  ///
-  /// [previewSize] is the raw [CameraController.value.previewSize] (typically
-  /// landscape). The box preserves that aspect ratio without stretching.
-  static Rect calibrationRect(Size screen, Size bufferSize) {
-    // Camera buffers are usually landscape; portrait UI swaps width/height.
-    final double displayW;
-    final double displayH;
-    if (bufferSize.width > bufferSize.height) {
-      displayW = bufferSize.height;
-      displayH = bufferSize.width;
-    } else {
-      displayW = bufferSize.width;
-      displayH = bufferSize.height;
+  /// Raw [CameraController.value.previewSize] is usually landscape; swap for UI.
+  static Size orientedPreviewSize(Size previewSize) {
+    if (previewSize.width > previewSize.height) {
+      return Size(previewSize.height, previewSize.width);
     }
-    final aspect = displayH / displayW;
+    return previewSize;
+  }
+
+  /// Computes the on-screen rect for a portrait front-camera preview.
+  ///
+  /// [portraitSize] should be the display-oriented size (height > width).
+  static Rect calibrationRect(Size screen, Size portraitSize) {
+    final aspect = portraitSize.height / portraitSize.width;
 
     var w = screen.width * widthFraction;
     var h = w * aspect * heightScale;

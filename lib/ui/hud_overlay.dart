@@ -125,8 +125,8 @@ class _HudOverlayState extends State<HudOverlay>
   }
 
   Shader _gradientShader(double fontSize) {
-    return LinearGradient(
-      colors: const [_gold, _orange],
+    return const LinearGradient(
+      colors: [_gold, _orange],
     ).createShader(Rect.fromLTWH(0, 0, 200, fontSize * 1.2));
   }
 
