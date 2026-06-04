@@ -1,14 +1,12 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../ui/calibration_camera_box.dart';
 import 'hand_detector_service.dart';
-import 'keeper_preview_layout.dart';
 
 /// Camera capture used by goalkeeper mode.
 ///
@@ -27,6 +25,9 @@ class KeeperCameraPreview extends StatefulWidget {
   /// When true the live camera feed is shown in a centered box (calibration).
   /// When false only the detection pipeline runs — nothing is drawn.
   final bool showPreview;
+
+  static const _upperBodyOutline =
+      'assets/images/outlines/upperbody-outline.png';
 
   @override
   State<KeeperCameraPreview> createState() => _KeeperCameraPreviewState();
@@ -113,129 +114,9 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
       );
     }
 
-    final previewSize = ctrl.value.previewSize;
-    if (previewSize == null) {
-      return const SizedBox.expand();
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final screen = constraints.biggest;
-        final portraitSize =
-            KeeperPreviewLayout.orientedPreviewSize(previewSize);
-        final rect = KeeperPreviewLayout.calibrationRect(screen, portraitSize);
-
-        return ColoredBox(
-          color: Colors.black,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Positioned.fromRect(
-                rect: rect,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white24, width: 2),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        FittedBox(
-                          fit: BoxFit.cover,
-                          alignment: Alignment.center,
-                          child: SizedBox(
-                            width: previewSize.width,
-                            height: previewSize.height,
-                            child: CameraPreview(ctrl),
-                          ),
-                        ),
-                        const Positioned.fill(
-                          child: IgnorePointer(
-                            child: _UpperBodyOutlineOverlay(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    return CalibrationCameraBox(
+      controller: ctrl,
+      outlineAsset: KeeperCameraPreview._upperBodyOutline,
     );
   }
-}
-
-/// Draws the upper-body outline PNG over the camera using [BlendMode.lighten]
-/// so black pixels pass through and only the golden lines are visible.
-class _UpperBodyOutlineOverlay extends StatefulWidget {
-  const _UpperBodyOutlineOverlay();
-
-  static const _asset = 'assets/images/outlines/upperbody-outline.png';
-
-  @override
-  State<_UpperBodyOutlineOverlay> createState() =>
-      _UpperBodyOutlineOverlayState();
-}
-
-class _UpperBodyOutlineOverlayState extends State<_UpperBodyOutlineOverlay> {
-  ui.Image? _image;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadImage();
-  }
-
-  Future<void> _loadImage() async {
-    final data = await rootBundle.load(_UpperBodyOutlineOverlay._asset);
-    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-    final frame = await codec.getNextFrame();
-    if (mounted) setState(() => _image = frame.image);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final image = _image;
-    if (image == null) return const SizedBox.shrink();
-    return CustomPaint(
-      painter: _UpperBodyOutlinePainter(image),
-      size: Size.infinite,
-    );
-  }
-}
-
-class _UpperBodyOutlinePainter extends CustomPainter {
-  _UpperBodyOutlinePainter(this.image);
-
-  final ui.Image image;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final src = Rect.fromLTWH(
-      0,
-      0,
-      image.width.toDouble(),
-      image.height.toDouble(),
-    );
-    final scale = math.min(size.width / src.width, size.height / src.height);
-    final dst = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height / 2),
-      width: src.width * scale,
-      height: src.height * scale,
-    );
-
-    final paint = Paint()
-      ..blendMode = BlendMode.lighten
-      ..filterQuality = FilterQuality.medium;
-
-    canvas.drawImageRect(image, src, dst, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _UpperBodyOutlinePainter oldDelegate) =>
-      oldDelegate.image != image;
 }

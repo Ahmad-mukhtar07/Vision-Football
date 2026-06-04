@@ -68,6 +68,8 @@ class VisionFootballGame extends FlameGame {
 
     _kickSubscription = _kickStream.listen(_onKick);
     _matchSubscription = matchController.stateStream.listen(_onMatchState);
+    // Apply current phase if the match started before onLoad finished.
+    _onMatchState(matchController.state);
   }
 
   void _onKick(KickEvent event) {

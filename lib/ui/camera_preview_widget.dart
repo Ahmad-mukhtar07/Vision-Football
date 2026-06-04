@@ -11,7 +11,20 @@ import '../pose/kick_detection_config.dart';
 import '../pose/kick_detector.dart';
 import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
+import 'calibration_camera_box.dart';
 import 'pose_coordinate_mapper.dart';
+
+/// How the live camera feed is drawn on screen.
+enum CameraPreviewMode {
+  /// Stream only — nothing drawn (during match).
+  hidden,
+
+  /// Full-screen cover with optional pose overlay (foot selection / positioning).
+  fullscreen,
+
+  /// Centered portrait box with body-outline guide (calibration).
+  calibrationBox,
+}
 
 /// Camera stream for pose/ML Kit; preview optional (hidden during match).
 class CameraPreviewWidget extends StatefulWidget {
@@ -21,7 +34,7 @@ class CameraPreviewWidget extends StatefulWidget {
     required this.kickDetector,
     required this.calibration,
     this.kickingFoot,
-    this.showPreview = true,
+    this.previewMode = CameraPreviewMode.fullscreen,
   });
 
   final List<CameraDescription> cameras;
@@ -29,8 +42,11 @@ class CameraPreviewWidget extends StatefulWidget {
   final PlayerCalibration calibration;
   final KickingFoot? kickingFoot;
 
-  /// When false, camera stream keeps running for pose/ML Kit but preview is hidden.
-  final bool showPreview;
+  /// Controls whether and how the camera preview is visible.
+  final CameraPreviewMode previewMode;
+
+  static const _lowerBodyOutline =
+      'assets/images/outlines/lowerbody-outline.png';
 
   @override
   State<CameraPreviewWidget> createState() => _CameraPreviewWidgetState();
@@ -69,6 +85,8 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
         _kickDetector.updateImageSize(imageSize);
         widget.calibration.updateImageSize(imageSize);
       }
+      // During match the preview is hidden — skip UI rebuilds (~30/sec).
+      if (widget.previewMode == CameraPreviewMode.hidden) return;
       _updateSmoothedAnkle(landmarks, imageSize);
       setState(() => _landmarks = landmarks);
     });
@@ -210,8 +228,15 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     final camera = widget.cameras[_selectedCameraIndex!];
     final sensor = _sensorRotationDegrees ?? camera.sensorOrientation;
 
-    if (!widget.showPreview) {
+    if (widget.previewMode == CameraPreviewMode.hidden) {
       return const SizedBox.expand();
+    }
+
+    if (widget.previewMode == CameraPreviewMode.calibrationBox) {
+      return CalibrationCameraBox(
+        controller: controller,
+        outlineAsset: CameraPreviewWidget._lowerBodyOutline,
+      );
     }
 
     return ColoredBox(

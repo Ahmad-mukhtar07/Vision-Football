@@ -4,6 +4,8 @@ import 'package:camera/camera.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+
 import '../game/game_foot_marker_controller.dart';
 import '../game/layout_constants.dart';
 import '../game/match_state.dart';
@@ -54,6 +56,21 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   bool _isPaused = false;
   StreamSubscription<MatchState>? _matchStateSub;
 
+  StreamSubscription<List<PoseLandmark>>? _positioningPoseSub;
+  Timer? _positioningCountdownTimer;
+  Timer? _calibrationMinTimer;
+  static const int _positioningCountdownSeconds = 8;
+  static const int _footStableFramesRequired = 10;
+  static const double _minAnkleLikelihood = 0.55;
+  static const Duration _calibrationMinDisplay = Duration(milliseconds: 800);
+
+  int _positioningSecondsLeft = _positioningCountdownSeconds;
+  int _footStableFrames = 0;
+  bool _positioningCountdownActive = false;
+  bool _calibrationMinElapsed = false;
+
+  MatchPhase? _lastMatchPhase;
+
   @override
   void initState() {
     super.initState();
@@ -84,29 +101,148 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       if (state.phase == MatchPhase.runUp) {
         _syncMarkerBallCenter(state.shotType);
       }
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      // Rebuild only when match-over overlay should appear or dismiss —
+      // not on every phase tick (that was causing gameplay jank).
+      final needsRebuild = state.phase == MatchPhase.matchOver ||
+          _lastMatchPhase == MatchPhase.matchOver;
+      _lastMatchPhase = state.phase;
+      if (needsRebuild) setState(() {});
     });
   }
 
   void _onFootSelected(KickingFoot foot) {
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
+    _calibration.clearKickingFoot();
+    _stopPositioningWatch();
+    _calibrationMinTimer?.cancel();
+    _calibrationMinElapsed = false;
     setState(() {
       _kickingFoot = foot;
       _setupPhase = _SetupPhase.positioning;
+      _resetPositioningCountdown();
     });
     _kickDetector.setKickingFoot(foot);
+    _startPositioningWatch();
+  }
+
+  void _resetPositioningCountdown() {
+    _positioningCountdownTimer?.cancel();
+    _positioningCountdownTimer = null;
+    _positioningSecondsLeft = _positioningCountdownSeconds;
+    _footStableFrames = 0;
+    _positioningCountdownActive = false;
+  }
+
+  void _stopPositioningCountdown() {
+    if (!_positioningCountdownActive) return;
+    _resetPositioningCountdown();
+    if (mounted) setState(() {});
+  }
+
+  bool _isKickingFootVisible(List<PoseLandmark> landmarks) {
+    final foot = _kickingFoot;
+    final imageSize = PoseDetectorService.instance.lastImageSize;
+    if (foot == null || imageSize == null) return false;
+
+    final byType = {for (final l in landmarks) l.type: l};
+    final ankle = foot.isLeft
+        ? byType[PoseLandmarkType.leftAnkle]
+        : byType[PoseLandmarkType.rightAnkle];
+
+    return ankle != null && ankle.likelihood >= _minAnkleLikelihood;
+  }
+
+  void _startPositioningWatch() {
+    _positioningPoseSub?.cancel();
+    _positioningPoseSub =
+        PoseDetectorService.instance.poseLandmarks.listen(_onPositioningPose);
+  }
+
+  void _stopPositioningWatch() {
+    _positioningPoseSub?.cancel();
+    _positioningPoseSub = null;
+    _positioningCountdownTimer?.cancel();
+    _positioningCountdownTimer = null;
+  }
+
+  void _onPositioningPose(List<PoseLandmark> landmarks) {
+    if (_setupPhase != _SetupPhase.positioning) return;
+
+    final footVisible = _isKickingFootVisible(landmarks);
+
+    // During countdown — pause and reset if the foot leaves frame (keeper parity).
+    if (_positioningCountdownActive) {
+      if (!footVisible) {
+        _stopPositioningCountdown();
+      }
+      return;
+    }
+
+    if (!footVisible) {
+      if (_footStableFrames > 0) {
+        setState(() => _footStableFrames = 0);
+      }
+      return;
+    }
+
+    final next = _footStableFrames + 1;
+    if (next >= _footStableFramesRequired) {
+      _startPositioningCountdown();
+    } else {
+      setState(() => _footStableFrames = next);
+    }
+  }
+
+  void _startPositioningCountdown() {
+    if (_positioningCountdownActive || _setupPhase != _SetupPhase.positioning) {
+      return;
+    }
+
+    setState(() {
+      _positioningCountdownActive = true;
+      _positioningSecondsLeft = _positioningCountdownSeconds;
+      _footStableFrames = _footStableFramesRequired;
+    });
+
+    _positioningCountdownTimer?.cancel();
+    _positioningCountdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted || _setupPhase != _SetupPhase.positioning) {
+        t.cancel();
+        return;
+      }
+      if (_positioningSecondsLeft <= 1) {
+        t.cancel();
+        _beginCalibration();
+        return;
+      }
+      setState(() => _positioningSecondsLeft--);
+    });
   }
 
   void _beginCalibration() {
     final foot = _kickingFoot;
-    if (foot == null) return;
+    if (foot == null || _setupPhase != _SetupPhase.positioning) return;
+
+    _stopPositioningWatch();
+    _calibrationMinTimer?.cancel();
+    _calibrationMinElapsed = false;
+
     setState(() => _setupPhase = _SetupPhase.calibrating);
     _calibration.setKickingFoot(foot);
+
+    _calibrationMinTimer = Timer(_calibrationMinDisplay, () {
+      if (!mounted) return;
+      setState(() => _calibrationMinElapsed = true);
+      _tryEnterGameplay();
+    });
   }
 
-  void _onCalibrationChanged() {
-    if (!_calibration.isReady || _calibration.neutralPosition == null) {
+  void _tryEnterGameplay() {
+    if (!_calibration.isReady ||
+        _calibration.neutralPosition == null ||
+        !_calibrationMinElapsed) {
       return;
     }
     if (_setupPhase != _SetupPhase.calibrating) return;
@@ -121,6 +257,11 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
 
     setState(() => _setupPhase = _SetupPhase.playing);
     _matchController.startMatch();
+    // Ensure foot-marker ring aligns with Flame ball after first layout.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _setupPhase != _SetupPhase.playing) return;
+      _syncMarkerBallCenter(_matchController.state.shotType);
+    });
   }
 
   void _recalibrate() {
@@ -128,7 +269,13 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
     _calibration.clearKickingFoot();
-    setState(() => _setupPhase = _SetupPhase.positioning);
+    _calibrationMinTimer?.cancel();
+    _calibrationMinElapsed = false;
+    setState(() {
+      _setupPhase = _SetupPhase.positioning;
+      _resetPositioningCountdown();
+    });
+    _startPositioningWatch();
   }
 
   void _changeFoot() {
@@ -136,9 +283,13 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _kickDetector.disarm();
     _kickDetector.clearKickingFoot();
     _calibration.clearKickingFoot();
+    _stopPositioningWatch();
+    _calibrationMinTimer?.cancel();
+    _calibrationMinElapsed = false;
     setState(() {
       _kickingFoot = null;
       _setupPhase = null;
+      _resetPositioningCountdown();
     });
   }
 
@@ -199,6 +350,8 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   @override
   void dispose() {
     _matchStateSub?.cancel();
+    _stopPositioningWatch();
+    _calibrationMinTimer?.cancel();
     _calibration.removeListener(_onCalibrationChanged);
     _calibration.dispose();
     _matchController.dispose();
@@ -206,12 +359,20 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     super.dispose();
   }
 
+  void _onCalibrationChanged() {
+    _tryEnterGameplay();
+  }
+
   @override
   Widget build(BuildContext context) {
     final playing = _setupPhase == _SetupPhase.playing;
     final matchOver = playing && _matchController.state.phase == MatchPhase.matchOver;
-    final showCameraPreview = _kickingFoot == null ||
-        _setupPhase == _SetupPhase.positioning;
+    final previewMode = switch (_setupPhase) {
+      _SetupPhase.calibrating || _SetupPhase.positioning =>
+        CameraPreviewMode.calibrationBox,
+      _SetupPhase.playing => CameraPreviewMode.hidden,
+      null => CameraPreviewMode.fullscreen,
+    };
 
     return Stack(
       fit: StackFit.expand,
@@ -221,14 +382,20 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           kickDetector: _kickDetector,
           calibration: _calibration,
           kickingFoot: _kickingFoot,
-          showPreview: showCameraPreview,
+          previewMode: previewMode,
         ),
-        GameWidget(
-          game: _game,
-          backgroundBuilder: (context) => const SizedBox.shrink(),
+        // Mounted early so Flame is ready before kick 1; not painted until play.
+        Offstage(
+          offstage: !playing,
+          child: GameWidget(
+            game: _game,
+            backgroundBuilder: (context) => const SizedBox.shrink(),
+          ),
         ),
-        if ((playing || _setupPhase == _SetupPhase.calibrating) &&
-            _kickingFoot != null)
+        if (_kickingFoot != null &&
+            (_setupPhase == _SetupPhase.positioning ||
+                _setupPhase == _SetupPhase.calibrating ||
+                playing))
           FootMarkerOverlay(
             cameras: widget.cameras,
             kickingFoot: _kickingFoot!,
@@ -251,7 +418,10 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
         else if (_setupPhase == _SetupPhase.positioning)
           PositioningOverlay(
             kickingFoot: _kickingFoot!,
-            onBeginCalibration: _beginCalibration,
+            waitingForFoot: !_positioningCountdownActive,
+            countdownActive: _positioningCountdownActive,
+            secondsLeft: _positioningSecondsLeft,
+            onSkipCountdown: _beginCalibration,
           )
         else if (_setupPhase == _SetupPhase.calibrating)
           CalibrationOverlay(
