@@ -25,6 +25,8 @@ class GloveOverlay extends StatefulWidget {
     super.key,
     required this.onGlovesChanged,
     this.calibrationMode = false,
+    this.calibrationFullscreen = false,
+    this.calibrationHandsReady = true,
     this.goalMouthRect,
   });
 
@@ -33,6 +35,13 @@ class GloveOverlay extends StatefulWidget {
   /// When true, glove positions are mapped into the calibration preview box
   /// (unmirrored video) instead of full-screen mirrored coordinates.
   final bool calibrationMode;
+
+  /// Immersive edge-to-edge calibration — uses mirrored full-screen mapping.
+  final bool calibrationFullscreen;
+
+  /// When false during calibration, fixed hand targets are shown instead of
+  /// glove art until both hands are tracked.
+  final bool calibrationHandsReady;
 
   /// Goal mouth in screen pixels — used for gameplay glove rotation.
   final Rect? goalMouthRect;
@@ -85,7 +94,9 @@ class _GloveOverlayState extends State<GloveOverlay> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = constraints.biggest;
-        final previewRect = widget.calibrationMode && _imageSize != null
+        final usePreviewBox =
+            widget.calibrationMode && !widget.calibrationFullscreen;
+        final previewRect = usePreviewBox && _imageSize != null
             ? KeeperPreviewLayout.calibrationRect(size, _imageSize!)
             : null;
         final left = _toScreen(_leftNorm, size, previewRect);
@@ -100,27 +111,30 @@ class _GloveOverlayState extends State<GloveOverlay> {
           });
         }
 
+        final showGloves = !widget.calibrationMode ||
+            (widget.calibrationMode && widget.calibrationHandsReady);
+
         return IgnorePointer(
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (left != null)
+              if (showGloves && left != null)
                 _GloveMarker(
                   position: left,
                   isLeft: true,
                   screenSize: size,
                   goalMouthRect: widget.goalMouthRect,
                   calibrationReference: previewRect,
-                  mirror: widget.calibrationMode,
+                  mirror: usePreviewBox,
                 ),
-              if (right != null)
+              if (showGloves && right != null)
                 _GloveMarker(
                   position: right,
                   isLeft: false,
                   screenSize: size,
                   goalMouthRect: widget.goalMouthRect,
                   calibrationReference: previewRect,
-                  mirror: widget.calibrationMode,
+                  mirror: usePreviewBox,
                 ),
             ],
           ),

@@ -5,14 +5,14 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../ui/calibration_camera_box.dart';
+import '../ui/fullscreen_camera_preview.dart';
 import 'hand_detector_service.dart';
 
 /// Camera capture used by goalkeeper mode.
 ///
 /// Owns the camera controller and forwards every frame to
-/// [HandDetectorService]. The preview itself is invisible — only the
-/// detection stream is needed by the keeper scene.
+/// [HandDetectorService]. During calibration the feed is fullscreen;
+/// otherwise only the detection pipeline runs.
 class KeeperCameraPreview extends StatefulWidget {
   const KeeperCameraPreview({
     super.key,
@@ -22,12 +22,9 @@ class KeeperCameraPreview extends StatefulWidget {
 
   final List<CameraDescription> cameras;
 
-  /// When true the live camera feed is shown in a centered box (calibration).
+  /// When true the live camera feed fills the screen (calibration).
   /// When false only the detection pipeline runs — nothing is drawn.
   final bool showPreview;
-
-  static const _upperBodyOutline =
-      'assets/images/outlines/upperbody-outline.png';
 
   @override
   State<KeeperCameraPreview> createState() => _KeeperCameraPreviewState();
@@ -114,9 +111,6 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
       );
     }
 
-    return CalibrationCameraBox(
-      controller: ctrl,
-      outlineAsset: KeeperCameraPreview._upperBodyOutline,
-    );
+    return FullscreenCameraPreview(controller: ctrl);
   }
 }

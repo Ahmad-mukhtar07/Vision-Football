@@ -10,14 +10,10 @@ class KeeperHud extends StatelessWidget {
     super.key,
     required this.state,
     required this.onPausePressed,
-    this.calibrationSecondsLeft = 0,
-    this.calibrationWaitingForHands = false,
   });
 
   final KeeperMatchState state;
   final VoidCallback onPausePressed;
-  final int calibrationSecondsLeft;
-  final bool calibrationWaitingForHands;
 
   static const _saveGreen = Color(0xFF7CFF7C);
   static const _goalRed = Color(0xFFFF3333);
@@ -59,8 +55,6 @@ class KeeperHud extends StatelessWidget {
                     : PenaltyScoreBar.initialSpots(state.totalShots),
               ),
             ),
-          if (state.phase == KeeperPhase.calibrating)
-            _buildCalibrationBanner(),
           if (state.phase == KeeperPhase.waitingForReady) ...[
             _buildSpotLabel(state.spotType),
             _buildHint('GET READY'),
@@ -68,81 +62,6 @@ class KeeperHud extends StatelessWidget {
           if (state.phase == KeeperPhase.shotIncoming)
             _buildHint('INCOMING!', color: _gold),
           if (state.phase == KeeperPhase.resultPause) _buildResultBanner(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCalibrationBanner() {
-    return Positioned(
-      top: 12,
-      left: 16,
-      right: 16,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFF42A5F5).withValues(alpha: 0.7),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'SHOW YOUR UPPER BODY',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _gold,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Line up with the outline,\nthen raise both hands',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 15,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                if (calibrationWaitingForHands)
-                  const Icon(
-                    Icons.back_hand_outlined,
-                    color: Colors.white54,
-                    size: 48,
-                  )
-                else
-                  Text(
-                    '$calibrationSecondsLeft',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 42,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                if (calibrationWaitingForHands) ...[
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Waiting for both hands…',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
         ],
       ),
     );

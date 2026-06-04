@@ -235,6 +235,7 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     if (widget.previewMode == CameraPreviewMode.calibrationBox) {
       return CalibrationCameraBox(
         controller: controller,
+        guideStyle: CalibrationGuideStyle.outline,
         outlineAsset: CameraPreviewWidget._lowerBodyOutline,
       );
     }

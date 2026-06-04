@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../ui/pause_menu_overlay.dart';
 import 'glove_overlay.dart';
 import 'hand_detector_service.dart';
+import 'keeper_calibration_overlay.dart';
 import 'keeper_camera_preview.dart';
 import 'keeper_game.dart';
 import 'keeper_goal_image.dart';
@@ -238,6 +239,9 @@ class _KeeperScreenState extends State<KeeperScreen> {
         GloveOverlay(
           onGlovesChanged: _onGlovesChanged,
           calibrationMode: isCalibrating,
+          calibrationFullscreen: isCalibrating,
+          calibrationHandsReady:
+              isCalibrating && _calibrationCountdownActive,
           goalMouthRect:
               isCalibrating ? null : _game.goalMouthRect,
         ),
@@ -245,13 +249,16 @@ class _KeeperScreenState extends State<KeeperScreen> {
         if (!isCalibrating)
           KeeperGoalImage(shiftListenable: _game.cameraXOffset),
         // 5. HUD (above the goal image).
-        if (!matchOver && !_isPaused)
+        if (!matchOver && !_isPaused && !isCalibrating)
           KeeperHud(
             state: state,
             onPausePressed: _pauseGame,
-            calibrationSecondsLeft: _calibrationSecondsLeft,
-            calibrationWaitingForHands:
-                isCalibrating && !_calibrationCountdownActive,
+          ),
+        if (isCalibrating && !_isPaused)
+          KeeperCalibrationOverlay(
+            onPausePressed: _pauseGame,
+            waitingForHands: !_calibrationCountdownActive,
+            secondsLeft: _calibrationSecondsLeft,
           ),
         // 6. Modal overlays.
         if (_isPaused)
