@@ -11,7 +11,7 @@ import '../pose/kick_detection_config.dart';
 import '../pose/kick_detector.dart';
 import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
-import 'calibration_camera_box.dart';
+import 'fullscreen_camera_preview.dart';
 import 'pose_coordinate_mapper.dart';
 
 /// How the live camera feed is drawn on screen.
@@ -22,8 +22,8 @@ enum CameraPreviewMode {
   /// Full-screen cover with optional pose overlay (foot selection / positioning).
   fullscreen,
 
-  /// Centered portrait box with body-outline guide (calibration).
-  calibrationBox,
+  /// Immersive edge-to-edge calibration (shooting + keeper-style setup).
+  fullscreenCalibration,
 }
 
 /// Camera stream for pose/ML Kit; preview optional (hidden during match).
@@ -44,9 +44,6 @@ class CameraPreviewWidget extends StatefulWidget {
 
   /// Controls whether and how the camera preview is visible.
   final CameraPreviewMode previewMode;
-
-  static const _lowerBodyOutline =
-      'assets/images/outlines/lowerbody-outline.png';
 
   @override
   State<CameraPreviewWidget> createState() => _CameraPreviewWidgetState();
@@ -232,12 +229,8 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       return const SizedBox.expand();
     }
 
-    if (widget.previewMode == CameraPreviewMode.calibrationBox) {
-      return CalibrationCameraBox(
-        controller: controller,
-        guideStyle: CalibrationGuideStyle.outline,
-        outlineAsset: CameraPreviewWidget._lowerBodyOutline,
-      );
+    if (widget.previewMode == CameraPreviewMode.fullscreenCalibration) {
+      return FullscreenCameraPreview(controller: controller);
     }
 
     return ColoredBox(

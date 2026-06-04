@@ -8,7 +8,6 @@ import '../game/game_foot_marker_controller.dart';
 import '../models/kicking_foot.dart';
 import '../pose/kick_detector.dart';
 import '../pose/pose_detector_service.dart';
-import 'calibration_preview_layout.dart';
 import 'pose_coordinate_mapper.dart';
 import 'widgets/boot_marker_widget.dart';
 
@@ -21,6 +20,7 @@ class FootMarkerOverlay extends StatefulWidget {
     required this.kickDetector,
     this.gameFootMarker,
     this.gameAligned = false,
+    this.setupFullscreen = false,
   });
 
   final List<CameraDescription> cameras;
@@ -28,6 +28,9 @@ class FootMarkerOverlay extends StatefulWidget {
   final KickDetector kickDetector;
   final GameFootMarkerController? gameFootMarker;
   final bool gameAligned;
+
+  /// Full-screen setup camera — use mirrored screen coords for the boot marker.
+  final bool setupFullscreen;
 
   @override
   State<FootMarkerOverlay> createState() => _FootMarkerOverlayState();
@@ -259,15 +262,22 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
       return const SizedBox.shrink();
     }
 
-    final portraitSize =
-        CalibrationPreviewLayout.orientedPreviewSize(imageSize);
-    final previewRect =
-        CalibrationPreviewLayout.calibrationRect(screen, portraitSize);
-    // Preview video is unmirrored; gameplay norm is mirrored — flip X back.
-    final pt = Offset(
-      previewRect.left + (1.0 - norm.dx) * previewRect.width,
-      previewRect.top + norm.dy * previewRect.height,
-    );
+    final Offset pt;
+    if (widget.setupFullscreen) {
+      final sensor =
+          PoseDetectorService.instance.cameraSensorOrientation ?? 270;
+      final mapper = PoseCoordinateMapper(
+        imageSize: imageSize,
+        screenSize: screen,
+        isFrontCamera: _isFrontCamera(),
+        sensorRotation: sensor,
+      );
+      pt = mapper.normalizedOffsetToScreen(norm);
+    } else {
+      // Legacy boxed preview path (unused in current shooting flow).
+      pt = Offset(norm.dx * screen.width, norm.dy * screen.height);
+    }
+
     final clamped = _clampFootPoint(pt, screen);
     final bootPos = _bootTopLeft(clamped);
 

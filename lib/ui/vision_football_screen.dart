@@ -14,14 +14,13 @@ import '../models/kicking_foot.dart';
 import '../pose/kick_detector.dart';
 import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
-import 'calibration_overlay.dart';
 import 'camera_preview_widget.dart';
 import 'foot_selection_overlay.dart';
 import 'foot_marker_overlay.dart';
 import 'hud_overlay.dart';
 import 'match_over_overlay.dart';
 import 'pause_menu_overlay.dart';
-import 'positioning_overlay.dart';
+import 'shooting_calibration_overlay.dart';
 
 enum _SetupPhase {
   positioning,
@@ -264,20 +263,6 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     });
   }
 
-  void _recalibrate() {
-    _gameFootMarker.endGameMode();
-    _kickDetector.disarm();
-    _kickDetector.setGameCanAcceptKick(false);
-    _calibration.clearKickingFoot();
-    _calibrationMinTimer?.cancel();
-    _calibrationMinElapsed = false;
-    setState(() {
-      _setupPhase = _SetupPhase.positioning;
-      _resetPositioningCountdown();
-    });
-    _startPositioningWatch();
-  }
-
   void _changeFoot() {
     _gameFootMarker.endGameMode();
     _kickDetector.disarm();
@@ -300,23 +285,31 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   }
 
   void _pauseGame() {
-    if (_setupPhase != _SetupPhase.playing || _isPaused) return;
+    if (_isPaused) return;
+    if (_setupPhase == _SetupPhase.playing) {
+      _matchController.pauseMatch();
+      _kickDetector.disarm();
+      _kickDetector.setGameCanAcceptKick(false);
+      _game.pauseEngine();
+    } else if (_setupPhase == _SetupPhase.positioning) {
+      _stopPositioningWatch();
+    }
     setState(() => _isPaused = true);
-    _matchController.pauseMatch();
-    _kickDetector.disarm();
-    _kickDetector.setGameCanAcceptKick(false);
-    _game.pauseEngine();
   }
 
   void _resumeGame() {
     if (!_isPaused) return;
     setState(() => _isPaused = false);
-    _game.resumeEngine();
-    _matchController.resumeMatch();
+    if (_setupPhase == _SetupPhase.playing) {
+      _game.resumeEngine();
+      _matchController.resumeMatch();
+    } else if (_setupPhase == _SetupPhase.positioning) {
+      _startPositioningWatch();
+    }
   }
 
   void _quitGame() {
-    if (_isPaused) {
+    if (_setupPhase == _SetupPhase.playing && _isPaused) {
       _game.resumeEngine();
     }
     _matchController.abandonMatch();
@@ -369,7 +362,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     final matchOver = playing && _matchController.state.phase == MatchPhase.matchOver;
     final previewMode = switch (_setupPhase) {
       _SetupPhase.calibrating || _SetupPhase.positioning =>
-        CameraPreviewMode.calibrationBox,
+        CameraPreviewMode.fullscreenCalibration,
       _SetupPhase.playing => CameraPreviewMode.hidden,
       null => CameraPreviewMode.fullscreen,
     };
@@ -402,6 +395,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             kickDetector: _kickDetector,
             gameFootMarker: _gameFootMarker,
             gameAligned: playing,
+            setupFullscreen: !playing,
           ),
         if (playing && !matchOver && !_isPaused)
           HudOverlay(
@@ -415,20 +409,18 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           ),
         if (_kickingFoot == null)
           FootSelectionOverlay(onFootSelected: _onFootSelected)
-        else if (_setupPhase == _SetupPhase.positioning)
-          PositioningOverlay(
+        else if ((_setupPhase == _SetupPhase.positioning ||
+                _setupPhase == _SetupPhase.calibrating) &&
+            !_isPaused)
+          ShootingCalibrationOverlay(
             kickingFoot: _kickingFoot!,
-            waitingForFoot: !_positioningCountdownActive,
+            isPositioning: _setupPhase == _SetupPhase.positioning,
             countdownActive: _positioningCountdownActive,
             secondsLeft: _positioningSecondsLeft,
-            onSkipCountdown: _beginCalibration,
-          )
-        else if (_setupPhase == _SetupPhase.calibrating)
-          CalibrationOverlay(
             calibration: _calibration,
-            kickingFoot: _kickingFoot!,
-            onRecalibrate: _recalibrate,
-            onChangeFoot: _changeFoot,
+            onPausePressed: _pauseGame,
+            onSkipCountdown: _beginCalibration,
+            onForceComplete: _calibration.forceComplete,
           ),
         if (matchOver)
           MatchOverOverlay(
