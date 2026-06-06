@@ -55,3 +55,7 @@ flutter:
     - assets/images/outlines/upperbody-outline.png
     - assets/images/outlines/lowerbody-outline.png
     - assets/images/stadium/stadium-keeper-view.png
+    - assets/images/main_page/stadium_bg.jpeg
+    - assets/images/main_page/match_art.png
+    - assets/images/main_page/tournament_art.png
+    - assets/images/main_page/online_art.jpeg
