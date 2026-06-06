@@ -1,14 +1,42 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'glass_panel.dart';
 
 /// Selectable game mode from the start screen.
 enum GameMode { takeShots, beTheKeeper }
 
+/// Plays a short UI click + light haptic for button feedback.
+void _playTapFeedback() {
+  SystemSound.play(SystemSoundType.click);
+  HapticFeedback.selectionClick();
+}
+
+/// Shared "Electric Arcade" palette — neon magenta + cyan + lime on indigo.
+class _Arcade {
+  const _Arcade._();
+
+  // Background (deep indigo/purple base).
+  static const bgTop = Color(0xFF24104A);
+  static const bgMid = Color(0xFF170A30);
+  static const bgBottom = Color(0xFF0C0620);
+
+  // Neon accents.
+  static const magenta = Color(0xFFFF2ECC);
+  static const cyan = Color(0xFF00E5FF);
+  static const lime = Color(0xFFC2FF1F);
+  static const violet = Color(0xFF9B30FF);
+
+  // Pitch green — ties the menu to the on-field gameplay.
+  static const green = Color(0xFF1FE07A);
+}
+
 /// Premium modular sports dashboard — entry point for all game modes.
-class ModeSelectionOverlay extends StatelessWidget {
+class ModeSelectionOverlay extends StatefulWidget {
   const ModeSelectionOverlay({
     super.key,
     required this.onModeSelected,
@@ -16,14 +44,61 @@ class ModeSelectionOverlay extends StatelessWidget {
 
   final ValueChanged<GameMode> onModeSelected;
 
-  static const _slateBlack = Color(0xFF0B0E14);
-  static const _hyperCyan = Color(0xFF00E5FF);
-  static const _voltGreen = Color(0xFF7CFF7C);
+  @override
+  State<ModeSelectionOverlay> createState() => _ModeSelectionOverlayState();
+}
 
-  static const _stadiumBg = 'assets/images/main_page/stadium_bg.jpeg';
+class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
+    with SingleTickerProviderStateMixin {
   static const _matchArt = 'assets/images/main_page/match_art.png';
   static const _tournamentArt = 'assets/images/main_page/tournament_art.png';
   static const _onlineArt = 'assets/images/main_page/online_art.jpeg';
+  static const _ballArt = 'assets/images/ball/Ball-left.png';
+
+  static const _avatars = <String>[
+    'assets/images/main_page/avatars/avatar_1.png',
+    'assets/images/main_page/avatars/avatar_2.png',
+    'assets/images/main_page/avatars/avatar_3.png',
+    'assets/images/main_page/avatars/avatar_4.png',
+  ];
+
+  /// Single ticker drives particle drift, featured-card glow pulse, ball
+  /// rotation, and streak shimmer (derived phases — no extra controllers).
+  static const _masterLoopSeconds = 6.0;
+
+  late final AnimationController _masterController;
+  late final List<_ParticleSeed> _particleSeeds;
+  late final String _avatarAsset;
+
+  @override
+  void initState() {
+    super.initState();
+    _avatarAsset = _avatars[math.Random().nextInt(_avatars.length)];
+
+    _masterController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    )..repeat();
+
+    final rng = math.Random(7);
+    _particleSeeds = List.generate(22, (i) {
+      return _ParticleSeed(
+        xFactor: rng.nextDouble(),
+        yFactor: rng.nextDouble(),
+        radius: 1.5 + rng.nextDouble(),
+        speed: 0.018 + rng.nextDouble() * 0.028,
+        warm: rng.nextBool(),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _masterController.dispose();
+    super.dispose();
+  }
+
+  double get _elapsedSeconds => _masterController.value * _masterLoopSeconds;
 
   void _openFullMatch(BuildContext context) {
     showModalBottomSheet<void>(
@@ -33,7 +108,7 @@ class ModeSelectionOverlay extends StatelessWidget {
       builder: (ctx) => _FullMatchRoleSheet(
         onModeSelected: (mode) {
           Navigator.of(ctx).pop();
-          onModeSelected(mode);
+          widget.onModeSelected(mode);
         },
       ),
     );
@@ -41,41 +116,213 @@ class ModeSelectionOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: _slateBlack,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const _DashboardHeader(),
-              const SizedBox(height: 20),
-              const Expanded(
-                child: _PlayerDashboardCard(
-                  stadiumAsset: ModeSelectionOverlay._stadiumBg,
-                  hyperCyan: ModeSelectionOverlay._hyperCyan,
-                  voltGreen: ModeSelectionOverlay._voltGreen,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                flex: 2,
-                child: _ModeSelectorGrid(
-                  matchArt: _matchArt,
-                  tournamentArt: _tournamentArt,
-                  onlineArt: _onlineArt,
-                  voltGreen: _voltGreen,
-                  hyperCyan: _hyperCyan,
-                  onFullMatchTap: () => _openFullMatch(context),
-                ),
-              ),
-            ],
-          ),
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_Arcade.bgTop, _Arcade.bgMid, _Arcade.bgBottom],
+          stops: [0.0, 0.55, 1.0],
         ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Neon glow bloom behind everything.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0, -0.55),
+                radius: 1.15,
+                colors: [
+                  Color(0x5AFF2ECC),
+                  Color(0x2E00E5FF),
+                  Color(0x00000000),
+                ],
+                stops: [0.0, 0.42, 1.0],
+              ),
+            ),
+          ),
+          const CustomPaint(
+            painter: _NeonStreaksPainter(),
+            size: Size.infinite,
+          ),
+          const CustomPaint(
+            painter: _AthleticStripePainter(),
+            size: Size.infinite,
+          ),
+          AnimatedBuilder(
+            animation: _masterController,
+            builder: (context, _) {
+              return CustomPaint(
+                painter: _DriftingParticlePainter(
+                  elapsedSeconds: _elapsedSeconds,
+                  seeds: _particleSeeds,
+                ),
+                size: Size.infinite,
+              );
+            },
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _DashboardHeader(),
+                  const SizedBox(height: 16),
+                  _ProfileStrip(
+                    masterAnimation: _masterController,
+                    avatarAsset: _avatarAsset,
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: _SpotlightHero(
+                      onTap: () => _openFullMatch(context),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    flex: 2,
+                    child: _ModeSelectorGrid(
+                      matchArt: _matchArt,
+                      ballArt: _ballArt,
+                      tournamentArt: _tournamentArt,
+                      onlineArt: _onlineArt,
+                      masterAnimation: _masterController,
+                      onFullMatchTap: () => _openFullMatch(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _ParticleSeed {
+  const _ParticleSeed({
+    required this.xFactor,
+    required this.yFactor,
+    required this.radius,
+    required this.speed,
+    required this.warm,
+  });
+
+  final double xFactor;
+  final double yFactor;
+  final double radius;
+  final double speed;
+  final bool warm;
+}
+
+/// Bold neon corner slashes that echo the theme — clustered top-left and
+/// bottom-right so the center stays clear for the cards.
+class _NeonStreaksPainter extends CustomPainter {
+  const _NeonStreaksPainter();
+
+  void _slash(
+    Canvas canvas,
+    Offset start,
+    double length,
+    double width,
+    Color color,
+  ) {
+    // ~58° "/" slash going up-right.
+    const angle = -58 * math.pi / 180;
+    final end = start +
+        Offset(math.cos(angle), math.sin(angle)) * length;
+
+    final glow = Paint()
+      ..color = color.withValues(alpha: 0.45)
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
+    final core = Paint()
+      ..color = color.withValues(alpha: 0.9)
+      ..strokeWidth = width * 0.5
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(start, end, glow);
+    canvas.drawLine(start, end, core);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // Top-left cluster.
+    _slash(canvas, Offset(-30, h * 0.12), h * 0.30, 12, _Arcade.magenta);
+    _slash(canvas, Offset(-12, h * 0.20), h * 0.24, 7, _Arcade.cyan);
+    _slash(canvas, Offset(16, h * 0.07), h * 0.17, 5, _Arcade.lime);
+
+    // Bottom-right cluster.
+    _slash(canvas, Offset(w * 0.76, h + 30), h * 0.32, 13, _Arcade.cyan);
+    _slash(canvas, Offset(w * 0.88, h + 12), h * 0.25, 8, _Arcade.magenta);
+    _slash(canvas, Offset(w * 0.68, h + 22), h * 0.18, 5, _Arcade.lime);
+  }
+
+  @override
+  bool shouldRepaint(covariant _NeonStreaksPainter oldDelegate) => false;
+}
+
+class _AthleticStripePainter extends CustomPainter {
+  const _AthleticStripePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.04)
+      ..strokeWidth = 1;
+
+    const spacing = 28.0;
+    final diagonal = size.width + size.height;
+    for (var d = -diagonal; d < diagonal; d += spacing) {
+      canvas.drawLine(
+        Offset(d, 0),
+        Offset(d + size.height, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AthleticStripePainter oldDelegate) => false;
+}
+
+class _DriftingParticlePainter extends CustomPainter {
+  _DriftingParticlePainter({
+    required this.elapsedSeconds,
+    required this.seeds,
+  });
+
+  final double elapsedSeconds;
+  final List<_ParticleSeed> seeds;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final warmPaint = Paint()..color = _Arcade.lime.withValues(alpha: 0.22);
+    final coolPaint = Paint()..color = Colors.white.withValues(alpha: 0.16);
+
+    for (final seed in seeds) {
+      final x = seed.xFactor * size.width;
+      final drift = (seed.yFactor - seed.speed * elapsedSeconds) % 1.0;
+      final y = (drift < 0 ? drift + 1 : drift) * size.height;
+      canvas.drawCircle(
+        Offset(x, y),
+        seed.radius,
+        seed.warm ? warmPaint : coolPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DriftingParticlePainter oldDelegate) =>
+      oldDelegate.elapsedSeconds != elapsedSeconds;
 }
 
 class _DashboardHeader extends StatelessWidget {
@@ -83,135 +330,445 @@ class _DashboardHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Text(
+    return Text(
       'VISION FOOTBALL',
       textAlign: TextAlign.center,
       style: TextStyle(
         color: Colors.white,
-        fontSize: 14,
-        fontWeight: FontWeight.w800,
+        fontSize: 14 * 1.2,
+        fontWeight: FontWeight.w900,
+        fontStyle: FontStyle.italic,
         letterSpacing: 4.2,
+        shadows: [
+          const Shadow(
+            color: _Arcade.magenta,
+            blurRadius: 16,
+            offset: Offset.zero,
+          ),
+          Shadow(
+            color: _Arcade.cyan.withValues(alpha: 0.8),
+            blurRadius: 28,
+            offset: Offset.zero,
+          ),
+        ],
       ),
     );
   }
 }
 
-class _PlayerDashboardCard extends StatelessWidget {
-  const _PlayerDashboardCard({
-    required this.stadiumAsset,
-    required this.hyperCyan,
-    required this.voltGreen,
+/// Slim identity bar: avatar + name/level on the left, streak on the right.
+class _ProfileStrip extends StatelessWidget {
+  const _ProfileStrip({
+    required this.masterAnimation,
+    required this.avatarAsset,
   });
 
-  final String stadiumAsset;
-  final Color hyperCyan;
-  final Color voltGreen;
+  final Animation<double> masterAnimation;
+  final String avatarAsset;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned.fill(
-              child: Image.asset(
-                stadiumAsset,
-                fit: BoxFit.cover,
-                alignment: Alignment.center,
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.08),
+            border: Border.all(color: _Arcade.cyan, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: _Arcade.cyan.withValues(alpha: 0.5),
+                blurRadius: 12,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: Image.asset(
+              avatarAsset,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stack) => const Icon(
+                Icons.person_rounded,
+                size: 24,
+                color: Colors.white,
               ),
             ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.52),
-                    Colors.black.withValues(alpha: 0.28),
-                    Colors.black.withValues(alpha: 0.12),
-                  ],
-                  stops: const [0.0, 0.55, 1.0],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.35),
-                ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Striker10',
+              maxLines: 1,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                letterSpacing: 0.3,
               ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 18,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.08),
-                        border: Border.all(
-                          color: hyperCyan.withValues(alpha: 0.55),
-                          width: 2,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.person_rounded,
-                        size: 34,
-                        color: hyperCyan.withValues(alpha: 0.9),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Striker10',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: voltGreen.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: voltGreen.withValues(alpha: 0.35),
-                              ),
-                            ),
-                            child: Text(
-                              '7 Day Streak 🔥',
-                              style: TextStyle(
-                                color: voltGreen,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              'LEVEL 3  •  STRIKER',
+              style: TextStyle(
+                color: _Arcade.lime.withValues(alpha: 0.9),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.0,
               ),
             ),
           ],
         ),
+        const Spacer(),
+        _ShimmerStreakPill(animation: masterAnimation),
+      ],
+    );
+  }
+}
+
+/// Data for one spotlight slide.
+class _SpotlightSlide {
+  const _SpotlightSlide({
+    required this.eyebrow,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    this.progress,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color accent;
+
+  /// 0..1 progress; null hides the bar.
+  final double? progress;
+}
+
+/// Auto-cycling hero banner: challenge → pro tip → highlight.
+class _SpotlightHero extends StatefulWidget {
+  const _SpotlightHero({this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  State<_SpotlightHero> createState() => _SpotlightHeroState();
+}
+
+class _SpotlightHeroState extends State<_SpotlightHero> {
+  static const _slides = <_SpotlightSlide>[
+    _SpotlightSlide(
+      eyebrow: 'DAILY CHALLENGE',
+      title: 'Score 5 Top-Bin Goals',
+      subtitle: '3 / 5 done — finish it before midnight',
+      icon: Icons.sports_soccer_rounded,
+      accent: _Arcade.green,
+      progress: 0.6,
+    ),
+    _SpotlightSlide(
+      eyebrow: 'PRO TIP',
+      title: 'Plant Beside the Ball',
+      subtitle: 'A steady standing foot = cleaner strikes',
+      icon: Icons.tips_and_updates_rounded,
+      accent: _Arcade.cyan,
+    ),
+    _SpotlightSlide(
+      eyebrow: 'YOU\'RE ON FIRE',
+      title: '7-Day Streak! 🔥',
+      subtitle: 'Your longest yet — keep the run alive',
+      icon: Icons.local_fire_department_rounded,
+      accent: _Arcade.magenta,
+    ),
+  ];
+
+  static const _interval = Duration(milliseconds: 4200);
+
+  int _index = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(_interval, (_) {
+      if (!mounted) return;
+      setState(() => _index = (_index + 1) % _slides.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final slide = _slides[_index];
+
+    final card = ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF1A0B33).withValues(alpha: 0.92),
+                slide.accent.withValues(alpha: 0.18),
+              ],
+            ),
+            border: Border.all(
+              color: slide.accent.withValues(alpha: 0.6),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: slide.accent.withValues(alpha: 0.35),
+                blurRadius: 18,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              // Accent glow bloom in the corner behind the icon.
+              Positioned(
+                right: -20,
+                top: -20,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        slide.accent.withValues(alpha: 0.4),
+                        slide.accent.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 16, 14),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 450),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.06, 0),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: _SlideContent(
+                    key: ValueKey(_index),
+                    slide: slide,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 18,
+                bottom: 12,
+                child: Row(
+                  children: List.generate(_slides.length, (i) {
+                    final active = i == _index;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      margin: const EdgeInsets.only(right: 6),
+                      width: active ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: active
+                            ? slide.accent
+                            : Colors.white.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+
+    if (widget.onTap == null) return card;
+    return _TapScaleCard(
+      onTap: widget.onTap!,
+      borderRadius: BorderRadius.circular(20),
+      child: card,
+    );
+  }
+}
+
+class _SlideContent extends StatelessWidget {
+  const _SlideContent({super.key, required this.slide});
+
+  final _SpotlightSlide slide;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                slide.eyebrow,
+                style: TextStyle(
+                  color: slide.accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.2,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                slide.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  fontStyle: FontStyle.italic,
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                slide.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  height: 1.25,
+                ),
+              ),
+              if (slide.progress != null) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: slide.progress,
+                    minHeight: 6,
+                    backgroundColor: Colors.white.withValues(alpha: 0.14),
+                    valueColor: AlwaysStoppedAnimation(slide.accent),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 14),
+        Container(
+          width: 58,
+          height: 58,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: slide.accent.withValues(alpha: 0.16),
+            border: Border.all(color: slide.accent.withValues(alpha: 0.7)),
+          ),
+          child: Icon(slide.icon, color: slide.accent, size: 30),
+        ),
+      ],
+    );
+  }
+}
+
+class _ShimmerStreakPill extends StatelessWidget {
+  const _ShimmerStreakPill({required this.animation});
+
+  final Animation<double> animation;
+
+  static const _loopSeconds = 6.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final elapsedSeconds = animation.value * _loopSeconds;
+        final shimmerPhase = (elapsedSeconds % 4.0) / 4.0;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: _Arcade.magenta.withValues(alpha: 0.5),
+                blurRadius: 12,
+                spreadRadius: 0,
+              ),
+            ],
+            gradient: LinearGradient(
+              begin: Alignment(-1.5 + shimmerPhase * 3, 0),
+              end: Alignment(-0.5 + shimmerPhase * 3, 0),
+              colors: const [
+                Color(0xFFFF2ECC),
+                Color(0xFF9B30FF),
+                Color(0xFF00E5FF),
+                Color(0xFFFF2ECC),
+              ],
+            ),
+          ),
+          child: Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(
+                  text: '7 Day Streak ',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                TextSpan(
+                  text: '🔥',
+                  style: TextStyle(
+                    fontSize: 17,
+                    height: 1,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        );
+      },
     );
   }
 }
@@ -219,18 +776,18 @@ class _PlayerDashboardCard extends StatelessWidget {
 class _ModeSelectorGrid extends StatelessWidget {
   const _ModeSelectorGrid({
     required this.matchArt,
+    required this.ballArt,
     required this.tournamentArt,
     required this.onlineArt,
-    required this.voltGreen,
-    required this.hyperCyan,
+    required this.masterAnimation,
     required this.onFullMatchTap,
   });
 
   final String matchArt;
+  final String ballArt;
   final String tournamentArt;
   final String onlineArt;
-  final Color voltGreen;
-  final Color hyperCyan;
+  final Animation<double> masterAnimation;
   final VoidCallback onFullMatchTap;
 
   @override
@@ -242,7 +799,8 @@ class _ModeSelectorGrid extends StatelessWidget {
           flex: 3,
           child: _FullMatchCard(
             artAsset: matchArt,
-            voltGreen: voltGreen,
+            ballArt: ballArt,
+            masterAnimation: masterAnimation,
             onTap: onFullMatchTap,
           ),
         ),
@@ -256,7 +814,7 @@ class _ModeSelectorGrid extends StatelessWidget {
                 child: _LockedModeCard(
                   title: 'TOURNAMENTS',
                   artAsset: tournamentArt,
-                  hyperCyan: hyperCyan,
+                  accent: _Arcade.lime,
                 ),
               ),
               const SizedBox(width: 14),
@@ -264,7 +822,7 @@ class _ModeSelectorGrid extends StatelessWidget {
                 child: _LockedModeCard(
                   title: 'ONLINE ARENA',
                   artAsset: onlineArt,
-                  hyperCyan: hyperCyan,
+                  accent: _Arcade.cyan,
                 ),
               ),
             ],
@@ -278,107 +836,153 @@ class _ModeSelectorGrid extends StatelessWidget {
 class _FullMatchCard extends StatelessWidget {
   const _FullMatchCard({
     required this.artAsset,
-    required this.voltGreen,
+    required this.ballArt,
+    required this.masterAnimation,
     required this.onTap,
   });
 
   final String artAsset;
-  final Color voltGreen;
+  final String ballArt;
+  final Animation<double> masterAnimation;
   final VoidCallback onTap;
+
+  static const _loopSeconds = 6.0;
+
+  static const _cardStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w900,
+    fontStyle: FontStyle.italic,
+  );
+
+  double _glowBlurRadius(double elapsedSeconds) {
+    final phase = (elapsedSeconds % 1.8) / 1.8;
+    final wave = (1 - math.cos(phase * math.pi * 2)) / 2;
+    return 8 + wave * 16;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: voltGreen.withValues(alpha: 0.65),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: voltGreen.withValues(alpha: 0.28),
-                blurRadius: 18,
-                spreadRadius: 1,
+    return AnimatedBuilder(
+      animation: masterAnimation,
+      builder: (context, _) {
+        final elapsedSeconds = masterAnimation.value * _loopSeconds;
+        final glowBlur = _glowBlurRadius(elapsedSeconds);
+        return _TapScaleCard(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(
+                colors: [_Arcade.magenta, _Arcade.cyan, _Arcade.green],
               ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Positioned.fill(
-                    child: Image.asset(
-                      artAsset,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                    ),
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.78),
-                          Colors.black.withValues(alpha: 0.35),
-                          Colors.transparent,
-                        ],
-                        stops: const [0.0, 0.5, 0.85],
+              boxShadow: [
+                BoxShadow(
+                  color: _Arcade.green.withValues(alpha: 0.5),
+                  blurRadius: glowBlur,
+                  spreadRadius: 1,
+                ),
+                BoxShadow(
+                  color: _Arcade.cyan.withValues(alpha: 0.4),
+                  blurRadius: glowBlur * 0.6,
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(1.5),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20.5),
+                gradient: const LinearGradient(
+                  colors: [_Arcade.cyan, _Arcade.magenta, _Arcade.green],
+                ),
+              ),
+              padding: const EdgeInsets.all(1.5),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(19),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned.fill(
+                        child: Image.asset(
+                          artAsset,
+                          fit: BoxFit.cover,
+                          alignment: Alignment.center,
+                        ),
                       ),
-                    ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                              const Color(0xFF150826).withValues(alpha: 0.82),
+                              _Arcade.violet.withValues(alpha: 0.24),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.5, 0.85],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 14,
+                        top: 14,
+                        child: Transform.rotate(
+                          angle:
+                              (elapsedSeconds / _loopSeconds) * math.pi * 2,
+                          child: Image.asset(
+                            ballArt,
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'FEATURED MODE',
+                              style: TextStyle(
+                                color: _Arcade.lime,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 3.4,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'FULL MATCH',
+                              style: _cardStyle.copyWith(
+                                fontSize: 26,
+                                letterSpacing: 0.6,
+                                height: 1.1,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Shoot & save — pick your role',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'FEATURED MODE',
-                          style: TextStyle(
-                            color: voltGreen,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2.4,
-                          ),
-                        ),
-                        const Spacer(),
-                        const Text(
-                          'FULL MATCH',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.6,
-                            height: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Shoot & save — pick your role',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.72),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -387,12 +991,18 @@ class _LockedModeCard extends StatelessWidget {
   const _LockedModeCard({
     required this.title,
     required this.artAsset,
-    required this.hyperCyan,
+    required this.accent,
   });
 
   final String title;
   final String artAsset;
-  final Color hyperCyan;
+  final Color accent;
+
+  static const _cardStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w900,
+    fontStyle: FontStyle.italic,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -408,13 +1018,17 @@ class _LockedModeCard extends StatelessWidget {
               fit: BoxFit.cover,
             ),
             ColoredBox(
-              color: Colors.black.withValues(alpha: 0.62),
+              color: const Color(0xFF0C0620).withValues(alpha: 0.6),
+            ),
+            ColoredBox(
+              color: accent.withValues(alpha: 0.16),
             ),
             DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: accent.withValues(alpha: 0.6),
+                  width: 1.5,
                 ),
               ),
             ),
@@ -422,7 +1036,7 @@ class _LockedModeCard extends StatelessWidget {
               child: Icon(
                 Icons.lock_outline,
                 size: 32,
-                color: Colors.white.withValues(alpha: 0.75),
+                color: Colors.white.withValues(alpha: 0.85),
               ),
             ),
             Positioned(
@@ -435,10 +1049,8 @@ class _LockedModeCard extends StatelessWidget {
                   Text(
                     title,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: _cardStyle.copyWith(
                       fontSize: 13,
-                      fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
                     ),
                   ),
@@ -446,9 +1058,9 @@ class _LockedModeCard extends StatelessWidget {
                   Text(
                     'Coming Soon',
                     style: TextStyle(
-                      color: hyperCyan.withValues(alpha: 0.85),
+                      color: accent,
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0.4,
                     ),
                   ),
@@ -462,15 +1074,50 @@ class _LockedModeCard extends StatelessWidget {
   }
 }
 
+class _TapScaleCard extends StatefulWidget {
+  const _TapScaleCard({
+    required this.onTap,
+    required this.borderRadius,
+    required this.child,
+  });
+
+  final VoidCallback onTap;
+  final BorderRadius borderRadius;
+  final Widget child;
+
+  @override
+  State<_TapScaleCard> createState() => _TapScaleCardState();
+}
+
+class _TapScaleCardState extends State<_TapScaleCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: () {
+        _playTapFeedback();
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 class _FullMatchRoleSheet extends StatelessWidget {
   const _FullMatchRoleSheet({
     required this.onModeSelected,
   });
 
   final ValueChanged<GameMode> onModeSelected;
-
-  static const _hyperCyan = Color(0xFF00E5FF);
-  static const _voltGreen = Color(0xFF7CFF7C);
 
   @override
   Widget build(BuildContext context) {
@@ -491,7 +1138,7 @@ class _FullMatchRoleSheet extends StatelessWidget {
               'CHOOSE YOUR ROLE',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _hyperCyan,
+                color: _Arcade.lime,
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 2.2,
@@ -504,14 +1151,15 @@ class _FullMatchRoleSheet extends StatelessWidget {
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 22,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
               ),
             ),
             const SizedBox(height: 18),
             _RoleButton(
               title: 'Take Shots',
               subtitle: 'Beat the keeper with your feet',
-              accent: _voltGreen,
+              accent: _Arcade.green,
               icon: Icons.sports_soccer_rounded,
               onTap: () => onModeSelected(GameMode.takeShots),
             ),
@@ -519,7 +1167,7 @@ class _FullMatchRoleSheet extends StatelessWidget {
             _RoleButton(
               title: 'Be the Keeper',
               subtitle: 'Save shots with your hands',
-              accent: _hyperCyan,
+              accent: _Arcade.cyan,
               icon: Icons.back_hand_outlined,
               onTap: () => onModeSelected(GameMode.beTheKeeper),
             ),
@@ -551,12 +1199,15 @@ class _RoleButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
+        onTap: () {
+          _playTapFeedback();
+          onTap();
+        },
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             color: Colors.white.withValues(alpha: 0.06),
-            border: Border.all(color: accent.withValues(alpha: 0.4)),
+            border: Border.all(color: accent.withValues(alpha: 0.55)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

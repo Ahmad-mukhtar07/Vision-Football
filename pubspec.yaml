@@ -59,3 +59,7 @@ flutter:
     - assets/images/main_page/match_art.png
     - assets/images/main_page/tournament_art.png
     - assets/images/main_page/online_art.jpeg
+    - assets/images/main_page/avatars/avatar_1.png
+    - assets/images/main_page/avatars/avatar_2.png
+    - assets/images/main_page/avatars/avatar_3.png
+    - assets/images/main_page/avatars/avatar_4.png
