@@ -17,6 +17,7 @@ class GamePlaySound {
   static final _cheeringCrowd =
       AssetSource('sounds/game-play/cheering-crowd.wav');
   static final _goalSound = AssetSource('sounds/game-play/goal-sound.wav');
+  static final _boo = AssetSource('sounds/boo-sound.wav');
   static final _startWhistle =
       AssetSource('sounds/game-play/whistle/start-whistle.wav');
   static final _fullTimeWhistle =
@@ -26,11 +27,17 @@ class GamePlaySound {
   static final AudioPlayer _pauseReversePlayer = _createPlayer('pause_reverse');
   static final AudioPlayer _kickPlayer = _createPlayer('ball_kick');
   static final AudioPlayer _savePlayer = _createPlayer('save');
-  static final AudioPlayer _cheerPlayer = _createPlayer('cheer');
   static final AudioPlayer _goalPlayer = _createPlayer('goal');
+  static final AudioPlayer _booPlayer = _createPlayer('boo');
   static final AudioPlayer _startWhistlePlayer = _createPlayer('start_whistle');
   static final AudioPlayer _fullTimeWhistlePlayer =
       _createPlayer('full_time_whistle');
+
+  /// Cheering crowd on a standard media player (not low-latency): the clip is
+  /// several seconds long, and a standard player supports reliable volume
+  /// ramping for the fade-out used to align it with the goal commentary.
+  static final AudioPlayer _cheerPlayer = AudioPlayer(playerId: 'cheer')
+    ..setReleaseMode(ReleaseMode.stop);
 
   /// Background ambience loops on a standard media player (not low-latency,
   /// which on Android uses SoundPool and does not loop reliably for long clips).
@@ -39,6 +46,7 @@ class GamePlaySound {
 
   static bool _ready = false;
   static bool _crowdPlaying = false;
+  static Timer? _cheerFadeTimer;
 
   static AudioPlayer _createPlayer(String id) {
     final player = AudioPlayer(playerId: id);
@@ -75,6 +83,7 @@ class GamePlaySound {
       _savePlayer.setSource(_save),
       _cheerPlayer.setSource(_cheeringCrowd),
       _goalPlayer.setSource(_goalSound),
+      _booPlayer.setSource(_boo),
       _startWhistlePlayer.setSource(_startWhistle),
       _fullTimeWhistlePlayer.setSource(_fullTimeWhistle),
     ]);
@@ -110,6 +119,10 @@ class GamePlaySound {
   }
 
   static Future<void> _stopStadiumCrowd() async {
+    // Full teardown (quit / menu / dispose): also kill any lingering cheer.
+    _cheerFadeTimer?.cancel();
+    _cheerFadeTimer = null;
+    unawaited(_cheerPlayer.stop());
     if (!_crowdPlaying) return;
     await _crowdPlayer.stop();
     _crowdPlaying = false;
@@ -159,16 +172,72 @@ class GamePlaySound {
   }
 
   /// Plays the goal hit sound and the cheering crowd together.
-  static void playGoalCheer() {
+  ///
+  /// The cheering clip is longer than most commentary lines, so when
+  /// [fadeOutAlignedTo] is given (the goal commentary's length) the crowd
+  /// fades out over its final ~1.5s and stops right as the commentary ends —
+  /// instead of carrying on alone after the call is over.
+  static void playGoalCheer({Duration? fadeOutAlignedTo}) {
     if (!_ready) {
-      warmUp().then((_) {
-        _replay(_goalPlayer, _goalSound);
-        _replay(_cheerPlayer, _cheeringCrowd);
-      });
+      warmUp().then((_) => _playGoalCheerNow(fadeOutAlignedTo));
       return;
     }
+    _playGoalCheerNow(fadeOutAlignedTo);
+  }
+
+  static void _playGoalCheerNow(Duration? fadeOutAlignedTo) {
     _replay(_goalPlayer, _goalSound);
-    _replay(_cheerPlayer, _cheeringCrowd);
+    unawaited(_restartCheer(fadeOutAlignedTo));
+  }
+
+  static Future<void> _restartCheer(Duration? fadeOutAlignedTo) async {
+    _cheerFadeTimer?.cancel();
+    await _cheerPlayer.stop();
+    await _cheerPlayer.setVolume(1.0);
+    await _cheerPlayer.play(_cheeringCrowd);
+    if (fadeOutAlignedTo != null && fadeOutAlignedTo > Duration.zero) {
+      _scheduleCheerFade(fadeOutAlignedTo);
+    }
+  }
+
+  /// Fades the cheer to silence over its last stretch so it ends at [alignTo].
+  static void _scheduleCheerFade(Duration alignTo) {
+    const fade = Duration(milliseconds: 1500);
+    final totalMs = alignTo.inMilliseconds;
+    final fadeMs = totalMs < fade.inMilliseconds
+        ? (totalMs * 0.5).round()
+        : fade.inMilliseconds;
+    final startMs = (totalMs - fadeMs).clamp(0, totalMs);
+    _cheerFadeTimer?.cancel();
+    _cheerFadeTimer = Timer(Duration(milliseconds: startMs), () {
+      _rampCheerDown(fadeMs);
+    });
+  }
+
+  static void _rampCheerDown(int fadeMs) {
+    const stepMs = 60;
+    final steps = (fadeMs / stepMs).ceil().clamp(1, 1000);
+    var step = 0;
+    _cheerFadeTimer?.cancel();
+    _cheerFadeTimer = Timer.periodic(const Duration(milliseconds: stepMs), (t) {
+      step++;
+      final volume = (1.0 - step / steps).clamp(0.0, 1.0);
+      _cheerPlayer.setVolume(volume);
+      if (step >= steps) {
+        t.cancel();
+        unawaited(_cheerPlayer.stop());
+        unawaited(_cheerPlayer.setVolume(1.0));
+      }
+    });
+  }
+
+  /// Crowd jeer for a missed or saved shot (shooting mode only).
+  static void playBoo() {
+    if (!_ready) {
+      warmUp().then((_) => _replay(_booPlayer, _boo));
+      return;
+    }
+    _replay(_booPlayer, _boo);
   }
 
   /// Short whistle when the shooter is cleared to take the penalty (GO!).

@@ -76,6 +76,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   void initState() {
     super.initState();
     GamePlaySound.warmUp();
+    CommentarySound.warmUp();
     final poseStream = PoseDetectorService.instance.poseLandmarks;
     // Aim is mirrored in PoseCoordinateMapper; do not flip again for ball/GK.
     _kickDetector = KickDetector(poseStream: poseStream)

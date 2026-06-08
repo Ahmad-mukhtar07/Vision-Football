@@ -84,9 +84,11 @@ flutter:
     - assets/sounds/game-play/goal-sound.wav
     - assets/sounds/game-play/whistle/start-whistle.wav
     - assets/sounds/game-play/whistle/full-time-whistle.wav
+    - assets/sounds/boo-sound.wav
     - assets/sounds/commentary/general/comm-start1.wav
     - assets/sounds/commentary/general/comm-start2.wav
     - assets/sounds/commentary/goal/comm-goal-bottomCorner.wav
+    - assets/sounds/commentary/goal/comm-goal-bottomCorner3.wav
     - assets/sounds/commentary/goal/comm-goal-slow.wav
     - assets/sounds/commentary/goal/comm-goal-straightGoal.wav
     - assets/sounds/commentary/goal/comm-goal-topCorner1.wav

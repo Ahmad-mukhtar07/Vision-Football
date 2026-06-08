@@ -180,13 +180,14 @@ class KeeperGame extends FlameGame {
       lastCommentaryDuration =
           CommentarySound.playSave(_classifySave(ballLandingScreen));
     } else {
-      GamePlaySound.playGoalCheer();
       _goal.flashRed();
       _flash.flash(Colors.redAccent.withValues(alpha: 0.35));
       lastCommentaryDuration = CommentarySound.playGoal(
         placement: _classifyConceded(ballLandingScreen),
         isSlow: false,
       );
+      // Fade the longer cheer out to finish with the commentary line.
+      GamePlaySound.playGoalCheer(fadeOutAlignedTo: lastCommentaryDuration);
     }
     final result = saved ? KeeperShotResult.saved : KeeperShotResult.conceded;
     controller.onShotResolved(result);

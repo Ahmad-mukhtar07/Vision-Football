@@ -104,14 +104,17 @@ class VisionFootballGame extends FlameGame {
     Duration commentary;
     if (isSave) {
       GamePlaySound.playSave();
+      GamePlaySound.playBoo();
       commentary = CommentarySound.playSave(_classifySave(landingPosition));
     } else if (isGoal) {
-      GamePlaySound.playGoalCheer();
       commentary = CommentarySound.playGoal(
         placement: _classifyPlacement(landingPosition),
         isSlow: kick.kickPower < 0.35,
       );
+      // Fade the longer cheer out to finish with the commentary line.
+      GamePlaySound.playGoalCheer(fadeOutAlignedTo: commentary);
     } else {
+      GamePlaySound.playBoo();
       commentary = CommentarySound.playMiss();
     }
 

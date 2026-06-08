@@ -60,6 +60,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
   void initState() {
     super.initState();
     GamePlaySound.warmUp();
+    CommentarySound.warmUp();
     _controller = KeeperMatchController();
     _controller.addListener(_onMatchChanged);
     _game = KeeperGame(
