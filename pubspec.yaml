@@ -55,6 +55,8 @@ flutter:
     - assets/images/outlines/upperbody-outline.png
     - assets/images/outlines/lowerbody-outline.png
     - assets/images/stadium/stadium-keeper-view.png
+    - assets/images/logo.png
+    - assets/images/VisionFootball-Logo-NoBG.png
     - assets/images/main_page/stadium_bg.jpeg
     - assets/images/main_page/match_art.png
     - assets/images/main_page/tournament_art.png

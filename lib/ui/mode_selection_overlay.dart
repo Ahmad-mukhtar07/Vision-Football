@@ -169,12 +169,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const _DashboardHeader(),
-                  const SizedBox(height: 16),
-                  _ProfileStrip(
-                    masterAnimation: _masterController,
-                    avatarAsset: _avatarAsset,
-                  ),
+                  _ProfileStrip(avatarAsset: _avatarAsset),
                   const SizedBox(height: 14),
                   Expanded(
                     child: _SpotlightHero(
@@ -325,54 +320,23 @@ class _DriftingParticlePainter extends CustomPainter {
       oldDelegate.elapsedSeconds != elapsedSeconds;
 }
 
-class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      'VISION FOOTBALL',
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: 14 * 1.2,
-        fontWeight: FontWeight.w900,
-        fontStyle: FontStyle.italic,
-        letterSpacing: 4.2,
-        shadows: [
-          const Shadow(
-            color: _Arcade.magenta,
-            blurRadius: 16,
-            offset: Offset.zero,
-          ),
-          Shadow(
-            color: _Arcade.cyan.withValues(alpha: 0.8),
-            blurRadius: 28,
-            offset: Offset.zero,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Slim identity bar: avatar + name/level on the left, streak on the right.
 class _ProfileStrip extends StatelessWidget {
-  const _ProfileStrip({
-    required this.masterAnimation,
-    required this.avatarAsset,
-  });
+  const _ProfileStrip({required this.avatarAsset});
 
-  final Animation<double> masterAnimation;
+  static const _logoAsset = 'assets/images/VisionFootball-Logo-NoBG.png';
+  static const _avatarSize = 44.0;
+  static const _logoHeight = 54.0;
+
   final String avatarAsset;
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
-          width: 44,
-          height: 44,
+          width: _avatarSize,
+          height: _avatarSize,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Colors.white.withValues(alpha: 0.08),
@@ -426,7 +390,15 @@ class _ProfileStrip extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        _ShimmerStreakPill(animation: masterAnimation),
+        SizedBox(
+          height: _logoHeight,
+          child: Image.asset(
+            _logoAsset,
+            fit: BoxFit.contain,
+            alignment: Alignment.centerRight,
+            filterQuality: FilterQuality.high,
+          ),
+        ),
       ],
     );
   }
@@ -698,77 +670,6 @@ class _SlideContent extends StatelessWidget {
           child: Icon(slide.icon, color: slide.accent, size: 30),
         ),
       ],
-    );
-  }
-}
-
-class _ShimmerStreakPill extends StatelessWidget {
-  const _ShimmerStreakPill({required this.animation});
-
-  final Animation<double> animation;
-
-  static const _loopSeconds = 6.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, _) {
-        final elapsedSeconds = animation.value * _loopSeconds;
-        final shimmerPhase = (elapsedSeconds % 4.0) / 4.0;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: _Arcade.magenta.withValues(alpha: 0.5),
-                blurRadius: 12,
-                spreadRadius: 0,
-              ),
-            ],
-            gradient: LinearGradient(
-              begin: Alignment(-1.5 + shimmerPhase * 3, 0),
-              end: Alignment(-0.5 + shimmerPhase * 3, 0),
-              colors: const [
-                Color(0xFFFF2ECC),
-                Color(0xFF9B30FF),
-                Color(0xFF00E5FF),
-                Color(0xFFFF2ECC),
-              ],
-            ),
-          ),
-          child: Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(
-                  text: '7 Day Streak ',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                TextSpan(
-                  text: '🔥',
-                  style: TextStyle(
-                    fontSize: 17,
-                    height: 1,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 2,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            textAlign: TextAlign.center,
-          ),
-        );
-      },
     );
   }
 }
