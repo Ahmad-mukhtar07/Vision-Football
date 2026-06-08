@@ -91,6 +91,17 @@ class MatchController {
   final Duration goDuration;
   final Random _random = Random();
 
+  /// Extra hold before the FIRST kick can be readied, so the kick-off
+  /// commentary can finish before the starting whistle. Set before
+  /// [startMatch]; only affects the first shot of the match.
+  Duration introHold = Duration.zero;
+  DateTime? _introReadyAt;
+
+  /// The pause currently in effect after a result. Defaults to
+  /// [resultPauseDuration] but is overridden per-shot when commentary needs
+  /// the screen held longer (see [kickTaken]).
+  Duration _activeResultPause = const Duration(milliseconds: 1800);
+
   final StreamController<MatchState> _stateController =
       StreamController<MatchState>.broadcast();
 
@@ -123,6 +134,8 @@ class MatchController {
     _pausedPhase = null;
     _phaseTimer?.cancel();
     _runUpTimeoutTimer?.cancel();
+    _introReadyAt =
+        introHold > Duration.zero ? DateTime.now().add(introHold) : null;
     _state = MatchState(
       phase: MatchPhase.runUp,
       kicksTaken: 0,
@@ -172,7 +185,7 @@ class MatchController {
         onBallKickGate?.call(true);
       case MatchPhase.resultPause:
         final kicksAtPause = _state.kicksTaken;
-        _phaseTimer = Timer(resultPauseDuration, () {
+        _phaseTimer = Timer(_activeResultPause, () {
           if (_isPaused) return;
           _advanceAfterResultPause(kicksAtPause);
         });
@@ -200,8 +213,27 @@ class MatchController {
   void playerInPosition() {
     if (_isPaused) return;
     if (_state.phase != MatchPhase.runUp) return;
+    // Hold the first ready/whistle until the kick-off commentary finishes.
+    final introRemaining = _introRemaining();
+    if (introRemaining > Duration.zero) {
+      _runUpTimeoutTimer?.cancel();
+      _phaseTimer?.cancel();
+      _phaseTimer = Timer(introRemaining, () {
+        if (_isPaused || _state.phase != MatchPhase.runUp) return;
+        _enterReadyToKick();
+      });
+      return;
+    }
     _runUpTimeoutTimer?.cancel();
     _enterReadyToKick();
+  }
+
+  /// Remaining kick-off commentary hold (only for the first shot).
+  Duration _introRemaining() {
+    final readyAt = _introReadyAt;
+    if (readyAt == null || _state.kicksTaken > 0) return Duration.zero;
+    final remaining = readyAt.difference(DateTime.now());
+    return remaining > Duration.zero ? remaining : Duration.zero;
   }
 
   void onBallInFlight() {
@@ -217,7 +249,7 @@ class MatchController {
     onBallKickGate?.call(false);
   }
 
-  void kickTaken(KickResult result) {
+  void kickTaken(KickResult result, {Duration? holdFor}) {
     if (_state.phase != MatchPhase.ballInFlight) return;
 
     final kicksTaken = _state.kicksTaken + 1;
@@ -249,8 +281,14 @@ class MatchController {
     onDisarmKickDetection?.call();
     onBallKickGate?.call(false);
 
+    // Hold the result (ball in the goal / keeper's hands) at least as long as
+    // the commentary line, so we never cut to the next run-up mid-sentence.
+    _activeResultPause = (holdFor != null && holdFor > resultPauseDuration)
+        ? holdFor
+        : resultPauseDuration;
+
     _phaseTimer?.cancel();
-    _phaseTimer = Timer(resultPauseDuration, () {
+    _phaseTimer = Timer(_activeResultPause, () {
       if (_isPaused) return;
       _advanceAfterResultPause(kicksTaken);
     });

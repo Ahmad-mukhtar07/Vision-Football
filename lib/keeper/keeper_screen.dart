@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
+import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import '../ui/pause_menu_overlay.dart';
 import 'glove_overlay.dart';
@@ -106,7 +107,11 @@ class _KeeperScreenState extends State<KeeperScreen> {
         _calibrationCountdownActive = false;
         _controller.finishCalibration();
         GamePlaySound.startStadiumCrowd();
-        _scheduleNextShot();
+        // Kick-off commentary first; the first whistle waits until it ends.
+        final intro = CommentarySound.playStart();
+        _scheduleNextShot(
+          preShotDelayMs: intro.inMilliseconds + 400,
+        );
       }
     });
     setState(() {});
@@ -140,12 +145,16 @@ class _KeeperScreenState extends State<KeeperScreen> {
     // A conceded goal triggers the cheering-crowd sound (~5.5s); hold longer
     // before the next shot so it can finish. Saves use the shorter beat,
     // with extra time on the final shot so the banner stays readable.
-    final int pauseMs;
+    int pauseMs;
     if (result == KeeperShotResult.conceded) {
       pauseMs = isLastShot ? 4000 : 3600;
     } else {
       pauseMs = isLastShot ? 2000 : 1400;
     }
+    // Never cut to the next shot before the commentary line finishes — hold
+    // the saved/conceded ball on screen until it's done (plus a short tail).
+    final commentaryMs = _game.lastCommentaryDuration.inMilliseconds + 600;
+    if (commentaryMs > pauseMs) pauseMs = commentaryMs;
     _phaseTimer = Timer(Duration(milliseconds: pauseMs), () {
       if (!mounted || _isPaused) return;
       _controller.readyForNextShot();
@@ -154,12 +163,13 @@ class _KeeperScreenState extends State<KeeperScreen> {
     });
   }
 
-  void _scheduleNextShot() {
+  void _scheduleNextShot({int? preShotDelayMs}) {
     _phaseTimer?.cancel();
     if (_controller.state.phase == KeeperPhase.waitingForReady) {
       _game.prepareShot();
     }
-    _phaseTimer = Timer(const Duration(milliseconds: _preShotDelayMs), () {
+    final delayMs = preShotDelayMs ?? _preShotDelayMs;
+    _phaseTimer = Timer(Duration(milliseconds: delayMs), () {
       if (!mounted || _isPaused) return;
       if (_controller.state.phase != KeeperPhase.waitingForReady) return;
       GamePlaySound.playStartWhistle();
@@ -187,6 +197,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _phaseTimer?.cancel();
     _calibrationTimer?.cancel();
     _game.pauseEngine();
+    CommentarySound.pause();
     if (_controller.state.phase != KeeperPhase.calibrating) {
       GamePlaySound.pauseStadiumCrowd();
     }
@@ -196,6 +207,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
     if (!_isPaused) return;
     setState(() => _isPaused = false);
     _game.resumeEngine();
+    CommentarySound.resume();
     if (_controller.state.phase != KeeperPhase.calibrating) {
       GamePlaySound.resumeStadiumCrowd();
     }
@@ -216,6 +228,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
       _game.resumeEngine();
     }
     GamePlaySound.stopStadiumCrowd();
+    CommentarySound.stop();
     _phaseTimer?.cancel();
     _calibrationTimer?.cancel();
     _controller.abandon();
@@ -224,6 +237,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   void _playAgain() {
     _phaseTimer?.cancel();
+    CommentarySound.stop();
     _game.resetScene();
     _resetCalibrationGate();
     _controller.startMatch();
@@ -232,6 +246,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
   @override
   void dispose() {
     GamePlaySound.stopStadiumCrowd();
+    CommentarySound.stop();
     _phaseTimer?.cancel();
     _calibrationTimer?.cancel();
     _handSub?.cancel();

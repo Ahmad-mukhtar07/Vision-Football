@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/goal_event.dart';
 import '../models/kick_event.dart';
+import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import 'components/ball_component.dart';
 import 'components/goal_component.dart';
@@ -97,13 +98,27 @@ class VisionFootballGame extends FlameGame {
             ? KickResult.saved
             : KickResult.miss;
 
+    // Commentary plays on top of the effect/crowd sounds. The clip length
+    // tells us how long to keep the ball at its result spot and hold the
+    // match before the next run-up.
+    Duration commentary;
     if (isSave) {
       GamePlaySound.playSave();
+      commentary = CommentarySound.playSave(_classifySave(landingPosition));
     } else if (isGoal) {
       GamePlaySound.playGoalCheer();
+      commentary = CommentarySound.playGoal(
+        placement: _classifyPlacement(landingPosition),
+        isSlow: kick.kickPower < 0.35,
+      );
+    } else {
+      commentary = CommentarySound.playMiss();
     }
 
-    matchController.kickTaken(result);
+    // Small tail so the ball/banner doesn't vanish the instant audio ends.
+    final hold = commentary + const Duration(milliseconds: 500);
+    _ball.holdResultFor(hold.inMilliseconds / 1000.0);
+    matchController.kickTaken(result, holdFor: hold);
 
     _goalController.add(
       GoalEvent(
@@ -114,6 +129,33 @@ class VisionFootballGame extends FlameGame {
         timestamp: DateTime.now(),
       ),
     );
+  }
+
+  /// Normalized landing position (0..1) within the visible goal mouth.
+  Offset _normalizedInGoal(Offset landing) {
+    final r = _goal.effectiveGoalRect;
+    final nx = ((landing.dx - r.left) / r.width).clamp(0.0, 1.0);
+    final ny = ((landing.dy - r.top) / r.height).clamp(0.0, 1.0);
+    return Offset(nx, ny);
+  }
+
+  GoalPlacement _classifyPlacement(Offset landing) {
+    final n = _normalizedInGoal(landing);
+    final corner = n.dx < 0.30 || n.dx > 0.70;
+    if (corner) {
+      return n.dy < 0.50
+          ? GoalPlacement.topCorner
+          : GoalPlacement.bottomCorner;
+    }
+    return GoalPlacement.straight;
+  }
+
+  SaveKind _classifySave(Offset landing) {
+    final n = _normalizedInGoal(landing);
+    final corner = n.dx < 0.32 || n.dx > 0.68;
+    if (n.dy < 0.40) return SaveKind.fingerTip; // high / top-corner saves
+    if (corner) return SaveKind.diving; // wide saves, esp. low
+    return SaveKind.straight; // central, straight at the keeper
   }
 
   @override

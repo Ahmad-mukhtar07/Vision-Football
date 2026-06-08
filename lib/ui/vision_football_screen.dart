@@ -15,6 +15,7 @@ import '../pose/kick_detector.dart';
 import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
 import 'camera_preview_widget.dart';
+import 'commentary_sound.dart';
 import 'foot_selection_overlay.dart';
 import 'foot_marker_overlay.dart';
 import 'game_play_sound.dart';
@@ -257,8 +258,11 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _gameFootMarker.beginGameMode(_calibration.neutralPosition!);
 
     setState(() => _setupPhase = _SetupPhase.playing);
-    _matchController.startMatch();
     GamePlaySound.startStadiumCrowd();
+    // Kick-off commentary; the first whistle is held until it finishes.
+    final intro = CommentarySound.playStart();
+    _matchController.introHold = intro + const Duration(milliseconds: 300);
+    _matchController.startMatch();
     // Ensure foot-marker ring aligns with Flame ball after first layout.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _setupPhase != _SetupPhase.playing) return;
@@ -284,6 +288,9 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   void _playAgain() {
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
+    CommentarySound.stop();
+    final intro = CommentarySound.playStart();
+    _matchController.introHold = intro + const Duration(milliseconds: 300);
     _matchController.restartMatch();
   }
 
@@ -296,6 +303,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _kickDetector.setGameCanAcceptKick(false);
       _game.pauseEngine();
       GamePlaySound.pauseStadiumCrowd();
+      CommentarySound.pause();
     } else if (_setupPhase == _SetupPhase.positioning) {
       _stopPositioningWatch();
     }
@@ -309,6 +317,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _game.resumeEngine();
       _matchController.resumeMatch();
       GamePlaySound.resumeStadiumCrowd();
+      CommentarySound.resume();
     } else if (_setupPhase == _SetupPhase.positioning) {
       _startPositioningWatch();
     }
@@ -319,6 +328,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _game.resumeEngine();
     }
     GamePlaySound.stopStadiumCrowd();
+    CommentarySound.stop();
     _matchController.abandonMatch();
     _gameFootMarker.endGameMode();
     _kickDetector.disarm();
@@ -329,6 +339,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
 
   void _goToMainMenu() {
     GamePlaySound.stopStadiumCrowd();
+    CommentarySound.stop();
     _matchController.abandonMatch();
     _gameFootMarker.endGameMode();
     _kickDetector.disarm();
@@ -351,6 +362,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   @override
   void dispose() {
     GamePlaySound.stopStadiumCrowd();
+    CommentarySound.stop();
     _matchStateSub?.cancel();
     _stopPositioningWatch();
     _calibrationMinTimer?.cancel();

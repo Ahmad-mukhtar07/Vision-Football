@@ -6,6 +6,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart' hide Image;
 
 import '../game/ball_sprite.dart';
+import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
@@ -28,6 +29,11 @@ class KeeperGame extends FlameGame {
 
   final KeeperMatchController controller;
   final void Function(KeeperShotResult result) onShotResolved;
+
+  /// Length of the commentary line triggered by the most recent shot result.
+  /// The screen reads this to hold the current shot on screen (ball saved /
+  /// conceded) until the line finishes before prepping the next shot.
+  Duration lastCommentaryDuration = Duration.zero;
 
   late final _GroundComponent _ground;
   late final _GoalFrameComponent _goal;
@@ -171,14 +177,48 @@ class KeeperGame extends FlameGame {
     if (saved) {
       GamePlaySound.playSave();
       _flash.flash(Colors.greenAccent);
+      lastCommentaryDuration =
+          CommentarySound.playSave(_classifySave(ballLandingScreen));
     } else {
       GamePlaySound.playGoalCheer();
       _goal.flashRed();
       _flash.flash(Colors.redAccent.withValues(alpha: 0.35));
+      lastCommentaryDuration = CommentarySound.playGoal(
+        placement: _classifyConceded(ballLandingScreen),
+        isSlow: false,
+      );
     }
     final result = saved ? KeeperShotResult.saved : KeeperShotResult.conceded;
     controller.onShotResolved(result);
     onShotResolved(result);
+  }
+
+  /// Landing position relative to the goal mouth: x across the screen width,
+  /// y within the mouth band. x can fall outside 0..1 for wide shots.
+  Offset _normalizedAtMouth(Offset landing) {
+    final mouth = _goal.mouthRect;
+    final nx = size.x == 0 ? 0.5 : landing.dx / size.x;
+    final span = mouth.bottom - mouth.top;
+    final ny = span == 0 ? 0.5 : (landing.dy - mouth.top) / span;
+    return Offset(nx, ny.clamp(0.0, 1.0));
+  }
+
+  SaveKind _classifySave(Offset landing) {
+    final n = _normalizedAtMouth(landing);
+    if (n.dy < 0.38) return SaveKind.fingerTip; // stretching up / top corner
+    if (n.dx < 0.28 || n.dx > 0.72) return SaveKind.diving; // dive to a side
+    return SaveKind.straight; // straight at the keeper
+  }
+
+  GoalPlacement _classifyConceded(Offset landing) {
+    final n = _normalizedAtMouth(landing);
+    final corner = n.dx < 0.32 || n.dx > 0.68;
+    if (corner) {
+      return n.dy < 0.50
+          ? GoalPlacement.topCorner
+          : GoalPlacement.bottomCorner;
+    }
+    return GoalPlacement.straight;
   }
 }
 

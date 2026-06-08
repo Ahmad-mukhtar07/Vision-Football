@@ -79,6 +79,18 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   static const double _postResultDelay = 1.2;
   static const double _resetDuration = 0.4;
 
+  /// How long the ball stays at its result position (in the goal / saved)
+  /// before resetting. Defaults to [_postResultDelay] but is extended to
+  /// cover the commentary line so the ball isn't whisked back mid-call.
+  double _resultHoldSeconds = _postResultDelay;
+
+  /// Keeps the ball at its landing spot for [seconds] (clamped to at least
+  /// the default delay) before the reset animation begins.
+  void holdResultFor(double seconds) {
+    _resultHoldSeconds =
+        seconds > _postResultDelay ? seconds : _postResultDelay;
+  }
+
   double _postResultTimer = 0;
   KickEvent? _activeKick;
 
@@ -111,6 +123,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     _baseScale = 1;
     _ballTint = null;
     _spinAngle = 0;
+    _resultHoldSeconds = _postResultDelay;
     _movingRight = trajectory.targetPosition.dx >= position.x;
     _state = BallState.inFlight;
   }
@@ -245,7 +258,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       case BallState.scored:
       case BallState.missed:
         _postResultTimer += dt;
-        if (_postResultTimer >= _postResultDelay) {
+        if (_postResultTimer >= _resultHoldSeconds) {
           _beginReset();
         }
       case BallState.resetting:
