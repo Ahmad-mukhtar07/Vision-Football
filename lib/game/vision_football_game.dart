@@ -97,6 +97,12 @@ class VisionFootballGame extends FlameGame {
             ? KickResult.saved
             : KickResult.miss;
 
+    if (isSave) {
+      GamePlaySound.playSave();
+    } else if (isGoal) {
+      GamePlaySound.playGoalCheer();
+    }
+
     matchController.kickTaken(result);
 
     _goalController.add(

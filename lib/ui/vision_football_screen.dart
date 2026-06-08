@@ -258,6 +258,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
 
     setState(() => _setupPhase = _SetupPhase.playing);
     _matchController.startMatch();
+    GamePlaySound.startStadiumCrowd();
     // Ensure foot-marker ring aligns with Flame ball after first layout.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _setupPhase != _SetupPhase.playing) return;
@@ -294,6 +295,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _kickDetector.disarm();
       _kickDetector.setGameCanAcceptKick(false);
       _game.pauseEngine();
+      GamePlaySound.pauseStadiumCrowd();
     } else if (_setupPhase == _SetupPhase.positioning) {
       _stopPositioningWatch();
     }
@@ -306,6 +308,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     if (_setupPhase == _SetupPhase.playing) {
       _game.resumeEngine();
       _matchController.resumeMatch();
+      GamePlaySound.resumeStadiumCrowd();
     } else if (_setupPhase == _SetupPhase.positioning) {
       _startPositioningWatch();
     }
@@ -315,6 +318,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     if (_setupPhase == _SetupPhase.playing && _isPaused) {
       _game.resumeEngine();
     }
+    GamePlaySound.stopStadiumCrowd();
     _matchController.abandonMatch();
     _gameFootMarker.endGameMode();
     _kickDetector.disarm();
@@ -324,6 +328,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   }
 
   void _goToMainMenu() {
+    GamePlaySound.stopStadiumCrowd();
     _matchController.abandonMatch();
     _gameFootMarker.endGameMode();
     _kickDetector.disarm();
@@ -345,6 +350,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
 
   @override
   void dispose() {
+    GamePlaySound.stopStadiumCrowd();
     _matchStateSub?.cancel();
     _stopPositioningWatch();
     _calibrationMinTimer?.cancel();

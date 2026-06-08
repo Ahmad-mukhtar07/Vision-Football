@@ -78,3 +78,7 @@ flutter:
     - assets/sounds/game-play/pause-button.wav
     - assets/sounds/game-play/pause-button-reverse.wav
     - assets/sounds/game-play/ball-kick.wav
+    - assets/sounds/game-play/save.wav
+    - assets/sounds/game-play/stadium-crowd.wav
+    - assets/sounds/game-play/cheering-crowd.wav
+    - assets/sounds/game-play/goal-sound.wav

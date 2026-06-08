@@ -102,6 +102,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
         timer.cancel();
         _calibrationCountdownActive = false;
         _controller.finishCalibration();
+        GamePlaySound.startStadiumCrowd();
         _scheduleNextShot();
       }
     });
@@ -133,8 +134,15 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _phaseTimer?.cancel();
     final isLastShot =
         _controller.state.shotsTaken >= _controller.state.totalShots;
-    // Extra time on the final shot so the save/goal banner is readable.
-    final pauseMs = isLastShot ? 2000 : 1400;
+    // A conceded goal triggers the cheering-crowd sound (~5.5s); hold longer
+    // before the next shot so it can finish. Saves use the shorter beat,
+    // with extra time on the final shot so the banner stays readable.
+    final int pauseMs;
+    if (result == KeeperShotResult.conceded) {
+      pauseMs = isLastShot ? 4000 : 3600;
+    } else {
+      pauseMs = isLastShot ? 2000 : 1400;
+    }
     _phaseTimer = Timer(Duration(milliseconds: pauseMs), () {
       if (!mounted || _isPaused) return;
       _controller.readyForNextShot();
@@ -168,12 +176,18 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _phaseTimer?.cancel();
     _calibrationTimer?.cancel();
     _game.pauseEngine();
+    if (_controller.state.phase != KeeperPhase.calibrating) {
+      GamePlaySound.pauseStadiumCrowd();
+    }
   }
 
   void _resumeGame() {
     if (!_isPaused) return;
     setState(() => _isPaused = false);
     _game.resumeEngine();
+    if (_controller.state.phase != KeeperPhase.calibrating) {
+      GamePlaySound.resumeStadiumCrowd();
+    }
     if (_controller.state.phase == KeeperPhase.calibrating) {
       // Countdown resumes only once both hands are visible again.
       if (_bothHandsVisible) {
@@ -190,6 +204,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
     if (_isPaused) {
       _game.resumeEngine();
     }
+    GamePlaySound.stopStadiumCrowd();
     _phaseTimer?.cancel();
     _calibrationTimer?.cancel();
     _controller.abandon();
@@ -205,6 +220,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   @override
   void dispose() {
+    GamePlaySound.stopStadiumCrowd();
     _phaseTimer?.cancel();
     _calibrationTimer?.cancel();
     _handSub?.cancel();

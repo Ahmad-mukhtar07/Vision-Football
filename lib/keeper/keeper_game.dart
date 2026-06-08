@@ -169,8 +169,10 @@ class KeeperGame extends FlameGame {
 
   void _resolveShot(Offset ballLandingScreen, bool saved) {
     if (saved) {
+      GamePlaySound.playSave();
       _flash.flash(Colors.greenAccent);
     } else {
+      GamePlaySound.playGoalCheer();
       _goal.flashRed();
       _flash.flash(Colors.redAccent.withValues(alpha: 0.35));
     }
