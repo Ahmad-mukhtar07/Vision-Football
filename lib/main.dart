@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:app_settings/app_settings.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -37,14 +40,31 @@ class AppBootstrap extends StatefulWidget {
 }
 
 class _AppBootstrapState extends State<AppBootstrap> {
+  static const _loadingMinDuration = Duration(milliseconds: 2200);
+
   List<CameraDescription>? _cameras;
   bool _cameraFailed = false;
+  bool _loadingComplete = false;
   GameMode? _selectedMode;
 
   @override
   void initState() {
     super.initState();
-    _startCameraPipeline();
+    _runBootstrap();
+  }
+
+  Future<void> _runBootstrap() async {
+    // Match-art loading screen — start camera init now and keep the screen
+    // visible for at least the loading-strip animation so it never flashes.
+    final loadingStart = DateTime.now();
+    await _startCameraPipeline();
+    final elapsed = DateTime.now().difference(loadingStart);
+    final remaining = _loadingMinDuration - elapsed;
+    if (remaining > Duration.zero) {
+      await Future<void>.delayed(remaining);
+    }
+    if (!mounted) return;
+    setState(() => _loadingComplete = true);
   }
 
   Future<void> _startCameraPipeline() async {
@@ -99,7 +119,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
     final Widget body;
     if (_cameraFailed) {
       body = const CameraPermissionRequiredScreen();
-    } else if (_cameras == null) {
+    } else if (!_loadingComplete || _cameras == null) {
       body = const _LoadingScreen();
     } else if (_selectedMode == null) {
       body = ModeSelectionOverlay(onModeSelected: _onModeSelected);
@@ -122,15 +142,134 @@ class _AppBootstrapState extends State<AppBootstrap> {
   }
 }
 
-class _LoadingScreen extends StatelessWidget {
+/// Initialization screen: hero art + animated loading strip while the camera
+/// initializes.
+class _LoadingScreen extends StatefulWidget {
   const _LoadingScreen();
 
   @override
+  State<_LoadingScreen> createState() => _LoadingScreenState();
+}
+
+class _LoadingScreenState extends State<_LoadingScreen>
+    with SingleTickerProviderStateMixin {
+  static const _heroArt = 'assets/images/main_page/match_art.png';
+  static const _cyan = Color(0xFF00E5FF);
+  static const _green = Color(0xFF1FE07A);
+
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Vision Football — Initializing',
-        style: TextStyle(color: Colors.white, fontSize: 20),
+    return ColoredBox(
+      color: Colors.black,
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final heroSize = math.min(
+              constraints.maxWidth * 0.92,
+              constraints.maxHeight * 0.66,
+            );
+            final barWidth = math.min(constraints.maxWidth * 0.66, 320.0);
+
+            return Column(
+              children: [
+                // Hero art fills the upper region, vertically centered.
+                Expanded(
+                  child: Center(
+                    child: Image.asset(
+                      _heroArt,
+                      width: heroSize,
+                      height: heroSize,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
+                ),
+                // Loading strip sits lower on the screen.
+                SizedBox(
+                  width: barWidth,
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, _) {
+                      return _LoadingStrip(
+                        progress: _controller.value,
+                        cyan: _cyan,
+                        green: _green,
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(height: constraints.maxHeight * 0.12),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingStrip extends StatelessWidget {
+  const _LoadingStrip({
+    required this.progress,
+    required this.cyan,
+    required this.green,
+  });
+
+  final double progress;
+  final Color cyan;
+  final Color green;
+
+  @override
+  Widget build(BuildContext context) {
+    const trackHeight = 8.0;
+    final fill = 0.12 + progress * 0.82;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(trackHeight),
+      child: SizedBox(
+        height: trackHeight,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(color: Colors.white.withValues(alpha: 0.12)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: fill,
+                heightFactor: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [green, cyan]),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cyan.withValues(alpha: 0.55),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
