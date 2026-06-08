@@ -3,9 +3,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../game/match_state.dart';
+import 'game_play_sound.dart';
 
 /// Full-time summary after all penalties are taken.
-class MatchOverOverlay extends StatelessWidget {
+class MatchOverOverlay extends StatefulWidget {
   const MatchOverOverlay({
     super.key,
     required this.state,
@@ -19,8 +20,19 @@ class MatchOverOverlay extends StatelessWidget {
   final VoidCallback onChangeFoot;
   final VoidCallback onMainMenu;
 
+  @override
+  State<MatchOverOverlay> createState() => _MatchOverOverlayState();
+}
+
+class _MatchOverOverlayState extends State<MatchOverOverlay> {
   static const _gold = Color(0xFFFFD700);
   static const _orange = Color(0xFFFF6B00);
+
+  @override
+  void initState() {
+    super.initState();
+    GamePlaySound.playFullTimeWhistle();
+  }
 
   String _rating(int goals, int total) {
     if (goals >= total) return 'Perfect! 🏆';
@@ -31,8 +43,8 @@ class MatchOverOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final goals = state.goalsScored;
-    final total = state.totalKicks;
+    final goals = widget.state.goalsScored;
+    final total = widget.state.totalKicks;
 
     return Stack(
       fit: StackFit.expand,
@@ -101,7 +113,7 @@ class MatchOverOverlay extends StatelessWidget {
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(24),
-                          onTap: onPlayAgain,
+                          onTap: widget.onPlayAgain,
                           child: const Center(
                             child: Text(
                               'Play Again',
@@ -121,7 +133,7 @@ class MatchOverOverlay extends StatelessWidget {
                     width: 260,
                     height: 48,
                     child: OutlinedButton(
-                      onPressed: onChangeFoot,
+                      onPressed: widget.onChangeFoot,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: const BorderSide(color: Colors.white, width: 1.5),
@@ -143,7 +155,7 @@ class MatchOverOverlay extends StatelessWidget {
                     width: 260,
                     height: 48,
                     child: OutlinedButton(
-                      onPressed: onMainMenu,
+                      onPressed: widget.onMainMenu,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white70,
                         side: const BorderSide(

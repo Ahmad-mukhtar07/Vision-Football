@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../ui/game_play_sound.dart';
 import 'keeper_match_state.dart';
 
 /// Full-time summary after the goalkeeper has faced all shots.
@@ -9,7 +10,7 @@ import 'keeper_match_state.dart';
 /// Visually parallel to the shooting-mode match-over screen but with
 /// keeper-specific copy and button labels. Self-contained — does not
 /// import shooting-mode files.
-class KeeperMatchOverOverlay extends StatelessWidget {
+class KeeperMatchOverOverlay extends StatefulWidget {
   const KeeperMatchOverOverlay({
     super.key,
     required this.state,
@@ -21,8 +22,19 @@ class KeeperMatchOverOverlay extends StatelessWidget {
   final VoidCallback onPlayAgain;
   final VoidCallback onMainMenu;
 
+  @override
+  State<KeeperMatchOverOverlay> createState() => _KeeperMatchOverOverlayState();
+}
+
+class _KeeperMatchOverOverlayState extends State<KeeperMatchOverOverlay> {
   static const _gold = Color(0xFFFFD700);
   static const _orange = Color(0xFFFF6B00);
+
+  @override
+  void initState() {
+    super.initState();
+    GamePlaySound.playFullTimeWhistle();
+  }
 
   String _rating(int saves, int total) {
     if (saves >= total) return 'Wall! 🧤';
@@ -33,8 +45,8 @@ class KeeperMatchOverOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final saves = state.saves;
-    final total = state.totalShots;
+    final saves = widget.state.saves;
+    final total = widget.state.totalShots;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -102,7 +114,7 @@ class KeeperMatchOverOverlay extends StatelessWidget {
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(24),
-                          onTap: onPlayAgain,
+                          onTap: widget.onPlayAgain,
                           child: const Center(
                             child: Text(
                               'Play Again',
@@ -122,7 +134,7 @@ class KeeperMatchOverOverlay extends StatelessWidget {
                     width: 260,
                     height: 48,
                     child: OutlinedButton(
-                      onPressed: onMainMenu,
+                      onPressed: widget.onMainMenu,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: const BorderSide(color: Colors.white, width: 1.5),

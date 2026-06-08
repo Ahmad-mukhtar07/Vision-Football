@@ -52,6 +52,9 @@ class _KeeperScreenState extends State<KeeperScreen> {
   /// Pause before each shot so the keeper can get ready.
   static const int _preShotDelayMs = 2200;
 
+  /// Gap after the start whistle before the shooter begins the run-up.
+  static const int _whistleToRunUpDelayMs = 650;
+
   @override
   void initState() {
     super.initState();
@@ -159,7 +162,15 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _phaseTimer = Timer(const Duration(milliseconds: _preShotDelayMs), () {
       if (!mounted || _isPaused) return;
       if (_controller.state.phase != KeeperPhase.waitingForReady) return;
-      _game.beginKickSequence();
+      GamePlaySound.playStartWhistle();
+      _phaseTimer = Timer(
+        const Duration(milliseconds: _whistleToRunUpDelayMs),
+        () {
+          if (!mounted || _isPaused) return;
+          if (_controller.state.phase != KeeperPhase.waitingForReady) return;
+          _game.beginKickSequence();
+        },
+      );
     });
   }
 

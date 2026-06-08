@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../game/match_state.dart';
+import 'game_play_sound.dart';
 import 'penalty_score_bar.dart';
 
 /// Match-aware HUD with styled top bar and phase animations.
@@ -99,6 +100,7 @@ class _HudOverlayState extends State<HudOverlay>
     setState(() => _state = state);
 
     if (state.phase == MatchPhase.readyToKick && !wasReady) {
+      GamePlaySound.playStartWhistle();
       _goFadeTimer?.cancel();
       setState(() => _showGo = true);
       _goController.forward(from: 0);
@@ -113,7 +115,7 @@ class _HudOverlayState extends State<HudOverlay>
     if (state.phase == MatchPhase.resultPause && !wasResult) {
       if (state.lastResult == KickResult.goal) {
         _shakeController.forward(from: 0);
-      } else if (state.lastResult == KickResult.miss) {
+      } else       if (state.lastResult == KickResult.miss) {
         _missFadeController.forward(from: 0);
       }
     }

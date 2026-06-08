@@ -17,6 +17,10 @@ class GamePlaySound {
   static final _cheeringCrowd =
       AssetSource('sounds/game-play/cheering-crowd.wav');
   static final _goalSound = AssetSource('sounds/game-play/goal-sound.wav');
+  static final _startWhistle =
+      AssetSource('sounds/game-play/whistle/start-whistle.wav');
+  static final _fullTimeWhistle =
+      AssetSource('sounds/game-play/whistle/full-time-whistle.wav');
 
   static final AudioPlayer _pausePlayer = _createPlayer('pause');
   static final AudioPlayer _pauseReversePlayer = _createPlayer('pause_reverse');
@@ -24,6 +28,9 @@ class GamePlaySound {
   static final AudioPlayer _savePlayer = _createPlayer('save');
   static final AudioPlayer _cheerPlayer = _createPlayer('cheer');
   static final AudioPlayer _goalPlayer = _createPlayer('goal');
+  static final AudioPlayer _startWhistlePlayer = _createPlayer('start_whistle');
+  static final AudioPlayer _fullTimeWhistlePlayer =
+      _createPlayer('full_time_whistle');
 
   /// Background ambience loops on a standard media player (not low-latency,
   /// which on Android uses SoundPool and does not loop reliably for long clips).
@@ -68,6 +75,8 @@ class GamePlaySound {
       _savePlayer.setSource(_save),
       _cheerPlayer.setSource(_cheeringCrowd),
       _goalPlayer.setSource(_goalSound),
+      _startWhistlePlayer.setSource(_startWhistle),
+      _fullTimeWhistlePlayer.setSource(_fullTimeWhistle),
     ]);
     _ready = true;
   }
@@ -160,5 +169,23 @@ class GamePlaySound {
     }
     _replay(_goalPlayer, _goalSound);
     _replay(_cheerPlayer, _cheeringCrowd);
+  }
+
+  /// Short whistle when the shooter is cleared to take the penalty (GO!).
+  static void playStartWhistle() {
+    if (!_ready) {
+      warmUp().then((_) => _replay(_startWhistlePlayer, _startWhistle));
+      return;
+    }
+    _replay(_startWhistlePlayer, _startWhistle);
+  }
+
+  /// Full-time whistle after the last kick result is shown.
+  static void playFullTimeWhistle() {
+    if (!_ready) {
+      warmUp().then((_) => _replay(_fullTimeWhistlePlayer, _fullTimeWhistle));
+      return;
+    }
+    _replay(_fullTimeWhistlePlayer, _fullTimeWhistle);
   }
 }
