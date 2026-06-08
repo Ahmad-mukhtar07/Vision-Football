@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/goal_event.dart';
 import '../models/kick_event.dart';
+import '../ui/game_play_sound.dart';
 import 'components/ball_component.dart';
 import 'components/goal_component.dart';
 import 'components/scene_background_component.dart';
@@ -78,6 +79,7 @@ class VisionFootballGame extends FlameGame {
       return;
     }
     debugPrint('[KD] >>> BALL SHOT <<<');
+    GamePlaySound.playBallKick();
     matchController.onBallInFlight();
     _ball.strike(event);
     _goalkeeper.reactToKick(event);

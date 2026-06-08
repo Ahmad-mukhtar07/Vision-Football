@@ -17,6 +17,7 @@ import '../pose/pose_detector_service.dart';
 import 'camera_preview_widget.dart';
 import 'foot_selection_overlay.dart';
 import 'foot_marker_overlay.dart';
+import 'game_play_sound.dart';
 import 'hud_overlay.dart';
 import 'match_over_overlay.dart';
 import 'pause_menu_overlay.dart';
@@ -73,6 +74,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   @override
   void initState() {
     super.initState();
+    GamePlaySound.warmUp();
     final poseStream = PoseDetectorService.instance.poseLandmarks;
     // Aim is mirrored in PoseCoordinateMapper; do not flip again for ball/GK.
     _kickDetector = KickDetector(poseStream: poseStream)
@@ -286,6 +288,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
 
   void _pauseGame() {
     if (_isPaused) return;
+    GamePlaySound.playPauseButton();
     if (_setupPhase == _SetupPhase.playing) {
       _matchController.pauseMatch();
       _kickDetector.disarm();

@@ -75,3 +75,6 @@ flutter:
     - assets/images/main_page/avatars/avatar_3.png
     - assets/images/main_page/avatars/avatar_4.png
     - assets/sounds/main-page/button-click.wav
+    - assets/sounds/game-play/pause-button.wav
+    - assets/sounds/game-play/pause-button-reverse.wav
+    - assets/sounds/game-play/ball-kick.wav

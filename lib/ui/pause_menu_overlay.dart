@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import 'game_play_sound.dart';
+
 /// Full-screen pause menu shown during gameplay.
 class PauseMenuOverlay extends StatelessWidget {
   const PauseMenuOverlay({
@@ -12,6 +14,16 @@ class PauseMenuOverlay extends StatelessWidget {
 
   final VoidCallback onResume;
   final VoidCallback onQuit;
+
+  void _resume() {
+    GamePlaySound.playPauseMenuButton();
+    onResume();
+  }
+
+  void _quit() {
+    GamePlaySound.playPauseMenuButton();
+    onQuit();
+  }
 
   static const _gold = Color(0xFFFFD700);
   static const _orange = Color(0xFFFF6B00);
@@ -58,7 +70,7 @@ class PauseMenuOverlay extends StatelessWidget {
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(24),
-                          onTap: onResume,
+                          onTap: _resume,
                           child: const Center(
                             child: Text(
                               'Resume',
@@ -78,7 +90,7 @@ class PauseMenuOverlay extends StatelessWidget {
                     width: 260,
                     height: 48,
                     child: OutlinedButton(
-                      onPressed: onQuit,
+                      onPressed: _quit,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: const BorderSide(color: Colors.white, width: 1.5),

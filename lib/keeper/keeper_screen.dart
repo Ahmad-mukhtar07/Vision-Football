@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
+import '../ui/game_play_sound.dart';
 import '../ui/pause_menu_overlay.dart';
 import 'glove_overlay.dart';
 import 'hand_detector_service.dart';
@@ -54,6 +55,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
   @override
   void initState() {
     super.initState();
+    GamePlaySound.warmUp();
     _controller = KeeperMatchController();
     _controller.addListener(_onMatchChanged);
     _game = KeeperGame(
@@ -161,6 +163,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   void _pauseGame() {
     if (_isPaused) return;
+    GamePlaySound.playPauseButton();
     setState(() => _isPaused = true);
     _phaseTimer?.cancel();
     _calibrationTimer?.cancel();

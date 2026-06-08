@@ -6,6 +6,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart' hide Image;
 
 import '../game/ball_sprite.dart';
+import '../ui/game_play_sound.dart';
 import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
 import 'shooter_component.dart';
@@ -155,6 +156,7 @@ class KeeperGame extends FlameGame {
           mouth.top + mouth.height * 0.5,
         );
     final startWorld = _shooter.ballEmitPoint;
+    GamePlaySound.playBallKick();
     _ball.launch(
       startWorld: startWorld,
       targetScreen: target,
