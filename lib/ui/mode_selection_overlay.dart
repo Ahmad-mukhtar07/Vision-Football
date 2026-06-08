@@ -6,13 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'glass_panel.dart';
+import 'main_page_sound.dart';
 
 /// Selectable game mode from the start screen.
 enum GameMode { takeShots, beTheKeeper }
 
-/// Plays a short UI click + light haptic for button feedback.
+/// Plays the main-menu click sound + light haptic for button feedback.
 void _playTapFeedback() {
-  SystemSound.play(SystemSoundType.click);
+  MainPageSound.playButtonClick();
   HapticFeedback.selectionClick();
 }
 

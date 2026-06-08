@@ -12,6 +12,12 @@
 @import app_settings;
 #endif
 
+#if __has_include(<audioplayers_darwin/AudioplayersDarwinPlugin.h>)
+#import <audioplayers_darwin/AudioplayersDarwinPlugin.h>
+#else
+@import audioplayers_darwin;
+#endif
+
 #if __has_include(<camera_avfoundation/CameraPlugin.h>)
 #import <camera_avfoundation/CameraPlugin.h>
 #else
@@ -40,6 +46,7 @@
 
 + (void)registerWithRegistry:(NSObject<FlutterPluginRegistry>*)registry {
   [AppSettingsPlugin registerWithRegistrar:[registry registrarForPlugin:@"AppSettingsPlugin"]];
+  [AudioplayersDarwinPlugin registerWithRegistrar:[registry registrarForPlugin:@"AudioplayersDarwinPlugin"]];
   [CameraPlugin registerWithRegistrar:[registry registrarForPlugin:@"CameraPlugin"]];
   [GoogleMlKitCommonsPlugin registerWithRegistrar:[registry registrarForPlugin:@"GoogleMlKitCommonsPlugin"]];
   [GoogleMlKitPoseDetectionPlugin registerWithRegistrar:[registry registrarForPlugin:@"GoogleMlKitPoseDetectionPlugin"]];

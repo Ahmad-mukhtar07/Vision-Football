@@ -16,6 +16,7 @@ dependencies:
   sensors_plus: ^7.0.0
   vector_math: ^2.2.0
   app_settings: ^7.0.0
+  audioplayers: ^6.7.1
 
 dev_dependencies:
   flutter_test:
@@ -73,3 +74,4 @@ flutter:
     - assets/images/main_page/avatars/avatar_2.png
     - assets/images/main_page/avatars/avatar_3.png
     - assets/images/main_page/avatars/avatar_4.png
+    - assets/sounds/main-page/button-click.wav

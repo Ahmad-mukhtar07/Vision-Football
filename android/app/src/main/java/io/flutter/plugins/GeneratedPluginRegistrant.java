@@ -21,6 +21,11 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin app_settings, com.spencerccf.app_settings.AppSettingsPlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new xyz.luan.audioplayers.AudioplayersPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin audioplayers_android, xyz.luan.audioplayers.AudioplayersPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new io.flutter.plugins.camerax.CameraAndroidCameraxPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin camera_android_camerax, io.flutter.plugins.camerax.CameraAndroidCameraxPlugin", e);
@@ -39,6 +44,16 @@ public final class GeneratedPluginRegistrant {
       flutterEngine.getPlugins().add(new com.google_mlkit_pose_detection.GoogleMlKitPoseDetectionPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin google_mlkit_pose_detection, com.google_mlkit_pose_detection.GoogleMlKitPoseDetectionPlugin", e);
+    }
+    try {
+      flutterEngine.getPlugins().add(new com.github.dart_lang.jni.JniPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin jni, com.github.dart_lang.jni.JniPlugin", e);
+    }
+    try {
+      flutterEngine.getPlugins().add(new com.github.dart_lang.jni_flutter.JniFlutterPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin jni_flutter, com.github.dart_lang.jni_flutter.JniFlutterPlugin", e);
     }
     try {
       flutterEngine.getPlugins().add(new dev.fluttercommunity.plus.sensors.SensorsPlugin());
