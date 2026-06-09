@@ -58,7 +58,9 @@ class _GloveOverlayState extends State<GloveOverlay> {
   Offset? _rightScreen;
   Size? _imageSize;
 
-  static const double _smoothAlpha = 0.6;
+  // One latency-compensating tracker per hand.
+  final _LatencyCompensatedTracker _leftTracker = _LatencyCompensatedTracker();
+  final _LatencyCompensatedTracker _rightTracker = _LatencyCompensatedTracker();
 
   @override
   void initState() {
@@ -69,18 +71,9 @@ class _GloveOverlayState extends State<GloveOverlay> {
   void _onFrame(HandFrame frame) {
     if (!mounted) return;
     _imageSize = frame.imageSize ?? _imageSize;
-    _leftNorm = _smooth(_leftNorm, frame.leftHand);
-    _rightNorm = _smooth(_rightNorm, frame.rightHand);
+    _leftNorm = _leftTracker.update(frame.leftHand, frame.timestamp);
+    _rightNorm = _rightTracker.update(frame.rightHand, frame.timestamp);
     setState(() {});
-  }
-
-  Offset? _smooth(Offset? prev, Offset? next) {
-    if (next == null) return prev;
-    if (prev == null) return next;
-    return Offset(
-      prev.dx + (next.dx - prev.dx) * _smoothAlpha,
-      prev.dy + (next.dy - prev.dy) * _smoothAlpha,
-    );
   }
 
   @override
@@ -234,5 +227,71 @@ class _GloveMarker extends StatelessWidget {
         child: glove,
       ),
     );
+  }
+}
+
+/// Tracks one hand's normalized position and projects it slightly forward
+/// along its recent velocity, cancelling most of the camera→ML Kit→render
+/// latency so the glove keeps up with fast dives instead of trailing behind.
+///
+/// A short, capped lead avoids overshoot, and velocity is smoothed so a single
+/// noisy sample can't fling the glove away. When the hand isn't detected the
+/// last position is held while the velocity bleeds off.
+class _LatencyCompensatedTracker {
+  Offset? _pos; // smoothed, latency-compensated output
+  Offset? _lastRaw; // previous raw sample
+  DateTime? _lastTime;
+  Offset _velocity = Offset.zero; // normalized units per second
+
+  /// How aggressively the output snaps toward the predicted target.
+  static const double _positionAlpha = 0.7;
+
+  /// Smoothing applied to the per-frame velocity estimate.
+  static const double _velocityAlpha = 0.5;
+
+  /// Seconds to project ahead (≈ one detection interval) to cancel latency.
+  static const double _minLead = 0.03;
+  static const double _maxLead = 0.08;
+
+  /// Max distance (normalized) the prediction may deviate from the raw sample.
+  static const double _maxLeadDistance = 0.10;
+
+  Offset? update(Offset? raw, DateTime now) {
+    if (raw == null) {
+      _velocity = _velocity * 0.5;
+      _lastRaw = null; // re-initialize cleanly when the hand reappears
+      _lastTime = null;
+      return _pos;
+    }
+
+    final last = _lastRaw;
+    final lastTime = _lastTime;
+    _lastRaw = raw;
+    _lastTime = now;
+
+    if (_pos == null || last == null || lastTime == null) {
+      _pos = raw;
+      _velocity = Offset.zero;
+      return _pos;
+    }
+
+    final dt =
+        (now.difference(lastTime).inMicroseconds / 1e6).clamp(0.005, 0.1);
+    final instantaneous = (raw - last) / dt;
+    _velocity = _velocity + (instantaneous - _velocity) * _velocityAlpha;
+
+    final lead = dt.clamp(_minLead, _maxLead);
+    var predicted = raw + _velocity * lead;
+
+    // Cap how far ahead of the real sample we allow the glove to sit.
+    final deviation = predicted - raw;
+    final distance = deviation.distance;
+    if (distance > _maxLeadDistance) {
+      predicted = raw + deviation * (_maxLeadDistance / distance);
+    }
+
+    final prev = _pos!;
+    _pos = prev + (predicted - prev) * _positionAlpha;
+    return _pos;
   }
 }

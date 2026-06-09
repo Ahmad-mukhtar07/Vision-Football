@@ -34,8 +34,11 @@ class GameFootMarkerController extends ChangeNotifier {
   static const double markerRadiusPx = 24;
   static const double ballHitRadiusPx = 26;
 
-  static const double _anchoredLerp = 0.55;
-  static const double _trackingLerp = 0.92;
+  // Higher = snappier marker. Anchored governs pre-kick aim (raised so lateral
+  // aiming follows the foot with less lag); tracking governs the strike swing
+  // (kept near-instant so the marker stays on the foot through the kick).
+  static const double _anchoredLerp = 0.72;
+  static const double _trackingLerp = 0.95;
   static const double _recoverLerp = 0.28;
   static const double _snapDistancePx = 8;
   static const int _framesToClearPass = 14;

@@ -153,9 +153,14 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       'lens=${camera.lensDirection.name} sensorOrientation=${camera.sensorOrientation}',
     );
 
+    // Medium (≈480p) keeps ML Kit pose well above its 480×360 minimum while
+    // cutting per-frame inference time roughly in half vs. high (720p). The
+    // detector serializes frames (drops while busy), so faster inference means
+    // a higher effective detection rate — the foot marker tracks the kick
+    // closely and the strike-frame ankle used for aim is far less stale.
     final controller = CameraController(
       camera,
-      ResolutionPreset.high,
+      ResolutionPreset.medium,
       enableAudio: false,
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
