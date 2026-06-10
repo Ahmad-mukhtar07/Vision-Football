@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../game/game_foot_marker_controller.dart';
@@ -37,7 +38,7 @@ class FootMarkerOverlay extends StatefulWidget {
 }
 
 class _FootMarkerOverlayState extends State<FootMarkerOverlay>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const double _overlayMinLikelihood = 0.55;
   static const double _stillSpeed = 0.012;
   static const double _stillSmoothAlpha = 0.55;
@@ -57,6 +58,9 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
   late final AnimationController _kickFlashController;
   bool _kickFlashActive = false;
 
+  /// Repaints the swing trail while it fades out, independent of pose frames.
+  Ticker? _trailTicker;
+
   @override
   void initState() {
     super.initState();
@@ -73,11 +77,38 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
         _onLandmarks,
       );
     }
+    widget.gameFootMarker?.addListener(_onMarkerChanged);
     _kickSubscription = widget.kickDetector.kickStream.listen((_) {
       if (!mounted) return;
       setState(() => _kickFlashActive = true);
       _kickFlashController.forward(from: 0);
     });
+  }
+
+  void _onMarkerChanged() {
+    // Kick off the fade-out ticker as soon as a swing trail appears.
+    if (widget.gameFootMarker?.hasActiveTrail ?? false) {
+      _ensureTrailTicker();
+    }
+  }
+
+  void _ensureTrailTicker() {
+    if (_trailTicker != null) return;
+    _trailTicker = createTicker((_) {
+      final marker = widget.gameFootMarker;
+      if (!mounted || marker == null || !marker.hasActiveTrail) {
+        _stopTrailTicker();
+        if (mounted) setState(() {});
+        return;
+      }
+      setState(() {});
+    })
+      ..start();
+  }
+
+  void _stopTrailTicker() {
+    _trailTicker?.dispose();
+    _trailTicker = null;
   }
 
   void _onLandmarks(List<PoseLandmark> landmarks) {
@@ -135,6 +166,10 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
   @override
   void didUpdateWidget(covariant FootMarkerOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.gameFootMarker != widget.gameFootMarker) {
+      oldWidget.gameFootMarker?.removeListener(_onMarkerChanged);
+      widget.gameFootMarker?.addListener(_onMarkerChanged);
+    }
     if (oldWidget.kickingFoot != widget.kickingFoot) {
       _displayNorm = null;
       _holdFrames = 0;
@@ -155,6 +190,8 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
   void dispose() {
     _subscription?.cancel();
     _kickSubscription?.cancel();
+    widget.gameFootMarker?.removeListener(_onMarkerChanged);
+    _stopTrailTicker();
     _kickFlashController.dispose();
     super.dispose();
   }
@@ -228,6 +265,16 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
     return Stack(
       fit: StackFit.expand,
       children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: _SwipeTrailPainter(
+                points: marker.trail,
+                trailDuration: GameFootMarkerController.trailDuration,
+              ),
+            ),
+          ),
+        ),
         if (ballCenter != null)
           Positioned(
             left: ballCenter.dx - GameFootMarkerController.ballHitRadiusPx,
@@ -292,4 +339,63 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
       ],
     );
   }
+}
+
+/// Fruit Ninja-style fading streak following the foot marker through a swing.
+///
+/// Each segment's opacity and width are scaled by the age of its points so the
+/// trail fades over [trailDuration]; newer (leading) segments are brighter and
+/// thicker, older (tail) segments thinner and more transparent.
+class _SwipeTrailPainter extends CustomPainter {
+  _SwipeTrailPainter({
+    required this.points,
+    required this.trailDuration,
+  });
+
+  final List<FootTrailPoint> points;
+  final Duration trailDuration;
+
+  static const double _maxStrokeWidth = 14;
+  static const double _minStrokeWidth = 2;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+
+    final now = DateTime.now();
+    final totalMs = trailDuration.inMilliseconds;
+
+    for (int i = 1; i < points.length; i++) {
+      final p0 = points[i - 1];
+      final p1 = points[i];
+
+      // recency: 0 (oldest still-visible) → 1 (newest). Drop expired points.
+      final ageMs = now.difference(p1.time).inMilliseconds;
+      if (ageMs >= totalMs) continue;
+      final recency = (1.0 - ageMs / totalMs).clamp(0.0, 1.0);
+
+      final width = _minStrokeWidth +
+          (_maxStrokeWidth - _minStrokeWidth) * recency;
+
+      // Outer soft glow.
+      final glowPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = width * 1.9
+        ..color = Colors.cyanAccent.withValues(alpha: 0.18 * recency)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+      canvas.drawLine(p0.position, p1.position, glowPaint);
+
+      // Bright core.
+      final corePaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = width
+        ..color = Colors.white.withValues(alpha: 0.85 * recency);
+      canvas.drawLine(p0.position, p1.position, corePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SwipeTrailPainter oldDelegate) => true;
 }

@@ -52,6 +52,64 @@ class GameFootMarkerController extends ChangeNotifier {
   bool _markerOverBallNow = false;
   int _framesAwayFromBall = 0;
 
+  // ── Swipe trail (Fruit Ninja style) ──
+  //
+  // Recent marker positions captured during the strike swing, each stamped
+  // with capture time. The overlay renders them as a fading streak and drops
+  // points older than [trailDuration]. Visual only — no gameplay effect.
+  final List<FootTrailPoint> _trail = <FootTrailPoint>[];
+  static const Duration trailDuration = Duration(milliseconds: 1000);
+
+  // The trail is only drawn during an actual swing — a foot motion fast enough
+  // to be a shot attempt — never during casual/slow foot movement. A latch
+  // keeps the line continuous through the swing and switches off shortly after
+  // the foot slows back down.
+  bool _swingActive = false;
+  int _swingQuietFrames = 0;
+
+  /// Per-frame normalized foot velocity that counts as a swing. Set well above
+  /// casual movement so idle foot drift never produces a trail.
+  static const double _trailSwingVelocityNorm = 0.05;
+
+  /// Slow frames before a swing is considered finished.
+  static const int _trailSwingEndQuietFrames = 4;
+
+  /// Immutable snapshot of the current trail points (oldest → newest).
+  List<FootTrailPoint> get trail => List.unmodifiable(_trail);
+
+  /// True while any trail point is still within [trailDuration] of now.
+  bool get hasActiveTrail {
+    if (_trail.isEmpty) return false;
+    final cutoff = DateTime.now().subtract(trailDuration);
+    return _trail.last.time.isAfter(cutoff);
+  }
+
+  void _updateSwingLatch(double velocity) {
+    if (velocity >= _trailSwingVelocityNorm) {
+      _swingActive = true;
+      _swingQuietFrames = 0;
+    } else if (_swingActive) {
+      _swingQuietFrames++;
+      if (_swingQuietFrames >= _trailSwingEndQuietFrames) {
+        _swingActive = false;
+        _swingQuietFrames = 0;
+      }
+    }
+  }
+
+  void _recordTrailPoint(Offset position) {
+    final now = DateTime.now();
+    _trail.add(FootTrailPoint(position: position, time: now));
+    _pruneTrail(now);
+  }
+
+  void _pruneTrail(DateTime now) {
+    final cutoff = now.subtract(trailDuration);
+    while (_trail.isNotEmpty && _trail.first.time.isBefore(cutoff)) {
+      _trail.removeAt(0);
+    }
+  }
+
   // ── Body-scale depth tracking ──
   //
   // Apparent shin length (ankle→knee in normalized image coords) is the most
@@ -104,6 +162,9 @@ class GameFootMarkerController extends ChangeNotifier {
     _neutralNorm = neutralNorm;
     _gameMode = true;
     _clearPassState();
+    _trail.clear();
+    _swingActive = false;
+    _swingQuietFrames = 0;
     _neutralScale = null;
     _smoothedScale = null;
     _scaleDebugCounter = 0;
@@ -116,6 +177,9 @@ class GameFootMarkerController extends ChangeNotifier {
   void endGameMode() {
     _gameMode = false;
     _clearPassState();
+    _trail.clear();
+    _swingActive = false;
+    _swingQuietFrames = 0;
     _state = MarkerPositionState.anchored;
     _screenPosition = null;
     notifyListeners();
@@ -170,6 +234,12 @@ class GameFootMarkerController extends ChangeNotifier {
 
     final delta = footNorm - _neutralNorm!;
 
+    // Detect a swing from raw foot speed (independent of tracking state, which
+    // can also be entered just by hovering near the ball).
+    final swingVelocity =
+        _prevFootNorm == null ? 0.0 : (footNorm - _prevFootNorm!).distance;
+    _updateSwingLatch(swingVelocity);
+
     if (_state == MarkerPositionState.anchored &&
         _shouldBeginTracking(footNorm)) {
       _state = MarkerPositionState.tracking;
@@ -200,6 +270,12 @@ class GameFootMarkerController extends ChangeNotifier {
 
     _screenPosition = Offset(newX, newY);
     _prevFootNorm = footNorm;
+
+    // Capture the swing path for the on-screen trail — only during an actual
+    // swing, so casual foot movement never draws a line.
+    if (_swingActive) {
+      _recordTrailPoint(_screenPosition!);
+    }
 
     _updatePassDetection(
       prevMarker: prev,
@@ -407,4 +483,12 @@ class GameFootMarkerController extends ChangeNotifier {
     final closest = a + d * (t.clamp(0.0, 1.0));
     return (closest - center).distance <= radius;
   }
+}
+
+/// A single sampled point of the foot-marker swing trail (screen coords).
+class FootTrailPoint {
+  const FootTrailPoint({required this.position, required this.time});
+
+  final Offset position;
+  final DateTime time;
 }
