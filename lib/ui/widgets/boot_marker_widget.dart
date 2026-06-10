@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 /// Layout for the football boot sprite marker.
 abstract final class BootMarkerLayout {
   static const String assetPath = 'assets/images/football_boot_right.png';
-  static const double width = 52;
-  static const double height = 52;
+  static const double width = 58;
+  static const double height = 58;
   /// Heel / sole contact point (right-foot art); used as flip pivot for left foot.
-  static const Offset anchor = Offset(18, 44);
+  static const Offset anchor = Offset(20, 49);
 }
 
 /// Right-foot boot image; horizontally mirrored when [isLeftFoot] is true.

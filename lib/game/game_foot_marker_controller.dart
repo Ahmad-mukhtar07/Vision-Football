@@ -31,8 +31,8 @@ class GameFootMarkerController extends ChangeNotifier {
   double _strikeMaxUpPx = 90;
 
   static const double belowBallOffsetPx = 95;
-  static const double markerRadiusPx = 24;
-  static const double ballHitRadiusPx = 26;
+  static const double markerRadiusPx = 28;
+  static const double ballHitRadiusPx = 32;
 
   // Higher = snappier marker. Anchored governs pre-kick aim (raised so lateral
   // aiming follows the foot with less lag); tracking governs the strike swing
@@ -95,6 +95,10 @@ class GameFootMarkerController extends ChangeNotifier {
   double get _passSweepRadius => (ballHitRadiusPx + markerRadiusPx) * 0.8;
 
   double get _clearRadius => ballHitRadiusPx + markerRadiusPx + 14;
+
+  /// Lateral half-width when the marker sweeps upward across the ball's line.
+  double get _passCrossLateralTolerance =>
+      ballHitRadiusPx + markerRadiusPx + 18;
 
   void beginGameMode(Offset neutralNorm) {
     _neutralNorm = neutralNorm;
@@ -357,7 +361,12 @@ class GameFootMarkerController extends ChangeNotifier {
     final markerSwept =
         _segmentIntersectsCircle(prevMarker, nextMarker, ball, _passSweepRadius);
 
-    if (_markerOverBallNow || markerSwept) {
+    // Upward sweep across the ball's horizontal line — catches crosses that
+    // miss the tight circle overlap but clearly pass through the ball column.
+    final crossedUpward = _state == MarkerPositionState.tracking &&
+        _crossedBallLineUpward(prevMarker, nextMarker, ball);
+
+    if (_markerOverBallNow || markerSwept || crossedUpward) {
       _passedBallThisSwing = true;
       _framesAwayFromBall = 0;
       return;
@@ -371,6 +380,16 @@ class GameFootMarkerController extends ChangeNotifier {
     } else {
       _framesAwayFromBall = 0;
     }
+  }
+
+  bool _crossedBallLineUpward(Offset prev, Offset next, Offset ball) {
+    if (next.dy >= prev.dy) return false;
+    final lineY = ball.dy;
+    if (!(prev.dy >= lineY && next.dy <= lineY)) return false;
+    final dy = next.dy - prev.dy;
+    final t = (dy.abs() < 1e-6) ? 0.0 : ((lineY - prev.dy) / dy).clamp(0.0, 1.0);
+    final crossX = prev.dx + (next.dx - prev.dx) * t;
+    return (crossX - ball.dx).abs() <= _passCrossLateralTolerance;
   }
 
   static bool _segmentIntersectsCircle(

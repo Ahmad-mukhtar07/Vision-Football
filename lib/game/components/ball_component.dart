@@ -31,7 +31,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     this.onBecameIdle,
   }) : super(
          anchor: Anchor.center,
-         size: Vector2.all(42),
+         size: Vector2.all(48),
        );
 
   final GoalComponent goal;
