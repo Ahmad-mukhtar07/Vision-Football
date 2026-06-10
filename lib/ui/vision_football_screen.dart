@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
-
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../game/game_foot_marker_controller.dart';
 import '../game/layout_constants.dart';
@@ -75,6 +75,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(WakelockPlus.enable());
     GamePlaySound.warmUp();
     CommentarySound.warmUp();
     final poseStream = PoseDetectorService.instance.poseLandmarks;
@@ -374,6 +375,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     // Release native ML Kit pose resources; the singleton recreates the
     // detector lazily on the next shooting session.
     unawaited(PoseDetectorService.instance.release());
+    unawaited(WakelockPlus.disable());
     super.dispose();
   }
 

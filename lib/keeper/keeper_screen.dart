@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
@@ -59,6 +60,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(WakelockPlus.enable());
     GamePlaySound.warmUp();
     CommentarySound.warmUp();
     _controller = KeeperMatchController();
@@ -254,6 +256,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _controller.removeListener(_onMatchChanged);
     _controller.dispose();
     _game.cameraXOffset.dispose();
+    unawaited(WakelockPlus.disable());
     super.dispose();
   }
 

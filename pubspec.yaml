@@ -17,6 +17,7 @@ dependencies:
   vector_math: ^2.2.0
   app_settings: ^7.0.0
   audioplayers: ^6.7.1
+  wakelock_plus: ^1.6.1
 
 dev_dependencies:
   flutter_test:
