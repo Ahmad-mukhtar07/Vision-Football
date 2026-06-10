@@ -16,12 +16,17 @@ class PoseDetectorService {
 
   static const int _processEveryNthFrame = 1;
 
-  final PoseDetector _detector = PoseDetector(
-    options: PoseDetectorOptions(
-      model: PoseDetectionModel.base,
-      mode: PoseDetectionMode.stream,
-    ),
-  );
+  /// Lazily created so it can be released between sessions (see [release]).
+  PoseDetector? _detector;
+
+  PoseDetector _ensureDetector() {
+    return _detector ??= PoseDetector(
+      options: PoseDetectorOptions(
+        model: PoseDetectionModel.base,
+        mode: PoseDetectionMode.stream,
+      ),
+    );
+  }
 
   final StreamController<List<PoseLandmark>> _landmarksController =
       StreamController<List<PoseLandmark>>.broadcast();
@@ -31,6 +36,17 @@ class PoseDetectorService {
   int _frameCounter = 0;
   bool _isProcessing = false;
   bool _disposed = false;
+
+  /// When false, [processCameraImage] skips inference entirely. Toggled by the
+  /// camera widget so ML Kit only runs during phases that consume poses
+  /// (positioning / calibration / play) — not foot-selection, pause, or
+  /// match-over. Active-gameplay behaviour is unchanged, so accuracy is too.
+  bool _processingEnabled = true;
+
+  void setProcessingEnabled(bool enabled) {
+    _processingEnabled = enabled;
+    if (!enabled) _isProcessing = false;
+  }
 
   CameraDescription? _camera;
   DeviceOrientation _deviceOrientation = DeviceOrientation.portraitUp;
@@ -110,6 +126,7 @@ class PoseDetectorService {
 
   Future<void> processCameraImage(CameraImage image) async {
     if (_disposed || _camera == null) return;
+    if (!_processingEnabled) return;
 
     _frameCounter++;
     if (_frameCounter % _processEveryNthFrame != 0) return;
@@ -141,7 +158,7 @@ class PoseDetectorService {
 
     _isProcessing = true;
     try {
-      final poses = await _detector.processImage(inputImage);
+      final poses = await _ensureDetector().processImage(inputImage);
       if (_disposed) return;
 
       final landmarks = poses.isNotEmpty
@@ -285,10 +302,22 @@ class PoseDetectorService {
     );
   }
 
+  /// Frees the native ML Kit detector while keeping the singleton reusable.
+  /// Call on screen exit; the next session lazily recreates the detector.
+  Future<void> release() async {
+    _processingEnabled = false;
+    _isProcessing = false;
+    _frameCounter = 0;
+    final detector = _detector;
+    _detector = null;
+    await detector?.close();
+  }
+
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    await _detector.close();
+    await _detector?.close();
+    _detector = null;
     await _landmarksController.close();
   }
 }

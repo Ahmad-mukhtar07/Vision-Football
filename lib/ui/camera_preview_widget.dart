@@ -35,6 +35,7 @@ class CameraPreviewWidget extends StatefulWidget {
     required this.calibration,
     this.kickingFoot,
     this.previewMode = CameraPreviewMode.fullscreen,
+    this.active = true,
   });
 
   final List<CameraDescription> cameras;
@@ -44,6 +45,12 @@ class CameraPreviewWidget extends StatefulWidget {
 
   /// Controls whether and how the camera preview is visible.
   final CameraPreviewMode previewMode;
+
+  /// When false, the camera image stream and ML Kit inference are stopped
+  /// (foot-selection, pause, match-over). The controller stays initialized so
+  /// re-activating is fast. Active-play phases keep this true → no change to
+  /// detection rate or accuracy during gameplay.
+  final bool active;
 
   @override
   State<CameraPreviewWidget> createState() => _CameraPreviewWidgetState();
@@ -55,6 +62,7 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   CameraController? _controller;
   int? _selectedCameraIndex;
   int? _sensorRotationDegrees;
+  bool _streaming = false;
   List<PoseLandmark> _landmarks = [];
   StreamSubscription<List<PoseLandmark>>? _poseSubscription;
   StreamSubscription? _kickSubscription;
@@ -185,13 +193,44 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       deviceOrientation: controller.value.deviceOrientation,
     );
 
-    await controller.startImageStream(_onCameraImage);
+    _poseService.setProcessingEnabled(widget.active);
+    if (widget.active) {
+      _streaming = true;
+      await controller.startImageStream(_onCameraImage);
+    }
     if (!mounted) {
       await controller.dispose();
       return;
     }
 
     setState(() => _controller = controller);
+  }
+
+  @override
+  void didUpdateWidget(covariant CameraPreviewWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active != oldWidget.active) {
+      unawaited(_applyActive());
+    }
+  }
+
+  /// Starts/stops the image stream and toggles inference to match [active].
+  /// The controller stays initialized, so this is a cheap resume.
+  Future<void> _applyActive() async {
+    final controller = _controller;
+    _poseService.setProcessingEnabled(widget.active);
+    if (controller == null || !controller.value.isInitialized) return;
+    try {
+      if (widget.active && !_streaming) {
+        _streaming = true;
+        await controller.startImageStream(_onCameraImage);
+      } else if (!widget.active && _streaming) {
+        _streaming = false;
+        await controller.stopImageStream();
+      }
+    } catch (e) {
+      debugPrint('[CAM] stream toggle failed: $e');
+    }
   }
 
   void _onCameraImage(CameraImage image) {
@@ -210,6 +249,8 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     _poseSubscription?.cancel();
     _kickSubscription?.cancel();
     _kickFlashTimer?.cancel();
+    _poseService.setProcessingEnabled(false);
+    _streaming = false;
     _controller?.dispose();
     super.dispose();
   }
@@ -224,6 +265,11 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
           child: CircularProgressIndicator(color: Colors.white),
         ),
       );
+    }
+
+    // Camera is off for this phase — show black instead of a frozen frame.
+    if (!widget.active) {
+      return const ColoredBox(color: Colors.black);
     }
 
     final imageSize = _poseService.lastImageSize;

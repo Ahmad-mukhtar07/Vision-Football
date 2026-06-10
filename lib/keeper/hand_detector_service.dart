@@ -46,6 +46,16 @@ class HandDetectorService {
   bool _started = false;
   bool _isProcessing = false;
 
+  /// When false, [processCameraImage] skips inference. Toggled by the camera
+  /// widget so hand tracking only runs while it's consumed (calibration +
+  /// active shots), not during pause or match-over.
+  bool _processingEnabled = true;
+
+  void setProcessingEnabled(bool enabled) {
+    _processingEnabled = enabled;
+    if (!enabled) _isProcessing = false;
+  }
+
   CameraDescription? _camera;
   DeviceOrientation _deviceOrientation = DeviceOrientation.portraitUp;
 
@@ -74,6 +84,7 @@ class HandDetectorService {
       ),
     );
     _started = true;
+    _processingEnabled = true;
     debugPrint('[HAND] detector started');
   }
 
@@ -98,6 +109,7 @@ class HandDetectorService {
   /// Feed a camera frame. Skipped silently if the service is not started.
   Future<void> processCameraImage(CameraImage image) async {
     if (!_started || _camera == null) return;
+    if (!_processingEnabled) return;
     if (_isProcessing) return;
 
     final inputImage = _inputImageFromCameraImage(image);

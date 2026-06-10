@@ -18,6 +18,7 @@ class KeeperCameraPreview extends StatefulWidget {
     super.key,
     required this.cameras,
     this.showPreview = false,
+    this.active = true,
   });
 
   final List<CameraDescription> cameras;
@@ -26,6 +27,11 @@ class KeeperCameraPreview extends StatefulWidget {
   /// When false only the detection pipeline runs — nothing is drawn.
   final bool showPreview;
 
+  /// When false the image stream and hand inference are stopped (pause,
+  /// match-over). The controller stays initialized for a cheap resume; active
+  /// shot/calibration phases keep this true, so tracking is unchanged there.
+  final bool active;
+
   @override
   State<KeeperCameraPreview> createState() => _KeeperCameraPreviewState();
 }
@@ -33,6 +39,7 @@ class KeeperCameraPreview extends StatefulWidget {
 class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
   CameraController? _controller;
   int? _selectedCameraIndex;
+  bool _streaming = false;
   HandDetectorService get _handService => HandDetectorService.instance;
 
   @override
@@ -69,12 +76,41 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
       camera: camera,
       deviceOrientation: controller.value.deviceOrientation,
     );
-    await controller.startImageStream(_onCameraImage);
+    _handService.setProcessingEnabled(widget.active);
+    if (widget.active) {
+      _streaming = true;
+      await controller.startImageStream(_onCameraImage);
+    }
     if (!mounted) {
       await controller.dispose();
       return;
     }
     setState(() => _controller = controller);
+  }
+
+  @override
+  void didUpdateWidget(covariant KeeperCameraPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active != oldWidget.active) {
+      unawaited(_applyActive());
+    }
+  }
+
+  Future<void> _applyActive() async {
+    final controller = _controller;
+    _handService.setProcessingEnabled(widget.active);
+    if (controller == null || !controller.value.isInitialized) return;
+    try {
+      if (widget.active && !_streaming) {
+        _streaming = true;
+        await controller.startImageStream(_onCameraImage);
+      } else if (!widget.active && _streaming) {
+        _streaming = false;
+        await controller.stopImageStream();
+      }
+    } catch (e) {
+      debugPrint('[KEEPER CAM] stream toggle failed: $e');
+    }
   }
 
   void _onCameraImage(CameraImage image) {
@@ -89,7 +125,10 @@ class _KeeperCameraPreviewState extends State<KeeperCameraPreview> {
 
   @override
   void dispose() {
-    _controller?.stopImageStream();
+    if (_streaming) {
+      _streaming = false;
+      unawaited(_controller?.stopImageStream());
+    }
     _controller?.dispose();
     unawaited(_handService.shutdown());
     super.dispose();

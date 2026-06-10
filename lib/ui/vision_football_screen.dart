@@ -371,6 +371,9 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _calibration.dispose();
     _matchController.dispose();
     _kickDetector.dispose();
+    // Release native ML Kit pose resources; the singleton recreates the
+    // detector lazily on the next shooting session.
+    unawaited(PoseDetectorService.instance.release());
     super.dispose();
   }
 
@@ -389,6 +392,11 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       null => CameraPreviewMode.fullscreen,
     };
 
+    // Camera + pose detection only run once a foot is chosen and while not
+    // paused or finished. Foot-selection, pause and match-over don't consume
+    // poses, so this changes nothing during active play (accuracy unchanged).
+    final cameraActive = _setupPhase != null && !_isPaused && !matchOver;
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -398,6 +406,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           calibration: _calibration,
           kickingFoot: _kickingFoot,
           previewMode: previewMode,
+          active: cameraActive,
         ),
         // Mounted early so Flame is ready before kick 1; not painted until play.
         Offstage(

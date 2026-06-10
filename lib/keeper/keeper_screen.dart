@@ -263,6 +263,11 @@ class _KeeperScreenState extends State<KeeperScreen> {
     final matchOver = state.phase == KeeperPhase.matchOver;
     final isCalibrating = state.phase == KeeperPhase.calibrating;
 
+    // Hand detection only matters during calibration and live shots. Stop the
+    // camera + inference while paused or after the match ends; resuming is
+    // cheap since the controller stays initialized. No change during play.
+    final cameraActive = !_isPaused && !matchOver;
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -270,6 +275,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
         KeeperCameraPreview(
           cameras: widget.cameras,
           showPreview: isCalibrating,
+          active: cameraActive,
         ),
         // 2. Stadium background — pans horizontally to follow the ball.
         if (!isCalibrating)
