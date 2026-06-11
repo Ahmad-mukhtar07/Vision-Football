@@ -48,6 +48,8 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
   static const double _bootH = BootMarkerLayout.height;
   static final Offset _bootAnchor = BootMarkerLayout.anchor;
 
+  static const double _strikeLineHeight = 6;
+
   Offset? _displayNorm;
   int _holdFrames = 0;
   static const int _maxHoldFrames = 12;
@@ -250,17 +252,15 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
   ) {
     final clamped = _clampFootPoint(pt, screen);
     final ballCenter = marker.ballCenterScreen;
-    final ringColor = switch (marker.state) {
-      MarkerPositionState.tracking => marker.didPassBall
-          ? Colors.greenAccent.withValues(alpha: 0.95)
-          : Colors.cyanAccent.withValues(alpha: 0.75),
-      MarkerPositionState.recovering => Colors.white.withValues(alpha: 0.25),
-      MarkerPositionState.anchored => marker.didPassBall
-          ? Colors.greenAccent.withValues(alpha: 0.9)
-          : Colors.white.withValues(alpha: 0.35),
-    };
+    final passed = marker.isEligibleForStrike || marker.didPassBall;
+    final lineColor = passed
+        ? Colors.greenAccent.withValues(alpha: 0.95)
+        : (marker.isTrackingStrike
+            ? Colors.cyanAccent.withValues(alpha: 0.8)
+            : Colors.white.withValues(alpha: 0.5));
 
     final bootPos = _bootTopLeft(clamped);
+    final bandHalfWidth = marker.strikeBandHalfWidth;
 
     return Stack(
       fit: StackFit.expand,
@@ -277,19 +277,13 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
         ),
         if (ballCenter != null)
           Positioned(
-            left: ballCenter.dx - GameFootMarkerController.ballHitRadiusPx,
-            top: ballCenter.dy - GameFootMarkerController.ballHitRadiusPx,
+            left: ballCenter.dx - bandHalfWidth,
+            top: ballCenter.dy - _strikeLineHeight / 2,
             child: IgnorePointer(
-              child: Container(
-                width: GameFootMarkerController.ballHitRadiusPx * 2,
-                height: GameFootMarkerController.ballHitRadiusPx * 2,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: ringColor,
-                    width: marker.isTrackingStrike ? 2.5 : 2,
-                  ),
-                ),
+              child: _StrikeLine(
+                width: bandHalfWidth * 2,
+                height: _strikeLineHeight,
+                color: lineColor,
               ),
             ),
           ),
@@ -337,6 +331,47 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
           child: _bootMarkerWidget(foot),
         ),
       ],
+    );
+  }
+}
+
+/// Subtle horizontal "strike line" drawn through the ball. Reads as a kick
+/// guide: brightest at the center (over the ball) and fading to transparent at
+/// the edges, with a soft glow. The ball itself stays a normal circle.
+class _StrikeLine extends StatelessWidget {
+  const _StrikeLine({
+    required this.width,
+    required this.height,
+    required this.color,
+  });
+
+  final double width;
+  final double height;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(height),
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: 0),
+            color,
+            color,
+            color.withValues(alpha: 0),
+          ],
+          stops: const [0.0, 0.4, 0.6, 1.0],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.35),
+            blurRadius: 8,
+          ),
+        ],
+      ),
     );
   }
 }

@@ -30,6 +30,17 @@ class GameFootMarkerController extends ChangeNotifier {
   double _runUpMaxDownPx = 110;
   double _strikeMaxUpPx = 90;
 
+  // Horizontal "strike band" replacing the tight ball circle for kick
+  // detection. A shot registers when the marker sweeps UP across this band
+  // within its half-width — wide horizontally (foot can cross to either side
+  // of the ball) but narrow vertically (must cross at the ball's row), so
+  // side crosses still count yet idle vertical drift doesn't.
+  double _strikeBandHalfWidth = 130;
+  double _strikeBandHalfHeight = 30;
+
+  double get strikeBandHalfWidth => _strikeBandHalfWidth;
+  double get strikeBandHalfHeight => _strikeBandHalfHeight;
+
   static const double belowBallOffsetPx = 95;
   static const double markerRadiusPx = 28;
   static const double ballHitRadiusPx = 32;
@@ -135,28 +146,20 @@ class GameFootMarkerController extends ChangeNotifier {
   /// Green ring only while marker is on the ball.
   bool get didPassBall => _markerOverBallNow;
 
-  /// Kick gate — true if the foot has crossed through the ball during this
-  /// swing. Once a pass is recorded, eligibility holds for the full
-  /// [_framesToClearPass] window even if the foot has followed through far
-  /// past the ball (natural curved kicks).
-  bool get isEligibleForStrike => _markerOverBallNow || _passedBallThisSwing;
+  /// Kick gate — true only once the foot has swept UP across the strike band
+  /// during an active swing. Merely resting/adjusting over the ball no longer
+  /// makes a shot eligible (that caused accidental shots when adjusting the
+  /// foot after a pull-back). Eligibility holds for the [_framesToClearPass]
+  /// window so curved follow-throughs past the ball still count.
+  bool get isEligibleForStrike => _passedBallThisSwing;
 
   bool get isTrackingStrike => _state == MarkerPositionState.tracking;
 
-  /// Radius used for "currently over ball" (green ring). Tight so the ring
-  /// only shows on actual contact.
+  /// Radius used for "currently over ball" highlight. Tight so it only shows
+  /// on actual contact.
   double get _contactRadius => ballHitRadiusPx + markerRadiusPx * 0.4;
 
-  /// Pass-through swing radius. The marker and ball circles must visibly
-  /// overlap (centers ≤ ~80% of summed radii) for a pass to register. This
-  /// prevents shots when the marker is clearly to the side of the ball.
-  double get _passSweepRadius => (ballHitRadiusPx + markerRadiusPx) * 0.8;
-
-  double get _clearRadius => ballHitRadiusPx + markerRadiusPx + 14;
-
-  /// Lateral half-width when the marker sweeps upward across the ball's line.
-  double get _passCrossLateralTolerance =>
-      ballHitRadiusPx + markerRadiusPx + 18;
+  double get _clearRadius => _strikeBandHalfWidth + markerRadiusPx + 14;
 
   void beginGameMode(Offset neutralNorm) {
     _neutralNorm = neutralNorm;
@@ -190,6 +193,10 @@ class GameFootMarkerController extends ChangeNotifier {
     _forwardScale = screenSize.height * 0.38;
     _runUpMaxDownPx = screenSize.height * 0.14;
     _strikeMaxUpPx = screenSize.height * 0.12;
+    // Wide horizontally so the foot can connect from either side of the ball;
+    // narrow vertically so the crossing must happen at the ball's row.
+    _strikeBandHalfWidth = screenSize.width * 0.30;
+    _strikeBandHalfHeight = ballHitRadiusPx;
 
     // Do not overwrite ball center during play — shot type updates it via
     // [updateBallCenter]; resetting here every frame misaligns the ring.
@@ -427,22 +434,18 @@ class GameFootMarkerController extends ChangeNotifier {
     final ball = _ballCenterScreen;
     if (ball == null) return;
 
-    // "Currently over ball" (green ring): tight radius, marker position only.
+    // "Currently over ball" (visual highlight): tight radius, position only.
     final distNext = (nextMarker - ball).distance;
     _markerOverBallNow = distNext <= _contactRadius;
 
-    // Pass-through detection: ONLY the visible marker path counts. If the
-    // player sees the marker crossing the ball, that's a valid pass; if it
-    // didn't, no shot — regardless of how the foot landmark moved.
-    final markerSwept =
-        _segmentIntersectsCircle(prevMarker, nextMarker, ball, _passSweepRadius);
+    // Strike = a genuine UPWARD swing that crosses the horizontal strike band
+    // within its half-width. Gated to an active swing (fast motion), so slow
+    // foot adjustments — including nudging forward over the ball after pulling
+    // back — never register, and downward/settling motion is ignored.
+    final struckBand = _swingActive &&
+        _sweptStrikeBandUpward(prevMarker, nextMarker, ball);
 
-    // Upward sweep across the ball's horizontal line — catches crosses that
-    // miss the tight circle overlap but clearly pass through the ball column.
-    final crossedUpward = _state == MarkerPositionState.tracking &&
-        _crossedBallLineUpward(prevMarker, nextMarker, ball);
-
-    if (_markerOverBallNow || markerSwept || crossedUpward) {
+    if (struckBand) {
       _passedBallThisSwing = true;
       _framesAwayFromBall = 0;
       return;
@@ -458,30 +461,29 @@ class GameFootMarkerController extends ChangeNotifier {
     }
   }
 
-  bool _crossedBallLineUpward(Offset prev, Offset next, Offset ball) {
-    if (next.dy >= prev.dy) return false;
+  /// True when the marker moved upward (toward the goal) and either crossed the
+  /// ball's horizontal strike line, or moved up while sitting inside the band's
+  /// narrow vertical zone — in both cases within [_strikeBandHalfWidth] of the
+  /// ball's X. Upward = decreasing y. Downward motion never counts.
+  bool _sweptStrikeBandUpward(Offset prev, Offset next, Offset ball) {
+    if (next.dy >= prev.dy) return false; // must be moving up
     final lineY = ball.dy;
-    if (!(prev.dy >= lineY && next.dy <= lineY)) return false;
-    final dy = next.dy - prev.dy;
-    final t = (dy.abs() < 1e-6) ? 0.0 : ((lineY - prev.dy) / dy).clamp(0.0, 1.0);
-    final crossX = prev.dx + (next.dx - prev.dx) * t;
-    return (crossX - ball.dx).abs() <= _passCrossLateralTolerance;
-  }
+    final dy = next.dy - prev.dy; // negative (upward)
 
-  static bool _segmentIntersectsCircle(
-    Offset a,
-    Offset b,
-    Offset center,
-    double radius,
-  ) {
-    final d = b - a;
-    final lenSq = d.distanceSquared;
-    if (lenSq < 1e-8) {
-      return (a - center).distance <= radius;
+    final double sampleX;
+    if (prev.dy >= lineY && next.dy <= lineY) {
+      // Crossed the strike line — sample X at the exact crossing point.
+      final t = (dy.abs() < 1e-6) ? 0.0 : ((lineY - prev.dy) / dy).clamp(0.0, 1.0);
+      sampleX = prev.dx + (next.dx - prev.dx) * t;
+    } else {
+      // No strict cross, but allow an upward move that stays within the band's
+      // narrow vertical zone around the strike line.
+      final withinBand = (next.dy - lineY).abs() <= _strikeBandHalfHeight ||
+          (prev.dy - lineY).abs() <= _strikeBandHalfHeight;
+      if (!withinBand) return false;
+      sampleX = next.dx;
     }
-    final t = ((center - a).dx * d.dx + (center - a).dy * d.dy) / lenSq;
-    final closest = a + d * (t.clamp(0.0, 1.0));
-    return (closest - center).distance <= radius;
+    return (sampleX - ball.dx).abs() <= _strikeBandHalfWidth;
   }
 }
 
