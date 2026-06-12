@@ -11,6 +11,7 @@ import '../game/layout_constants.dart';
 import '../game/match_state.dart';
 import '../game/vision_football_game.dart';
 import '../models/kicking_foot.dart';
+import '../models/team.dart';
 import '../pose/kick_detector.dart';
 import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
@@ -36,10 +37,20 @@ class VisionFootballScreen extends StatefulWidget {
     super.key,
     required this.cameras,
     required this.onReturnToMenu,
+    this.userTeam,
+    this.opponentTeam,
   });
 
   final List<CameraDescription> cameras;
   final VoidCallback onReturnToMenu;
+
+  /// Team the player shoots with (selected in the team picker). Reserved for
+  /// upcoming per-player shot tuning — not yet wired into mechanics.
+  final Team? userTeam;
+
+  /// Opponent team whose keeper defends. Reserved for upcoming difficulty
+  /// scaling — not yet wired into mechanics.
+  final Team? opponentTeam;
 
   @override
   State<VisionFootballScreen> createState() => _VisionFootballScreenState();

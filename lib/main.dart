@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'keeper/keeper_screen.dart';
+import 'models/team.dart';
 import 'ui/mode_selection_overlay.dart';
+import 'ui/team_selection_screen.dart';
 import 'ui/vision_football_screen.dart';
 
 Future<void> main() async {
@@ -46,6 +48,11 @@ class _AppBootstrapState extends State<AppBootstrap> {
   bool _cameraFailed = false;
   bool _loadingComplete = false;
   GameMode? _selectedMode;
+
+  /// Teams chosen in the shooting-mode team picker. Both must be set before
+  /// the shooting game starts.
+  Team? _userTeam;
+  Team? _opponentTeam;
 
   @override
   void initState() {
@@ -110,8 +117,19 @@ class _AppBootstrapState extends State<AppBootstrap> {
     setState(() => _selectedMode = mode);
   }
 
+  void _onTeamsSelected(Team userTeam, Team opponentTeam) {
+    setState(() {
+      _userTeam = userTeam;
+      _opponentTeam = opponentTeam;
+    });
+  }
+
   void _returnToMainMenu() {
-    setState(() => _selectedMode = null);
+    setState(() {
+      _selectedMode = null;
+      _userTeam = null;
+      _opponentTeam = null;
+    });
   }
 
   @override
@@ -124,10 +142,19 @@ class _AppBootstrapState extends State<AppBootstrap> {
     } else if (_selectedMode == null) {
       body = ModeSelectionOverlay(onModeSelected: _onModeSelected);
     } else if (_selectedMode == GameMode.takeShots) {
-      body = VisionFootballScreen(
-        cameras: _cameras!,
-        onReturnToMenu: _returnToMainMenu,
-      );
+      if (_userTeam == null || _opponentTeam == null) {
+        body = TeamSelectionScreen(
+          onStart: _onTeamsSelected,
+          onBack: _returnToMainMenu,
+        );
+      } else {
+        body = VisionFootballScreen(
+          cameras: _cameras!,
+          onReturnToMenu: _returnToMainMenu,
+          userTeam: _userTeam,
+          opponentTeam: _opponentTeam,
+        );
+      }
     } else {
       body = KeeperScreen(
         cameras: _cameras!,
