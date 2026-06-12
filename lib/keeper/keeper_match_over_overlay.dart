@@ -36,6 +36,12 @@ class _KeeperMatchOverOverlayState extends State<KeeperMatchOverOverlay> {
     GamePlaySound.playFullTimeWhistle();
   }
 
+  @override
+  void dispose() {
+    GamePlaySound.stopFullTimeWhistle();
+    super.dispose();
+  }
+
   String _rating(int saves, int total) {
     if (saves >= total) return 'Wall! 🧤';
     if (saves >= total - 1) return 'Heroic! 🥅';

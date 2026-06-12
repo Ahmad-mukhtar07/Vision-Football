@@ -137,6 +137,13 @@ class GameFootMarkerController extends ChangeNotifier {
   bool _gameMode = false;
   MarkerPositionState _state = MarkerPositionState.anchored;
 
+  /// When false (run-up / ball in flight / result pause), the marker stays
+  /// parked at rest and no swing or pass-through is recorded — so a kick
+  /// before GO cannot auto-fire when detection arms.
+  bool _strikeAcceptanceEnabled = false;
+
+  bool get strikeAcceptanceEnabled => _strikeAcceptanceEnabled;
+
   bool get isGameMode => _gameMode;
   MarkerPositionState get state => _state;
   Offset? get screenPosition => _screenPosition;
@@ -174,6 +181,7 @@ class GameFootMarkerController extends ChangeNotifier {
     _prevFootNorm = null;
     _state = MarkerPositionState.anchored;
     _screenPosition = _restMarkerScreen;
+    _strikeAcceptanceEnabled = false;
     notifyListeners();
   }
 
@@ -228,6 +236,19 @@ class GameFootMarkerController extends ChangeNotifier {
 
   void updateFromFoot(Offset footNorm, {double? footScale, double? ankleZ}) {
     if (!_gameMode || _neutralNorm == null || _restMarkerScreen == null) {
+      return;
+    }
+
+    // Run-up / pre-GO: marker stays at rest; foot motion is not tracked.
+    if (!_strikeAcceptanceEnabled) {
+      final rest = _restMarkerScreen!;
+      if (_screenPosition != rest) {
+        _screenPosition = rest;
+        notifyListeners();
+      }
+      // Silently keep the foot reference warm so the first swing after GO
+      // has a velocity baseline and registers without a dead frame.
+      _prevFootNorm = footNorm;
       return;
     }
 
@@ -318,6 +339,31 @@ class GameFootMarkerController extends ChangeNotifier {
   void resetPassState() {
     _clearPassState();
     notifyListeners();
+  }
+
+  /// Park the marker and wipe swing / pass / trail state. Call when entering
+  /// run-up or while the ball is in flight so pre-GO foot motion is ignored.
+  void freezeForSetup() {
+    _strikeAcceptanceEnabled = false;
+    _resetStrikeSession();
+  }
+
+  /// Clear all strike memory and allow the marker to track kicks. Call exactly
+  /// when GO / ready-to-kick begins, before kick detection is armed.
+  void armForKick() {
+    _resetStrikeSession(clearFootReference: false);
+    _strikeAcceptanceEnabled = true;
+    notifyListeners();
+  }
+
+  void _resetStrikeSession({bool clearFootReference = true}) {
+    _clearPassState();
+    _swingActive = false;
+    _swingQuietFrames = 0;
+    _trail.clear();
+    _state = MarkerPositionState.anchored;
+    if (clearFootReference) _prevFootNorm = null;
+    _screenPosition = _restMarkerScreen;
   }
 
   // ── Private ───────────────────────────────────────────────────────────────

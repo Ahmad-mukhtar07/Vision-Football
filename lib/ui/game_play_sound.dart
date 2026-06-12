@@ -257,4 +257,9 @@ class GamePlaySound {
     }
     _replay(_fullTimeWhistlePlayer, _fullTimeWhistle);
   }
+
+  /// Stops the full-time whistle (e.g. when leaving the match-over screen).
+  static void stopFullTimeWhistle() {
+    unawaited(_fullTimeWhistlePlayer.stop());
+  }
 }

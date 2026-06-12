@@ -230,6 +230,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
     if (_isPaused) {
       _game.resumeEngine();
     }
+    GamePlaySound.stopFullTimeWhistle();
     GamePlaySound.stopStadiumCrowd();
     CommentarySound.stop();
     _phaseTimer?.cancel();
@@ -239,6 +240,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
   }
 
   void _playAgain() {
+    GamePlaySound.stopFullTimeWhistle();
     _phaseTimer?.cancel();
     CommentarySound.stop();
     _game.resetScene();

@@ -34,6 +34,12 @@ class _MatchOverOverlayState extends State<MatchOverOverlay> {
     GamePlaySound.playFullTimeWhistle();
   }
 
+  @override
+  void dispose() {
+    GamePlaySound.stopFullTimeWhistle();
+    super.dispose();
+  }
+
   String _rating(int goals, int total) {
     if (goals >= total) return 'Perfect! 🏆';
     if (goals >= total - 1) return 'Clinical! ⚽';

@@ -60,7 +60,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   StreamSubscription<List<PoseLandmark>>? _positioningPoseSub;
   Timer? _positioningCountdownTimer;
   Timer? _calibrationMinTimer;
-  static const int _positioningCountdownSeconds = 8;
+  static const int _positioningCountdownSeconds = 5;
   static const int _footStableFramesRequired = 10;
   static const double _minAnkleLikelihood = 0.55;
   static const Duration _calibrationMinDisplay = Duration(milliseconds: 800);
@@ -105,6 +105,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       if (state.phase == MatchPhase.runUp) {
         _syncMarkerBallCenter(state.shotType);
       }
+      _syncFootMarkerToMatchPhase(state.phase);
       if (!mounted) return;
       // Rebuild only when match-over overlay should appear or dismiss —
       // not on every phase tick (that was causing gameplay jank).
@@ -116,6 +117,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   }
 
   void _onFootSelected(KickingFoot foot) {
+    GamePlaySound.playBallKick();
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
     _calibration.clearKickingFoot();
@@ -288,6 +290,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   }
 
   void _playAgain() {
+    GamePlaySound.stopFullTimeWhistle();
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
     CommentarySound.stop();
@@ -303,6 +306,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _matchController.pauseMatch();
       _kickDetector.disarm();
       _kickDetector.setGameCanAcceptKick(false);
+      _gameFootMarker.freezeForSetup();
       _game.pauseEngine();
       GamePlaySound.pauseStadiumCrowd();
       CommentarySound.pause();
@@ -318,6 +322,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     if (_setupPhase == _SetupPhase.playing) {
       _game.resumeEngine();
       _matchController.resumeMatch();
+      _syncFootMarkerToMatchPhase(_matchController.state.phase);
       GamePlaySound.resumeStadiumCrowd();
       CommentarySound.resume();
     } else if (_setupPhase == _SetupPhase.positioning) {
@@ -340,6 +345,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   }
 
   void _goToMainMenu() {
+    GamePlaySound.stopFullTimeWhistle();
     GamePlaySound.stopStadiumCrowd();
     CommentarySound.stop();
     _matchController.abandonMatch();
@@ -359,6 +365,20 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       screen.width * LayoutConstants.ballSpawnXFraction,
       spawnY,
     ));
+  }
+
+  void _syncFootMarkerToMatchPhase(MatchPhase phase) {
+    switch (phase) {
+      case MatchPhase.readyToKick:
+        _gameFootMarker.armForKick();
+      case MatchPhase.runUp:
+      case MatchPhase.ballInFlight:
+      case MatchPhase.resultPause:
+        _gameFootMarker.freezeForSetup();
+      case MatchPhase.matchOver:
+      case MatchPhase.notStarted:
+        break;
+    }
   }
 
   @override
