@@ -9,7 +9,7 @@ import 'glass_panel.dart';
 import 'main_page_sound.dart';
 
 /// Selectable game mode from the start screen.
-enum GameMode { takeShots, beTheKeeper }
+enum GameMode { fullMatch, takeShots, beTheKeeper }
 
 /// Plays the main-menu click sound + light haptic for button feedback.
 void _playTapFeedback() {
@@ -1037,7 +1037,7 @@ class _FullMatchRoleSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'CHOOSE YOUR ROLE',
+              'CHOOSE A MODE',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _Arcade.lime,
@@ -1046,18 +1046,26 @@ class _FullMatchRoleSheet extends StatelessWidget {
                 letterSpacing: 2.2,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Full Match',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                fontStyle: FontStyle.italic,
-              ),
+            const SizedBox(height: 18),
+            _RoleButton(
+              title: 'Full Match',
+              subtitle: 'Pick teams, coin toss, shoot & save',
+              accent: _Arcade.magenta,
+              icon: Icons.emoji_events_rounded,
+              onTap: () => onModeSelected(GameMode.fullMatch),
             ),
             const SizedBox(height: 18),
+            Text(
+              'PRACTICE',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.55),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2.0,
+              ),
+            ),
+            const SizedBox(height: 12),
             _RoleButton(
               title: 'Take Shots',
               subtitle: 'Beat the keeper with your feet',

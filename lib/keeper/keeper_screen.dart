@@ -5,6 +5,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../models/team.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import '../ui/pause_menu_overlay.dart';
@@ -29,10 +30,24 @@ class KeeperScreen extends StatefulWidget {
     super.key,
     required this.cameras,
     required this.onReturnToMenu,
+    this.userTeam,
+    this.opponentTeam,
+    this.onMatchComplete,
   });
 
   final List<CameraDescription> cameras;
   final VoidCallback onReturnToMenu;
+
+  /// Team the user keeps for. Reserved for labels / future tuning.
+  final Team? userTeam;
+
+  /// Opponent team whose shooters attack. Reserved for future difficulty.
+  final Team? opponentTeam;
+
+  /// When set, this screen is one half of a Full Match: it suppresses its own
+  /// match-over overlay (and full-time whistle) and reports the final
+  /// [KeeperMatchState] so the orchestrator can drive the end-of-half UI.
+  final void Function(KeeperMatchState state)? onMatchComplete;
 
   @override
   State<KeeperScreen> createState() => _KeeperScreenState();
@@ -48,6 +63,10 @@ class _KeeperScreenState extends State<KeeperScreen> {
   bool _calibrationCountdownActive = false;
   bool _bothHandsVisible = false;
   int _calibrationSecondsLeft = 0;
+  bool _matchCompleteReported = false;
+
+  /// True when running as one half of a Full Match.
+  bool get _embedded => widget.onMatchComplete != null;
 
   static const int _calibrationDurationSeconds = 4;
 
@@ -137,6 +156,15 @@ class _KeeperScreenState extends State<KeeperScreen> {
     // Hide any frozen ball once the match ends.
     if (_controller.state.phase == KeeperPhase.matchOver) {
       _game.resetScene();
+      // Full Match half: report the score and let the orchestrator own the
+      // end-of-half screen instead of showing the local overlay.
+      if (_embedded && !_matchCompleteReported) {
+        _matchCompleteReported = true;
+        final completed = _controller.state;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.onMatchComplete?.call(completed);
+        });
+      }
     }
     setState(() {});
   }
@@ -323,7 +351,9 @@ class _KeeperScreenState extends State<KeeperScreen> {
             onResume: _resumeGame,
             onQuit: _quitToMenu,
           ),
-        if (matchOver)
+        // In Full Match the orchestrator shows the half-time / full-time
+        // screen, so the local match-over overlay is suppressed.
+        if (matchOver && !_embedded)
           KeeperMatchOverOverlay(
             state: state,
             onPlayAgain: _playAgain,

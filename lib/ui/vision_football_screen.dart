@@ -39,6 +39,7 @@ class VisionFootballScreen extends StatefulWidget {
     required this.onReturnToMenu,
     this.userTeam,
     this.opponentTeam,
+    this.onMatchComplete,
   });
 
   final List<CameraDescription> cameras;
@@ -51,6 +52,11 @@ class VisionFootballScreen extends StatefulWidget {
   /// Opponent team whose keeper defends. Reserved for upcoming difficulty
   /// scaling — not yet wired into mechanics.
   final Team? opponentTeam;
+
+  /// When set, this screen is one half of a Full Match: instead of showing its
+  /// own match-over overlay (and full-time whistle), it reports the final
+  /// [MatchState] so the orchestrator can drive half-time / full-time UI.
+  final void Function(MatchState state)? onMatchComplete;
 
   @override
   State<VisionFootballScreen> createState() => _VisionFootballScreenState();
@@ -82,6 +88,11 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   bool _calibrationMinElapsed = false;
 
   MatchPhase? _lastMatchPhase;
+  bool _matchCompleteReported = false;
+
+  /// True when running as one half of a Full Match (orchestrator owns the
+  /// end-of-half UI and navigation).
+  bool get _embedded => widget.onMatchComplete != null;
 
   @override
   void initState() {
@@ -118,6 +129,17 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       }
       _syncFootMarkerToMatchPhase(state.phase);
       if (!mounted) return;
+      // In Full Match, report the final score once and let the orchestrator
+      // own the end-of-half screen instead of showing the local overlay.
+      if (state.phase == MatchPhase.matchOver &&
+          _embedded &&
+          !_matchCompleteReported) {
+        _matchCompleteReported = true;
+        final completed = state;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.onMatchComplete?.call(completed);
+        });
+      }
       // Rebuild only when match-over overlay should appear or dismiss —
       // not on every phase tick (that was causing gameplay jank).
       final needsRebuild = state.phase == MatchPhase.matchOver ||
@@ -352,7 +374,13 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
     setState(() => _isPaused = false);
-    _changeFoot();
+    // As a Full Match half, quitting abandons the whole match → main menu.
+    // Standalone, quitting returns to foot selection.
+    if (_embedded) {
+      widget.onReturnToMenu();
+    } else {
+      _changeFoot();
+    }
   }
 
   void _goToMainMenu() {
@@ -486,7 +514,9 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             onSkipCountdown: _beginCalibration,
             onForceComplete: _calibration.forceComplete,
           ),
-        if (matchOver)
+        // In Full Match the orchestrator shows the half-time / full-time
+        // screen, so the local match-over overlay is suppressed.
+        if (matchOver && !_embedded)
           MatchOverOverlay(
             state: _matchController.state,
             onPlayAgain: _playAgain,
