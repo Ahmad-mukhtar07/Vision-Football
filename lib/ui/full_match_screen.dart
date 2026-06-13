@@ -143,6 +143,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
         onReturnToMenu: widget.onReturnToMenu,
         userTeam: _userTeam,
         opponentTeam: _opponentTeam,
+        opponentScore: _opponentGoals,
         onMatchComplete: _onShootingHalfDone,
       );
     }
@@ -152,6 +153,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       onReturnToMenu: widget.onReturnToMenu,
       userTeam: _userTeam,
       opponentTeam: _opponentTeam,
+      userScore: _userGoals,
       onMatchComplete: _onKeeperHalfDone,
     );
   }

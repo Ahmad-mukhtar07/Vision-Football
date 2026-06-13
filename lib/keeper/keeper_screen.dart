@@ -32,17 +32,22 @@ class KeeperScreen extends StatefulWidget {
     required this.onReturnToMenu,
     this.userTeam,
     this.opponentTeam,
+    this.userScore,
     this.onMatchComplete,
   });
 
   final List<CameraDescription> cameras;
   final VoidCallback onReturnToMenu;
 
-  /// Team the user keeps for. Reserved for labels / future tuning.
+  /// Team the user keeps for. Shown on the scoreboard in Full Match.
   final Team? userTeam;
 
-  /// Opponent team whose shooters attack. Reserved for future difficulty.
+  /// Opponent team whose shooters attack. Shown on the scoreboard in Full Match.
   final Team? opponentTeam;
+
+  /// User's completed goals (from their shooting half) for the scoreboard,
+  /// or null if that half hasn't been played yet.
+  final int? userScore;
 
   /// When set, this screen is one half of a Full Match: it suppresses its own
   /// match-over overlay (and full-time whistle) and reports the final
@@ -338,6 +343,9 @@ class _KeeperScreenState extends State<KeeperScreen> {
           KeeperHud(
             state: state,
             onPausePressed: _pauseGame,
+            userTeam: widget.userTeam,
+            opponentTeam: widget.opponentTeam,
+            userScore: widget.userScore,
           ),
         if (isCalibrating && !_isPaused)
           KeeperCalibrationOverlay(

@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../game/match_state.dart';
+import '../models/team.dart';
 import 'game_play_sound.dart';
+import 'match_scoreboard.dart';
 import 'penalty_score_bar.dart';
 
 /// Match-aware HUD with styled top bar and phase animations.
@@ -12,10 +14,20 @@ class HudOverlay extends StatefulWidget {
     super.key,
     required this.matchStateStream,
     required this.onPausePressed,
+    this.userTeam,
+    this.opponentTeam,
+    this.opponentScore,
   });
 
   final Stream<MatchState> matchStateStream;
   final VoidCallback onPausePressed;
+
+  /// Full Match teams; when both are set the dual-flag scoreboard is shown.
+  final Team? userTeam;
+  final Team? opponentTeam;
+
+  /// Opponent's completed goals (from the keeping half), or null if not played.
+  final int? opponentScore;
 
   @override
   State<HudOverlay> createState() => _HudOverlayState();
@@ -170,14 +182,23 @@ class _HudOverlayState extends State<HudOverlay>
           ),
           Positioned(
             top: 8,
-            left: 16,
-            right: 56,
-            child: PenaltyScoreBar(
-              teamName: 'YOU',
-              spots: _state.penaltySpots.length >= _state.totalKicks
-                  ? _state.penaltySpots
-                  : PenaltyScoreBar.initialSpots(_state.totalKicks),
-            ),
+            left: 12,
+            right: 64,
+            child: (widget.userTeam != null && widget.opponentTeam != null)
+                ? MatchScoreboard(
+                    userTeam: widget.userTeam!,
+                    opponentTeam: widget.opponentTeam!,
+                    userIsShooting: true,
+                    liveSpots: _state.penaltySpots,
+                    totalKicks: _state.totalKicks,
+                    otherSideScore: widget.opponentScore,
+                  )
+                : PenaltyScoreBar(
+                    teamName: 'YOU',
+                    spots: _state.penaltySpots.length >= _state.totalKicks
+                        ? _state.penaltySpots
+                        : PenaltyScoreBar.initialSpots(_state.totalKicks),
+                  ),
           ),
           if (_state.phase == MatchPhase.runUp) _buildRunUpHint(),
           if (_showGo) _buildGoBanner(),

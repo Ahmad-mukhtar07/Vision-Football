@@ -39,19 +39,23 @@ class VisionFootballScreen extends StatefulWidget {
     required this.onReturnToMenu,
     this.userTeam,
     this.opponentTeam,
+    this.opponentScore,
     this.onMatchComplete,
   });
 
   final List<CameraDescription> cameras;
   final VoidCallback onReturnToMenu;
 
-  /// Team the player shoots with (selected in the team picker). Reserved for
-  /// upcoming per-player shot tuning — not yet wired into mechanics.
+  /// Team the player shoots with. In Full Match it is shown on the scoreboard;
+  /// reserved for upcoming per-player shot tuning.
   final Team? userTeam;
 
-  /// Opponent team whose keeper defends. Reserved for upcoming difficulty
-  /// scaling — not yet wired into mechanics.
+  /// Opponent team whose keeper defends. Shown on the scoreboard in Full Match.
   final Team? opponentTeam;
+
+  /// Opponent's completed goals (from their keeping half) for the scoreboard,
+  /// or null if that half hasn't been played yet.
+  final int? opponentScore;
 
   /// When set, this screen is one half of a Full Match: instead of showing its
   /// own match-over overlay (and full-time whistle), it reports the final
@@ -493,6 +497,9 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           HudOverlay(
             matchStateStream: _matchController.stateStream,
             onPausePressed: _pauseGame,
+            userTeam: widget.userTeam,
+            opponentTeam: widget.opponentTeam,
+            opponentScore: widget.opponentScore,
           ),
         if (_isPaused)
           PauseMenuOverlay(

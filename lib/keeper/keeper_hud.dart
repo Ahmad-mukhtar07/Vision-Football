@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/team.dart';
+import '../ui/match_scoreboard.dart';
 import '../ui/penalty_score_bar.dart';
 import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
@@ -10,10 +12,20 @@ class KeeperHud extends StatelessWidget {
     super.key,
     required this.state,
     required this.onPausePressed,
+    this.userTeam,
+    this.opponentTeam,
+    this.userScore,
   });
 
   final KeeperMatchState state;
   final VoidCallback onPausePressed;
+
+  /// Full Match teams; when both are set the dual-flag scoreboard is shown.
+  final Team? userTeam;
+  final Team? opponentTeam;
+
+  /// User's completed goals (from the shooting half), or null if not played.
+  final int? userScore;
 
   static const _saveGreen = Color(0xFF7CFF7C);
   static const _goalRed = Color(0xFFFF3333);
@@ -46,14 +58,23 @@ class KeeperHud extends StatelessWidget {
           if (state.phase != KeeperPhase.calibrating)
             Positioned(
               top: 8,
-              left: 16,
-              right: 56,
-              child: PenaltyScoreBar(
-                teamName: 'OPPONENT',
-                spots: state.penaltySpots.length >= state.totalShots
-                    ? state.penaltySpots
-                    : PenaltyScoreBar.initialSpots(state.totalShots),
-              ),
+              left: 12,
+              right: 64,
+              child: (userTeam != null && opponentTeam != null)
+                  ? MatchScoreboard(
+                      userTeam: userTeam!,
+                      opponentTeam: opponentTeam!,
+                      userIsShooting: false,
+                      liveSpots: state.penaltySpots,
+                      totalKicks: state.totalShots,
+                      otherSideScore: userScore,
+                    )
+                  : PenaltyScoreBar(
+                      teamName: 'OPPONENT',
+                      spots: state.penaltySpots.length >= state.totalShots
+                          ? state.penaltySpots
+                          : PenaltyScoreBar.initialSpots(state.totalShots),
+                    ),
             ),
           if (state.phase == KeeperPhase.waitingForReady) ...[
             _buildSpotLabel(state.spotType),
