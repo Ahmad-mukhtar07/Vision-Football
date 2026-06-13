@@ -6,6 +6,7 @@ import '../game/match_state.dart';
 import '../models/team.dart';
 import 'game_play_sound.dart';
 import 'match_scoreboard.dart';
+import 'match_player_labels.dart';
 import 'penalty_score_bar.dart';
 
 /// Match-aware HUD with styled top bar and phase animations.
@@ -203,6 +204,22 @@ class _HudOverlayState extends State<HudOverlay>
           if (_state.phase == MatchPhase.runUp) _buildRunUpHint(),
           if (_showGo) _buildGoBanner(),
           if (_state.phase == MatchPhase.resultPause) _buildResultBanner(),
+          if (widget.userTeam != null && widget.opponentTeam != null)
+            Builder(
+              builder: (context) {
+                final names = MatchPlayerLabelNames.forShootingHalf(
+                  userTeam: widget.userTeam!,
+                  opponentTeam: widget.opponentTeam!,
+                  state: _state,
+                );
+                return MatchPlayerLabels(
+                  leftName: names.left,
+                  rightName: names.right,
+                  leftIsKeeper: names.leftIsKeeper,
+                  rightIsKeeper: names.rightIsKeeper,
+                );
+              },
+            ),
         ],
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/team.dart';
+import '../ui/match_player_labels.dart';
 import '../ui/match_scoreboard.dart';
 import '../ui/penalty_score_bar.dart';
 import 'keeper_layout_constants.dart';
@@ -83,6 +84,24 @@ class KeeperHud extends StatelessWidget {
           if (state.phase == KeeperPhase.shotIncoming)
             _buildHint('INCOMING!', color: _gold),
           if (state.phase == KeeperPhase.resultPause) _buildResultBanner(),
+          if (userTeam != null &&
+              opponentTeam != null &&
+              state.phase != KeeperPhase.calibrating)
+            Builder(
+              builder: (context) {
+                final names = MatchPlayerLabelNames.forKeeperHalf(
+                  userTeam: userTeam!,
+                  opponentTeam: opponentTeam!,
+                  state: state,
+                );
+                return MatchPlayerLabels(
+                  leftName: names.left,
+                  rightName: names.right,
+                  leftIsKeeper: names.leftIsKeeper,
+                  rightIsKeeper: names.rightIsKeeper,
+                );
+              },
+            ),
         ],
       ),
     );
