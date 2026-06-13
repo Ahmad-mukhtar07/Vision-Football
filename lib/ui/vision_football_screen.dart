@@ -123,6 +123,8 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       kickStream: _kickDetector.kickStream,
       matchController: _matchController,
       onBallBecameIdle: _gameFootMarker.snapToAnchored,
+      userTeam: widget.userTeam,
+      opponentKeeper: widget.opponentTeam?.keeper,
     );
     _kickDetector.setGameCanAcceptKick(false);
     _kickDetector.disarm();

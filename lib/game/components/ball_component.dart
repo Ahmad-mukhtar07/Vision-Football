@@ -6,6 +6,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart' hide Image;
 
 import '../../models/kick_event.dart';
+import '../../models/team.dart';
 import '../ball_sprite.dart';
 import '../goalkeeper_component.dart';
 import '../../pose/kick_detection_config.dart';
@@ -112,11 +113,11 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     }
   }
 
-  void strike(KickEvent event) {
+  void strike(KickEvent event, {Player? shooter}) {
     if (_state != BallState.idle) return;
 
     _activeKick = event;
-    final trajectory = _resolveTrajectory(event);
+    final trajectory = _resolveTrajectory(event, shooter);
     _trajectory = trajectory;
     _flightStart = position.clone();
     _flightT = 0;
@@ -128,9 +129,12 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     _state = BallState.inFlight;
   }
 
-  TrajectoryParams _resolveTrajectory(KickEvent event) {
+  TrajectoryParams _resolveTrajectory(KickEvent event, [Player? shooter]) {
     final strike = event.strikeDeltaNormalized;
     final h = layout.height;
+    // Per-player stat influence (null shooter = neutral, standalone mode).
+    // Low accuracy sprays placement; power/curve are applied further below.
+    final spray = shooter == null ? 0.0 : 1.0 - shooter.accuracyNorm;
     // Use the visually-scaled goal rect so aim, scoring, and gameplay all
     // share the same goal mouth (especially smaller for free kicks).
     final goalRect = goal.effectiveGoalRect;
@@ -182,13 +186,40 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       debugPrint('[BALL] free-kick miss → $missSide');
     }
 
+    // Accuracy spray: low-accuracy shooters scatter placement around the
+    // intended target (still kept inside the goal mouth so it's never a wild
+    // miss — just easier for the keeper). High accuracy ≈ pinpoint.
+    if (spray > 0) {
+      clampedX = (clampedX +
+              (_random.nextDouble() * 2 - 1) * goalRect.width * 0.16 * spray)
+          .clamp(
+        goalRect.left + goalRect.width * 0.05,
+        goalRect.right - goalRect.width * 0.05,
+      );
+      targetY = (targetY +
+              (_random.nextDouble() * 2 - 1) * goalRect.height * 0.16 * spray)
+          .clamp(
+        goalRect.top + topPad,
+        goalRect.bottom - bottomPad,
+      );
+    }
+
     final targetPosition = Offset(clampedX, targetY);
 
-    // Fix 5: use kickPower (already 0–1) for flight duration
-    final speedT = event.kickPower;
+    // Power-scaled pace. A player's rating gives a strong, swing-independent
+    // baseline (a star always strikes it cleanly) plus a faster ceiling (lower
+    // minimum flight time). Neutral play (no shooter) keeps the old behavior.
+    final double speedT;
+    var minFlight = _minFlightDuration;
+    if (shooter != null) {
+      speedT =
+          (event.kickPower * 0.45 + shooter.powerNorm * 0.55).clamp(0.0, 1.0);
+      minFlight = lerpDouble(0.60, 0.40, shooter.powerNorm)!;
+    } else {
+      speedT = event.kickPower;
+    }
     var flightDurationSeconds =
-        _maxFlightDuration -
-        speedT * (_maxFlightDuration - _minFlightDuration);
+        _maxFlightDuration - speedT * (_maxFlightDuration - minFlight);
 
     final isSideSwipe = strike.dx.abs() > strike.dy.abs() * 1.1;
     var groundArc = LayoutConstants.ballGroundArcHeightFraction;
@@ -212,10 +243,20 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       KickType.ground => 0.95,
       KickType.aerial => 1.0,
     };
-    final spinOffsetPx = spin * maxCurvePx * curveDamping;
-    final curveType = spin > 0
+    // Pose-based spin detection is effectively off, so for a rated player we
+    // synthesize swerve: the side they aim toward sets the bend direction and
+    // their curve rating sets the magnitude (full strength, not scaled down by
+    // a small aim delta — otherwise near-straight shots never visibly bend).
+    var spinOffsetPx = spin * maxCurvePx * curveDamping;
+    if (shooter != null) {
+      final aimDir = lateral.abs() < 0.06 ? 0.0 : (lateral < 0 ? -1.0 : 1.0);
+      final ratedOffset =
+          aimDir * shooter.curveNorm * maxCurvePx * 1.7 * curveDamping;
+      if (ratedOffset.abs() > spinOffsetPx.abs()) spinOffsetPx = ratedOffset;
+    }
+    final curveType = spinOffsetPx > 0
         ? CurveType.swervRight
-        : (spin < 0 ? CurveType.swervLeft : CurveType.straight);
+        : (spinOffsetPx < 0 ? CurveType.swervLeft : CurveType.straight);
 
     switch (event.type) {
       case KickType.ground:

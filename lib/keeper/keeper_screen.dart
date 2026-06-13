@@ -92,6 +92,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _game = KeeperGame(
       controller: _controller,
       onShotResolved: _onShotResolved,
+      userKeeper: widget.userTeam?.keeper,
     );
     _handSub = HandDetectorService.instance.handFrames.listen(_onHandFrame);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -202,6 +203,12 @@ class _KeeperScreenState extends State<KeeperScreen> {
   void _scheduleNextShot({int? preShotDelayMs}) {
     _phaseTimer?.cancel();
     if (_controller.state.phase == KeeperPhase.waitingForReady) {
+      final opp = widget.opponentTeam;
+      if (opp != null && opp.shooters.isNotEmpty) {
+        final idx =
+            _controller.state.shotsTaken.clamp(0, opp.shooters.length - 1);
+        _game.incomingShooter = opp.shooters[idx];
+      }
       _game.prepareShot();
     }
     final delayMs = preShotDelayMs ?? _preShotDelayMs;

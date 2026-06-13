@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/kick_event.dart';
+import '../models/team.dart';
 import 'layout_constants.dart';
 
 enum GoalkeeperPhase {
@@ -21,13 +22,26 @@ enum GoalkeeperPhase {
 class GoalkeeperComponent extends PositionComponent {
   GoalkeeperComponent({
     required GameLayout layout,
-    this.gkPredictionAccuracy = 0.7,
+    GoalkeeperRating? keeperRating,
   })  : _layout = layout,
+        gkPredictionAccuracy = keeperRating?.predictionNorm ?? 0.7,
+        _reactionDelayMinMs = keeperRating == null
+            ? 200
+            : ui.lerpDouble(300, 150, keeperRating.reflexNorm)!,
+        _reactionDelayMaxMs = keeperRating == null
+            ? 400
+            : ui.lerpDouble(480, 280, keeperRating.reflexNorm)!,
+        _diveDurationSeconds = keeperRating == null
+            ? 0.4
+            : ui.lerpDouble(0.5, 0.32, keeperRating.reflexNorm)!,
         super(anchor: Anchor.bottomCenter) {
     _resetToCenter();
   }
 
   final GameLayout _layout;
+
+  /// Chance (0–1) the keeper dives toward the real shot (vs a random guess).
+  /// Driven by the opponent keeper's prediction rating.
   final double gkPredictionAccuracy;
 
   GoalkeeperPhase _phase = GoalkeeperPhase.idle;
@@ -68,9 +82,11 @@ class GoalkeeperComponent extends PositionComponent {
     );
   }
 
-  static const double _reactionDelayMinMs = 200;
-  static const double _reactionDelayMaxMs = 400;
-  static const double _diveDurationSeconds = 0.4;
+  /// Reaction delay window + dive speed, scaled by the keeper's reflex rating
+  /// (faster keepers commit sooner and dive quicker).
+  final double _reactionDelayMinMs;
+  final double _reactionDelayMaxMs;
+  final double _diveDurationSeconds;
   static const double _recoverDurationSeconds = 0.6;
 
   // Sprite images keyed by pose name.

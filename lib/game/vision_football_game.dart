@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/goal_event.dart';
 import '../models/kick_event.dart';
+import '../models/team.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import 'components/ball_component.dart';
@@ -20,11 +21,20 @@ class VisionFootballGame extends FlameGame {
     required Stream<KickEvent> kickStream,
     required this.matchController,
     this.onBallBecameIdle,
+    this.userTeam,
+    this.opponentKeeper,
   }) : _kickStream = kickStream;
 
   final Stream<KickEvent> _kickStream;
   final MatchController matchController;
   final VoidCallback? onBallBecameIdle;
+
+  /// User's team — the shooter taking each kick is read from its line-up so
+  /// power/accuracy/curve scale the ball. Null in standalone/neutral play.
+  final Team? userTeam;
+
+  /// Opposing keeper whose reflex/prediction stats drive the AI keeper.
+  final GoalkeeperRating? opponentKeeper;
 
   final StreamController<GoalEvent> _goalController =
       StreamController<GoalEvent>.broadcast();
@@ -53,7 +63,8 @@ class VisionFootballGame extends FlameGame {
     _sky = SkyBackgroundComponent(layout: _layout);
     _pitch = PitchBackgroundComponent(layout: _layout);
     _goal = GoalComponent(layout: _layout);
-    _goalkeeper = GoalkeeperComponent(layout: _layout);
+    _goalkeeper =
+        GoalkeeperComponent(layout: _layout, keeperRating: opponentKeeper);
     _ball = BallComponent(
       goal: _goal,
       goalkeeper: _goalkeeper,
@@ -82,8 +93,19 @@ class VisionFootballGame extends FlameGame {
     debugPrint('[KD] >>> BALL SHOT <<<');
     GamePlaySound.playBallKick();
     matchController.onBallInFlight();
-    _ball.strike(event);
+    _ball.strike(event, shooter: _currentShooter());
     _goalkeeper.reactToKick(event);
+  }
+
+  /// The shooter taking the current kick (by line-up order). The same index
+  /// logic used by the on-screen player labels: kicks already completed maps
+  /// to the next taker.
+  Player? _currentShooter() {
+    final team = userTeam;
+    if (team == null || team.shooters.isEmpty) return null;
+    final index =
+        matchController.state.kicksTaken.clamp(0, team.shooters.length - 1);
+    return team.shooters[index];
   }
 
   void _onFlightEnd({

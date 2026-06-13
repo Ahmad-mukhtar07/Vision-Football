@@ -6,6 +6,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart' hide Image;
 
 import '../game/ball_sprite.dart';
+import '../models/team.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import 'keeper_layout_constants.dart';
@@ -25,10 +26,23 @@ class KeeperGame extends FlameGame {
   KeeperGame({
     required this.controller,
     required this.onShotResolved,
+    this.userKeeper,
   });
 
   final KeeperMatchController controller;
   final void Function(KeeperShotResult result) onShotResolved;
+
+  /// The user's keeper. Reflex widens the catch radius (reach) and prediction
+  /// lets saves register a touch earlier in flight. Null = neutral defaults.
+  final GoalkeeperRating? userKeeper;
+
+  /// The opponent shooter taking the upcoming shot. Set by the screen before
+  /// each [prepareShot] so power/accuracy/curve shape the shot. Null = neutral.
+  Player? incomingShooter;
+
+  /// Fraction of flight after which a glove overlap counts as a save. Lower
+  /// (better prediction) = saves register earlier.
+  double saveWindowStart = 0.55;
 
   /// Length of the commentary line triggered by the most recent shot result.
   /// The screen reads this to hold the current shot on screen (ball saved /
@@ -103,6 +117,13 @@ class KeeperGame extends FlameGame {
     await add(_shooter);
     await add(_ball);
     await add(_flash);
+
+    // Better keepers reach further and commit to saves a little earlier.
+    final keeper = userKeeper;
+    if (keeper != null) {
+      gloveCatchRadius = 42 + 32 * keeper.reflexNorm;
+      saveWindowStart = lerpDouble(0.62, 0.48, keeper.predictionNorm)!;
+    }
   }
 
   /// Public-facing rect of the goal mouth, in screen pixels.
@@ -138,8 +159,29 @@ class KeeperGame extends FlameGame {
     _shooter.resetToIdle();
     final mouth = _goal.mouthRect;
     final r = Random();
-    final tx = mouth.left + mouth.width * (0.10 + r.nextDouble() * 0.80);
-    final ty = mouth.top + mouth.height * (0.10 + r.nextDouble() * 0.80);
+    final acc = incomingShooter?.accuracyNorm ?? 0.0;
+    final double tx;
+    final double ty;
+    if (acc > 0) {
+      // Aim in screen space (0..1 across the visible goal). Accurate shooters
+      // pull toward a reachable post and high into the mouth — away from the
+      // comfortable centre — so they're hard to save. Weaker shooters stay
+      // looser and more central. Posts sit near 0.10 / 0.90 of the width so a
+      // good keeper can still reach them with a full dive.
+      var sx = r.nextDouble();
+      var sy = r.nextDouble();
+      final pull = acc * 0.85;
+      sx = sx < 0.5
+          ? lerpDouble(sx, 0.10, pull)!
+          : lerpDouble(sx, 0.90, pull)!;
+      sy = lerpDouble(sy, sy < 0.5 ? 0.12 : 0.88, pull * 0.7)!;
+      tx = sx * size.x;
+      ty = mouth.top + mouth.height * sy;
+    } else {
+      // Neutral / standalone: original loose spread across the mouth.
+      tx = mouth.left + mouth.width * (0.10 + r.nextDouble() * 0.80);
+      ty = mouth.top + mouth.height * (0.10 + r.nextDouble() * 0.80);
+    }
     _pendingTarget = Offset(tx, ty);
     _ball.showAtShooter(_shooter.ballEmitPoint, _pendingTarget!);
   }
@@ -163,10 +205,16 @@ class KeeperGame extends FlameGame {
         );
     final startWorld = _shooter.ballEmitPoint;
     GamePlaySound.playBallKick();
+    final shooter = incomingShooter;
+    // Power → pace (faster, less reaction time); curve → mid-flight swerve.
+    final duration =
+        shooter == null ? 1.2 : lerpDouble(1.45, 0.95, shooter.powerNorm)!;
+    final curve = shooter == null ? 0.0 : shooter.curveNorm;
     _ball.launch(
       startWorld: startWorld,
       targetScreen: target,
-      durationSeconds: 1.2,
+      durationSeconds: duration,
+      curveAmount: curve,
       onArrived: _resolveShot,
     );
     _pendingTarget = null;
@@ -334,6 +382,10 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
   bool _movingRight = true;
   bool _waitingAtShooter = false;
 
+  // Mid-flight swerve: magnitude (0–1, from shooter curve) and direction.
+  double _curveAmount = 0;
+  double _curveSign = 1;
+
   bool get isVisibleAndNotAtPenaltySpot =>
       !_hidden && !_waitingAtShooter;
 
@@ -386,6 +438,7 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     required Offset targetScreen,
     required double durationSeconds,
     required void Function(Offset landing, bool saved) onArrived,
+    double curveAmount = 0,
   }) {
     _startWorld = startWorld;
     _targetScreen = targetScreen;
@@ -400,13 +453,21 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     _postMissPos = null;
     _savedPos = null;
     _spinAngle = 0;
+    _curveAmount = curveAmount.clamp(0.0, 1.0);
+    _curveSign = Random().nextBool() ? 1.0 : -1.0;
     _movingRight = targetScreen.dx >= startWorld.dx;
   }
 
-  Offset _currentPos() => Offset(
-        _startWorld!.dx + (_targetScreen!.dx - _startWorld!.dx) * _t,
-        _startWorld!.dy + (_targetScreen!.dy - _startWorld!.dy) * _t,
-      );
+  Offset _currentPos() {
+    final baseX = _startWorld!.dx + (_targetScreen!.dx - _startWorld!.dx) * _t;
+    final baseY = _startWorld!.dy + (_targetScreen!.dy - _startWorld!.dy) * _t;
+    // Sine bow that peaks at mid-flight and returns to the true target on
+    // arrival, so the swerve challenges tracking without changing placement.
+    final swerve = _curveAmount == 0
+        ? 0.0
+        : _curveSign * sin(_t * pi) * area.x * 0.22 * _curveAmount;
+    return Offset(baseX + swerve, baseY);
+  }
 
   double _currentRadius() => lerpDouble(_minRadius, _maxRadius, _t)!;
 
@@ -462,7 +523,7 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     if (!_inFlight) return;
     _t = (_t + dt / _duration).clamp(0.0, 1.0);
 
-    if (_t >= 0.55) {
+    if (_t >= game.saveWindowStart) {
       final pos = _currentPos();
       final radius = _currentRadius();
       final glove = _gloveTouchingBall(pos, radius);
@@ -511,10 +572,9 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     final end = _targetScreen;
     if (start == null || end == null) return;
 
-    final pos = Offset(
-      start.dx + (end.dx - start.dx) * _t,
-      start.dy + (end.dy - start.dy) * _t,
-    );
+    // Use the same path math as collision so the drawn ball follows the
+    // (curved) trajectory rather than a straight line.
+    final pos = _currentPos();
     final radius = lerpDouble(_minRadius, _maxRadius, _t)!;
     _drawBall(canvas, pos, radius, 1.0);
   }
