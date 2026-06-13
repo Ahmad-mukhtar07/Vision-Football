@@ -30,6 +30,7 @@ class KeeperMatchState {
     this.lastResult,
     this.spotType = KeeperSpotType.penalty,
     this.penaltySpots = const [],
+    this.goalScorers = const [],
   });
 
   final int totalShots;
@@ -41,6 +42,9 @@ class KeeperMatchState {
   final KeeperSpotType spotType;
   final List<PenaltySpotStatus> penaltySpots;
 
+  /// Names of opposing shooters who scored, in shot order.
+  final List<String> goalScorers;
+
   KeeperMatchState copyWith({
     int? totalShots,
     int? shotsTaken,
@@ -51,6 +55,7 @@ class KeeperMatchState {
     KeeperSpotType? spotType,
     bool clearLastResult = false,
     List<PenaltySpotStatus>? penaltySpots,
+    List<String>? goalScorers,
   }) {
     return KeeperMatchState(
       totalShots: totalShots ?? this.totalShots,
@@ -61,6 +66,7 @@ class KeeperMatchState {
       lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
       spotType: spotType ?? this.spotType,
       penaltySpots: penaltySpots ?? this.penaltySpots,
+      goalScorers: goalScorers ?? this.goalScorers,
     );
   }
 }
@@ -106,12 +112,18 @@ class KeeperMatchController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void onShotResolved(KeeperShotResult result) {
+  void onShotResolved(KeeperShotResult result, {String? goalScorer}) {
     if (_state.phase != KeeperPhase.shotIncoming) return;
     final taken = _state.shotsTaken + 1;
     final saves = _state.saves + (result == KeeperShotResult.saved ? 1 : 0);
     final goals = _state.goalsConceded +
         (result == KeeperShotResult.conceded ? 1 : 0);
+    var scorers = List<String>.from(_state.goalScorers);
+    if (result == KeeperShotResult.conceded &&
+        goalScorer != null &&
+        goalScorer.isNotEmpty) {
+      scorers.add(goalScorer);
+    }
     final spots = List<PenaltySpotStatus>.from(_state.penaltySpots);
     spots[taken - 1] = result == KeeperShotResult.conceded
         ? PenaltySpotStatus.scored
@@ -121,6 +133,7 @@ class KeeperMatchController extends ChangeNotifier {
       shotsTaken: taken,
       saves: saves,
       goalsConceded: goals,
+      goalScorers: scorers,
       lastResult: result,
       phase: KeeperPhase.resultPause,
       penaltySpots: spots,

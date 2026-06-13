@@ -143,7 +143,11 @@ class VisionFootballGame extends FlameGame {
     // Small tail so the ball/banner doesn't vanish the instant audio ends.
     final hold = commentary + const Duration(milliseconds: 500);
     _ball.holdResultFor(hold.inMilliseconds / 1000.0);
-    matchController.kickTaken(result, holdFor: hold);
+    matchController.kickTaken(
+      result,
+      holdFor: hold,
+      goalScorer: isGoal ? _currentShooter()?.name : null,
+    );
 
     _goalController.add(
       GoalEvent(

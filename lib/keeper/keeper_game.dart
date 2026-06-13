@@ -238,7 +238,10 @@ class KeeperGame extends FlameGame {
       GamePlaySound.playGoalCheer(fadeOutAlignedTo: lastCommentaryDuration);
     }
     final result = saved ? KeeperShotResult.saved : KeeperShotResult.conceded;
-    controller.onShotResolved(result);
+    controller.onShotResolved(
+      result,
+      goalScorer: saved ? null : incomingShooter?.name,
+    );
     onShotResolved(result);
   }
 

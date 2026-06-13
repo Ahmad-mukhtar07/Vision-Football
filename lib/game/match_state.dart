@@ -34,6 +34,7 @@ class MatchState {
     this.lastResult,
     this.shotType = ShotType.penalty,
     this.penaltySpots = const [],
+    this.goalScorers = const [],
   });
 
   final int totalKicks;
@@ -45,6 +46,9 @@ class MatchState {
   final ShotType shotType;
   final List<PenaltySpotStatus> penaltySpots;
 
+  /// Names of players who scored, in kick order.
+  final List<String> goalScorers;
+
   MatchState copyWith({
     int? totalKicks,
     int? kicksTaken,
@@ -55,6 +59,7 @@ class MatchState {
     bool clearLastResult = false,
     ShotType? shotType,
     List<PenaltySpotStatus>? penaltySpots,
+    List<String>? goalScorers,
   }) {
     return MatchState(
       totalKicks: totalKicks ?? this.totalKicks,
@@ -65,6 +70,7 @@ class MatchState {
       lastResult: clearLastResult ? null : (lastResult ?? this.lastResult),
       shotType: shotType ?? this.shotType,
       penaltySpots: penaltySpots ?? this.penaltySpots,
+      goalScorers: goalScorers ?? this.goalScorers,
     );
   }
 }
@@ -249,15 +255,19 @@ class MatchController {
     onBallKickGate?.call(false);
   }
 
-  void kickTaken(KickResult result, {Duration? holdFor}) {
+  void kickTaken(KickResult result, {Duration? holdFor, String? goalScorer}) {
     if (_state.phase != MatchPhase.ballInFlight) return;
 
     final kicksTaken = _state.kicksTaken + 1;
     var goals = _state.goalsScored;
     var saves = _state.savesMade;
+    var scorers = List<String>.from(_state.goalScorers);
     switch (result) {
       case KickResult.goal:
         goals++;
+        if (goalScorer != null && goalScorer.isNotEmpty) {
+          scorers.add(goalScorer);
+        }
       case KickResult.saved:
         saves++;
       case KickResult.miss:
@@ -273,6 +283,7 @@ class MatchController {
       kicksTaken: kicksTaken,
       goalsScored: goals,
       savesMade: saves,
+      goalScorers: scorers,
       phase: MatchPhase.resultPause,
       lastResult: result,
       penaltySpots: spots,

@@ -72,6 +72,8 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
 
   int? _userGoals;
   int? _opponentGoals;
+  List<String> _userGoalScorers = const [];
+  List<String> _opponentGoalScorers = const [];
 
   MatchRole _roleForHalf(int half) {
     final first = _firstRole!;
@@ -94,17 +96,21 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       _firstRole = firstHalfRole;
       _userGoals = null;
       _opponentGoals = null;
+      _userGoalScorers = const [];
+      _opponentGoalScorers = const [];
       _phase = _FmPhase.playingHalf1;
     });
   }
 
   void _onShootingHalfDone(MatchState state) {
     _userGoals = state.goalsScored;
+    _userGoalScorers = List<String>.from(state.goalScorers);
     _advanceAfterHalf();
   }
 
   void _onKeeperHalfDone(KeeperMatchState state) {
     _opponentGoals = state.goalsConceded;
+    _opponentGoalScorers = List<String>.from(state.goalScorers);
     _advanceAfterHalf();
   }
 
@@ -128,6 +134,8 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       _firstRole = null;
       _userGoals = null;
       _opponentGoals = null;
+      _userGoalScorers = const [];
+      _opponentGoalScorers = const [];
       _phase = _FmPhase.coinToss;
     });
   }
@@ -183,6 +191,8 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           opponentTeam: _opponentTeam!,
           userGoals: _userGoals,
           opponentGoals: _opponentGoals,
+          userGoalScorers: _userGoalScorers,
+          opponentGoalScorers: _opponentGoalScorers,
           nextRole: _roleForHalf(2),
           onResume: _resumeToSecondHalf,
           onQuit: widget.onReturnToMenu,
@@ -193,6 +203,8 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           opponentTeam: _opponentTeam!,
           userGoals: _userGoals ?? 0,
           opponentGoals: _opponentGoals ?? 0,
+          userGoalScorers: _userGoalScorers,
+          opponentGoalScorers: _opponentGoalScorers,
           onRematch: _rematch,
           onMainMenu: widget.onReturnToMenu,
         );
@@ -208,6 +220,8 @@ class _Scoreline extends StatelessWidget {
     required this.opponentTeam,
     required this.userGoals,
     required this.opponentGoals,
+    this.userGoalScorers = const [],
+    this.opponentGoalScorers = const [],
   });
 
   final Team userTeam;
@@ -216,28 +230,52 @@ class _Scoreline extends StatelessWidget {
   /// Null renders as a dash (side has not played yet).
   final int? userGoals;
   final int? opponentGoals;
+  final List<String> userGoalScorers;
+  final List<String> opponentGoalScorers;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(child: _side(userTeam, 'YOU', _Pal.cyan)),
-        _score(userGoals),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8),
-          child: Text(
-            '-',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 44,
-              fontWeight: FontWeight.w900,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: _teamHeader(userTeam, 'YOU', _Pal.cyan)),
+            _score(userGoals),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                '-',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
-          ),
+            _score(opponentGoals),
+            Expanded(child: _teamHeader(opponentTeam, 'OPP', _Pal.orange)),
+          ],
         ),
-        _score(opponentGoals),
-        Expanded(child: _side(opponentTeam, 'OPP', _Pal.orange)),
+        if (userGoalScorers.isNotEmpty || opponentGoalScorers.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _scorerList(userGoalScorers, _Pal.cyan),
+              ),
+              // Spacer matching the centre score block so names sit under
+              // each team column, not under the numbers.
+              const SizedBox(width: 120),
+              Expanded(
+                child: _scorerList(opponentGoalScorers, _Pal.orange),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -254,7 +292,7 @@ class _Scoreline extends StatelessWidget {
     );
   }
 
-  Widget _side(Team team, String tag, Color accent) {
+  Widget _teamHeader(Team team, String tag, Color accent) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -287,6 +325,32 @@ class _Scoreline extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _scorerList(List<String> scorers, Color accent) {
+    if (scorers.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: scorers
+          .map(
+            (name) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: accent.withValues(alpha: 0.95),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -367,6 +431,8 @@ class _HalfTimeOverlay extends StatefulWidget {
     required this.opponentTeam,
     required this.userGoals,
     required this.opponentGoals,
+    required this.userGoalScorers,
+    required this.opponentGoalScorers,
     required this.nextRole,
     required this.onResume,
     required this.onQuit,
@@ -376,6 +442,8 @@ class _HalfTimeOverlay extends StatefulWidget {
   final Team opponentTeam;
   final int? userGoals;
   final int? opponentGoals;
+  final List<String> userGoalScorers;
+  final List<String> opponentGoalScorers;
   final MatchRole nextRole;
   final VoidCallback onResume;
   final VoidCallback onQuit;
@@ -427,6 +495,8 @@ class _HalfTimeOverlayState extends State<_HalfTimeOverlay> {
                   opponentTeam: widget.opponentTeam,
                   userGoals: widget.userGoals,
                   opponentGoals: widget.opponentGoals,
+                  userGoalScorers: widget.userGoalScorers,
+                  opponentGoalScorers: widget.opponentGoalScorers,
                 ),
                 const SizedBox(height: 24),
                 Text(
@@ -469,6 +539,8 @@ class _FullTimeOverlay extends StatefulWidget {
     required this.opponentTeam,
     required this.userGoals,
     required this.opponentGoals,
+    required this.userGoalScorers,
+    required this.opponentGoalScorers,
     required this.onRematch,
     required this.onMainMenu,
   });
@@ -477,6 +549,8 @@ class _FullTimeOverlay extends StatefulWidget {
   final Team opponentTeam;
   final int userGoals;
   final int opponentGoals;
+  final List<String> userGoalScorers;
+  final List<String> opponentGoalScorers;
   final VoidCallback onRematch;
   final VoidCallback onMainMenu;
 
@@ -547,6 +621,8 @@ class _FullTimeOverlayState extends State<_FullTimeOverlay> {
                   opponentTeam: widget.opponentTeam,
                   userGoals: widget.userGoals,
                   opponentGoals: widget.opponentGoals,
+                  userGoalScorers: widget.userGoalScorers,
+                  opponentGoalScorers: widget.opponentGoalScorers,
                 ),
                 const SizedBox(height: 36),
                 _pillButton(
