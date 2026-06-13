@@ -101,6 +101,15 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
 
   double get _elapsedSeconds => _masterController.value * _masterLoopSeconds;
 
+  void _openProTips(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => const _ProTipsSheet(),
+    );
+  }
+
   void _openFullMatch(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -174,7 +183,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
                   const SizedBox(height: 14),
                   Expanded(
                     child: _SpotlightHero(
-                      onTap: () => _openFullMatch(context),
+                      onTap: () => _openProTips(context),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -405,28 +414,49 @@ class _ProfileStrip extends StatelessWidget {
   }
 }
 
-/// Data for one spotlight slide.
+/// Data for one tips carousel slide.
 class _SpotlightSlide {
   const _SpotlightSlide({
-    required this.eyebrow,
     required this.title,
-    required this.subtitle,
-    required this.icon,
+    required this.body,
+    required this.backgroundAsset,
     required this.accent,
-    this.progress,
   });
 
-  final String eyebrow;
   final String title;
-  final String subtitle;
-  final IconData icon;
+  final String body;
+  final String backgroundAsset;
   final Color accent;
-
-  /// 0..1 progress; null hides the bar.
-  final double? progress;
 }
 
-/// Auto-cycling hero banner: challenge → pro tip → highlight.
+const _proTipSlides = <_SpotlightSlide>[
+  _SpotlightSlide(
+    title: 'Set Up Your Shot 🎯',
+    body: 'Place your phone at knee height for the best shooting experience.',
+    backgroundAsset: 'assets/images/tips/Tips-Shooting.png',
+    accent: _Arcade.green,
+  ),
+  _SpotlightSlide(
+    title: 'Own Your Goal 🧤',
+    body: 'Center your head in the screen before going into keeping mode.',
+    backgroundAsset: 'assets/images/tips/Tips-Keeping.png',
+    accent: _Arcade.cyan,
+  ),
+  _SpotlightSlide(
+    title: 'Find Your Range 📏',
+    body: 'Stand 4–6 feet from your phone for full-body tracking.',
+    backgroundAsset: 'assets/images/tips/Tips-Distance.png',
+    accent: _Arcade.lime,
+  ),
+  _SpotlightSlide(
+    title: 'Light It Up 💡',
+    body: 'Play in a well-lit room so the camera tracks every move.',
+    backgroundAsset: 'assets/images/tips/Tips-Light.png',
+    accent: _Arcade.magenta,
+  ),
+];
+
+/// Auto-cycling tips banner on the home screen.
 class _SpotlightHero extends StatefulWidget {
   const _SpotlightHero({this.onTap});
 
@@ -437,30 +467,7 @@ class _SpotlightHero extends StatefulWidget {
 }
 
 class _SpotlightHeroState extends State<_SpotlightHero> {
-  static const _slides = <_SpotlightSlide>[
-    _SpotlightSlide(
-      eyebrow: 'DAILY CHALLENGE',
-      title: 'Score 5 Top-Bin Goals',
-      subtitle: '3 / 5 done — finish it before midnight',
-      icon: Icons.sports_soccer_rounded,
-      accent: _Arcade.green,
-      progress: 0.6,
-    ),
-    _SpotlightSlide(
-      eyebrow: 'PRO TIP',
-      title: 'Plant Beside the Ball',
-      subtitle: 'A steady standing foot = cleaner strikes',
-      icon: Icons.tips_and_updates_rounded,
-      accent: _Arcade.cyan,
-    ),
-    _SpotlightSlide(
-      eyebrow: 'YOU\'RE ON FIRE',
-      title: '7-Day Streak! 🔥',
-      subtitle: 'Your longest yet — keep the run alive',
-      icon: Icons.local_fire_department_rounded,
-      accent: _Arcade.magenta,
-    ),
-  ];
+  static const _slides = _proTipSlides;
 
   static const _interval = Duration(milliseconds: 4200);
 
@@ -485,39 +492,60 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
   @override
   Widget build(BuildContext context) {
     final slide = _slides[_index];
+    const cardRadius = BorderRadius.all(Radius.circular(20));
 
-    final card = ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF1A0B33).withValues(alpha: 0.92),
-                slide.accent.withValues(alpha: 0.18),
-              ],
-            ),
-            border: Border.all(
-              color: slide.accent.withValues(alpha: 0.6),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: slide.accent.withValues(alpha: 0.35),
-                blurRadius: 18,
-                spreadRadius: 1,
-              ),
-            ],
+    final card = AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        borderRadius: cardRadius,
+        border: Border.all(
+          color: slide.accent.withValues(alpha: 0.6),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: slide.accent.withValues(alpha: 0.35),
+            blurRadius: 18,
+            spreadRadius: 1,
           ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: cardRadius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
           child: Stack(
+            fit: StackFit.expand,
             children: [
-              // Accent glow bloom in the corner behind the icon.
+              Image.asset(
+                slide.backgroundAsset,
+                fit: BoxFit.cover,
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.15),
+                      Colors.black.withValues(alpha: 0.65),
+                    ],
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF1A0B33).withValues(alpha: 0.35),
+                      slide.accent.withValues(alpha: 0.12),
+                    ],
+                  ),
+                ),
+              ),
               Positioned(
                 right: -20,
                 top: -20,
@@ -602,73 +630,43 @@ class _SlideContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                slide.eyebrow,
-                style: TextStyle(
-                  color: slide.accent,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2.2,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                slide.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
-                  height: 1.05,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                slide.subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.72),
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                  height: 1.25,
-                ),
-              ),
-              if (slide.progress != null) ...[
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: slide.progress,
-                    minHeight: 6,
-                    backgroundColor: Colors.white.withValues(alpha: 0.14),
-                    valueColor: AlwaysStoppedAnimation(slide.accent),
-                  ),
-                ),
-              ],
-            ],
+        Text(
+          'PRO TIP',
+          style: TextStyle(
+            color: slide.accent,
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 2.2,
           ),
         ),
-        const SizedBox(width: 14),
-        Container(
-          width: 58,
-          height: 58,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: slide.accent.withValues(alpha: 0.16),
-            border: Border.all(color: slide.accent.withValues(alpha: 0.7)),
+        const SizedBox(height: 6),
+        Text(
+          slide.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            fontStyle: FontStyle.italic,
+            height: 1.05,
           ),
-          child: Icon(slide.icon, color: slide.accent, size: 30),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          slide.body,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.85),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            height: 1.3,
+          ),
         ),
       ],
     );
@@ -1009,6 +1007,149 @@ class _TapScaleCardState extends State<_TapScaleCard> {
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         child: widget.child,
+      ),
+    );
+  }
+}
+
+class _ProTipsSheet extends StatelessWidget {
+  const _ProTipsSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        MediaQuery.paddingOf(context).bottom + 20,
+      ),
+      child: GlassPanel(
+        padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'PRO TIPS',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _Arcade.cyan,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2.2,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                for (var i = 0; i < _proTipSlides.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 12),
+                  _ProTipListTile(slide: _proTipSlides[i]),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProTipListTile extends StatelessWidget {
+  const _ProTipListTile({required this.slide});
+
+  final _SpotlightSlide slide;
+
+  @override
+  Widget build(BuildContext context) {
+    const tileRadius = BorderRadius.all(Radius.circular(14));
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: tileRadius,
+        border: Border.all(color: slide.accent.withValues(alpha: 0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: slide.accent.withValues(alpha: 0.2),
+            blurRadius: 10,
+            spreadRadius: 0.5,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: tileRadius,
+        child: SizedBox(
+          height: 108,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                slide.backgroundAsset,
+                fit: BoxFit.cover,
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.25),
+                      Colors.black.withValues(alpha: 0.72),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PRO TIP',
+                      style: TextStyle(
+                        color: slide.accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2.0,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      slide.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Expanded(
+                      child: Text(
+                        slide.body,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.25,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
