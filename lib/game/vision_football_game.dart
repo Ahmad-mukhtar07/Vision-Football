@@ -94,7 +94,7 @@ class VisionFootballGame extends FlameGame {
     GamePlaySound.playBallKick();
     matchController.onBallInFlight();
     _ball.strike(event, shooter: _currentShooter());
-    _goalkeeper.reactToKick(event);
+    _goalkeeper.reactToKick(event, ballTarget: _ball.resolvedTargetScreen);
   }
 
   /// The shooter taking the current kick (by line-up order). The same index

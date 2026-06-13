@@ -113,6 +113,10 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     }
   }
 
+  /// The most recently resolved shot target (screen px), or null if the ball
+  /// hasn't been struck yet. Used by the keeper to dive toward the real shot.
+  Offset? get resolvedTargetScreen => _trajectory?.targetPosition;
+
   void strike(KickEvent event, {Player? shooter}) {
     if (_state != BallState.idle) return;
 
@@ -336,9 +340,38 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     );
     _baseScale = 1.0 + (trajectory.targetScale - 1.0) * t;
 
+    // Only check once the ball is near the line AND the keeper is fully
+    // extended — not while gloves sweep through the goal mid-dive.
+    if (t >= 0.82 && goalkeeper.canAttemptSave && _tryGloveCatch()) return;
+
     if (t >= 1.0) {
       _finishFlight(end);
     }
+  }
+
+  /// Returns true (and finishes the flight as a save) if the keeper's gloves
+  /// overlap the ball at its current in-flight position inside the goal.
+  bool _tryGloveCatch() {
+    if (!goalkeeper.canAttemptSave) return false;
+    final glove = goalkeeper.gloveScreenPosition;
+    if (glove == null) return false;
+    final landing = Offset(position.x, position.y);
+    if (!goal.containsScreenPoint(landing)) return false;
+    final ballRadius = size.x * 0.5 * _baseScale;
+    if ((glove - landing).distance > goalkeeper.catchRadius + ballRadius) {
+      return false;
+    }
+    _state = BallState.missed;
+    _ballTint = Colors.redAccent;
+    goalkeeper.flashSave();
+    _postResultTimer = 0;
+    onFlightEnd(
+      isGoal: false,
+      isSave: true,
+      kick: _activeKick!,
+      landingPosition: landing,
+    );
+    return true;
   }
 
   /// Quadratic Bézier with a single control point that lifts the curve up
@@ -374,10 +407,14 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   void _finishFlight(Vector2 end) {
     final landing = Offset(end.x, end.y);
     final inGoal = goal.containsScreenPoint(landing);
-    final hitGk = goalkeeper.bodyRect.overlaps(Rect.fromCircle(
-      center: landing,
-      radius: size.x * 0.5 * _baseScale,
-    ));
+    // Save only when the ball reaches the keeper's GLOVES (not the whole body
+    // box, which is much wider than the visible keeper and caused phantom
+    // saves / "stomach" stops). The keeper must also be in a reaching pose.
+    final glove = goalkeeper.gloveScreenPosition;
+    final ballRadius = size.x * 0.5 * _baseScale;
+    final hitGk = goalkeeper.canAttemptSave &&
+        glove != null &&
+        (glove - landing).distance <= goalkeeper.catchRadius + ballRadius;
 
     var isGoal = false;
     var isSave = false;

@@ -14,6 +14,7 @@ enum GoalkeeperPhase {
   idle,
   crouching,
   diving,
+  holding,
   recoverTransition,
   recovering,
 }
@@ -25,15 +26,22 @@ class GoalkeeperComponent extends PositionComponent {
     GoalkeeperRating? keeperRating,
   })  : _layout = layout,
         gkPredictionAccuracy = keeperRating?.predictionNorm ?? 0.7,
+        _reflexNorm = keeperRating?.reflexNorm ?? 0.7,
         _reactionDelayMinMs = keeperRating == null
             ? 200
-            : ui.lerpDouble(300, 150, keeperRating.reflexNorm)!,
+            : ui.lerpDouble(360, 120, keeperRating.reflexNorm)!,
         _reactionDelayMaxMs = keeperRating == null
             ? 400
-            : ui.lerpDouble(480, 280, keeperRating.reflexNorm)!,
+            : ui.lerpDouble(560, 260, keeperRating.reflexNorm)!,
         _diveDurationSeconds = keeperRating == null
             ? 0.4
-            : ui.lerpDouble(0.5, 0.32, keeperRating.reflexNorm)!,
+            : ui.lerpDouble(0.58, 0.22, keeperRating.reflexNorm)!,
+        _crouchDuration = keeperRating == null
+            ? 0.12
+            : ui.lerpDouble(0.15, 0.06, keeperRating.reflexNorm)!,
+        _holdDuration = keeperRating == null
+            ? 0.35
+            : ui.lerpDouble(0.20, 0.48, keeperRating.reflexNorm)!,
         super(anchor: Anchor.bottomCenter) {
     _resetToCenter();
   }
@@ -44,6 +52,14 @@ class GoalkeeperComponent extends PositionComponent {
   /// Driven by the opponent keeper's prediction rating.
   final double gkPredictionAccuracy;
 
+  /// Reflex 0–1 — tightens how close the gloves land to the ball on a correct
+  /// read (better reflex = smaller reach error).
+  final double _reflexNorm;
+
+  /// The ball's resolved landing point (screen px), set when the kick is
+  /// taken so the keeper can dive its gloves toward the real shot.
+  Vector2? _ballTargetScreen;
+
   GoalkeeperPhase _phase = GoalkeeperPhase.idle;
   final Random _random = Random();
 
@@ -52,12 +68,25 @@ class GoalkeeperComponent extends PositionComponent {
   double _diveT = 0;
   double _recoverT = 0;
   double _diveDirectionSign = 1;
-  bool _diveIsHigh = false;
 
   double _crouchT = 0;
   double _recoverTransitionT = 0;
-  static const double _crouchDuration = 0.12;
+  double _holdT = 0;
+
+  /// Crouch wind-up before the dive; shorter for high-reflex keepers so the
+  /// gloves reach the ball in time.
+  final double _crouchDuration;
   static const double _recoverTransitionDuration = 0.18;
+
+  /// How long the keeper stays fully extended after the dive (reflex-scaled).
+  final double _holdDuration;
+
+  /// True only when gloves are at (or essentially at) full extension — not
+  /// while sweeping through the goal during the dive lerp (which caused
+  /// phantom saves for every keeper regardless of rating).
+  bool get canAttemptSave =>
+      _phase == GoalkeeperPhase.holding ||
+      (_phase == GoalkeeperPhase.diving && _diveT >= 0.97);
 
   async.Timer? _reactionTimer;
   double _saveFlashOpacity = 0;
@@ -146,8 +175,65 @@ class GoalkeeperComponent extends PositionComponent {
     );
   }
 
-  void reactToKick(KickEvent event) {
+  /// Glove position within each catching sprite, as a fraction of the drawn
+  /// image (x: 0 = left … 1 = right, y: 0 = top … 1 = bottom). Only poses where
+  /// the keeper is actually reaching for the ball can make a save; idle /
+  /// crouch / recovery poses return null so they never catch.
+  static const Map<String, Offset> _handFractions = {
+    'straight-top': Offset(0.50, 0.11),
+    'top-left': Offset(0.32, 0.13),
+    'top-right': Offset(0.68, 0.13),
+    'left': Offset(0.17, 0.47),
+    'right': Offset(0.83, 0.47),
+  };
+
+  /// Screen-space position of the keeper's gloves for the current pose, or
+  /// null when not in a catching pose. Accounts for the render letterboxing
+  /// (the sprite is centered/bottom-aligned inside the wide body box) and the
+  /// bottom-center visual scale, so the catch point tracks the visible gloves.
+  Offset? get gloveScreenPosition {
+    final frac = _handFractions[_currentSprite];
+    final sprite = _sprites[_currentSprite];
+    if (frac == null || sprite == null) return null;
+
+    final imgAspect = sprite.width / sprite.height;
+    final boxAspect = size.x / size.y;
+    final Rect dest;
+    if (imgAspect > boxAspect) {
+      final h = size.x / imgAspect;
+      dest = Rect.fromLTWH(0, size.y - h, size.x, h);
+    } else {
+      final w = size.y * imgAspect;
+      dest = Rect.fromLTWH((size.x - w) / 2, 0, w, size.y);
+    }
+
+    final lx = dest.left + frac.dx * dest.width;
+    final ly = dest.top + frac.dy * dest.height;
+
+    // Apply the same bottom-center scale used in render().
+    final bx = size.x / 2;
+    final by = size.y;
+    final sx = bx + (lx - bx) * _visualScale;
+    final sy = by + (ly - by) * _visualScale;
+
+    return Offset(
+      position.x - size.x / 2 + sx,
+      position.y - size.y + sy,
+    );
+  }
+
+  /// Glove catch radius — elite keepers cover a wider effective reach.
+  double get catchRadius =>
+      _effectiveGoalRect.width * ui.lerpDouble(0.038, 0.092, _reflexNorm)!;
+
+  /// Pose the keeper will strike when diving (chosen in [_planDive]).
+  String _plannedPose = 'right';
+
+  void reactToKick(KickEvent event, {Offset? ballTarget}) {
     if (_phase != GoalkeeperPhase.idle) return;
+
+    _ballTargetScreen =
+        ballTarget == null ? null : Vector2(ballTarget.dx, ballTarget.dy);
 
     _reactionTimer?.cancel();
     final delayMs = _reactionDelayMinMs +
@@ -161,70 +247,106 @@ class GoalkeeperComponent extends PositionComponent {
   void _startCrouch(KickEvent event) {
     if (!isMounted || _phase != GoalkeeperPhase.idle) return;
 
-    _diveIsHigh = event.type == KickType.aerial || event.type == KickType.chip;
-    _diveTarget = _computeDivePosition(event);
-    _diveDirectionSign =
-        (_diveTarget!.x >= _centerPosition.x) ? 1.0 : -1.0;
-
+    _planDive(event);
     _currentSprite = _diveDirectionSign >= 0 ? 'crouch-right' : 'crouch-left';
     _crouchT = 0;
     _phase = GoalkeeperPhase.crouching;
   }
 
   void _startDive() {
-    if (_diveIsHigh) {
-      final goal = _layout.goalRect;
-      final targetX = _diveTarget?.x ?? _centerPosition.x;
-      final fromCenter = (targetX - goal.center.dx).abs();
-      final isCentral = fromCenter < goal.width * 0.15;
-      if (isCentral) {
-        _currentSprite = 'straight-top';
-      } else {
-        _currentSprite = _diveDirectionSign >= 0 ? 'top-right' : 'top-left';
-      }
-    } else {
-      _currentSprite = _diveDirectionSign >= 0 ? 'right' : 'left';
-    }
+    _currentSprite = _plannedPose;
     _diveT = 0;
     _phase = GoalkeeperPhase.diving;
   }
 
-  Vector2 _computeDivePosition(KickEvent event) {
+  /// Decides where the keeper dives. When it reads the shot (probability
+  /// [gkPredictionAccuracy]) it aims its GLOVES at the ball's real landing;
+  /// otherwise it commits the wrong way. A reach error — smaller for
+  /// high-reflex keepers — keeps even a correct read from being automatic,
+  /// so stronger keepers (bigger teams) genuinely save more.
+  void _planDive(KickEvent event) {
     final goal = _effectiveGoalRect;
-    final foot = event.footPositionNormalized;
-    final strike = event.strikeDeltaNormalized;
 
-    final strikeDx = strike.dx.clamp(
-      -LayoutConstants.maxStrikeDeltaForAim,
-      LayoutConstants.maxStrikeDeltaForAim,
+    // Ball's true landing, or an aim estimate if it wasn't supplied.
+    final ball = _ballTargetScreen;
+    Offset target;
+    if (ball != null) {
+      target = Offset(ball.x, ball.y);
+    } else {
+      final foot = event.footPositionNormalized;
+      final strikeDx = event.strikeDeltaNormalized.dx.clamp(
+        -LayoutConstants.maxStrikeDeltaForAim,
+        LayoutConstants.maxStrikeDeltaForAim,
+      );
+      final aimFraction = (LayoutConstants.ballSpawnXFraction +
+              foot.dx * LayoutConstants.ballAimFromFootFactor +
+              strikeDx * LayoutConstants.ballAimFromStrikeFactor)
+          .clamp(0.0, 1.0);
+      target = Offset(goal.left + goal.width * aimFraction, goal.center.dy);
+    }
+
+    final readsCorrectly = _random.nextDouble() < gkPredictionAccuracy;
+    Offset aimAt;
+    if (readsCorrectly) {
+      aimAt = target;
+    } else {
+      // Commit the wrong way: dive to the opposite side at a random height.
+      final wrongX = target.dx < goal.center.dx
+          ? goal.center.dx + goal.width * (0.15 + 0.35 * _random.nextDouble())
+          : goal.center.dx - goal.width * (0.15 + 0.35 * _random.nextDouble());
+      final wrongY = goal.top + goal.height * (0.2 + 0.6 * _random.nextDouble());
+      aimAt = Offset(wrongX, wrongY);
+    }
+
+    // Reach error on a correct read — weak keepers often land short/wide.
+    final errPx = goal.width * (0.06 + 0.55 * (1 - _reflexNorm));
+    aimAt += Offset(
+      (_random.nextDouble() * 2 - 1) * errPx,
+      (_random.nextDouble() * 2 - 1) * errPx * 0.7,
     );
-    final aimFraction = (LayoutConstants.ballSpawnXFraction +
-            foot.dx * LayoutConstants.ballAimFromFootFactor +
-            strikeDx * LayoutConstants.ballAimFromStrikeFactor)
-        .clamp(0.0, 1.0);
-    final tellX = goal.left + goal.width * aimFraction;
 
-    final randomX = goal.left + goal.width * _random.nextDouble();
-    final usePrediction = _random.nextDouble() < gkPredictionAccuracy;
-    final diveCenterX = usePrediction ? tellX : randomX;
+    // Match the pose to where the gloves must reach.
+    final isHigh = aimAt.dy < goal.top + goal.height * 0.46;
+    final isCentral = (aimAt.dx - goal.center.dx).abs() < goal.width * 0.14;
+    if (isHigh) {
+      _plannedPose = isCentral
+          ? 'straight-top'
+          : (aimAt.dx < goal.center.dx ? 'top-left' : 'top-right');
+    } else {
+      _plannedPose = aimAt.dx < goal.center.dx ? 'left' : 'right';
+    }
 
-    final halfW = size.x * _visualScale * 0.5;
-    final clampedX = diveCenterX.clamp(
-      goal.left + halfW,
-      goal.right - halfW,
+    _diveTarget = _feetForGlove(_plannedPose, aimAt);
+    _diveDirectionSign = (_diveTarget!.x >= _centerPosition.x) ? 1.0 : -1.0;
+  }
+
+  /// Feet (bottom-center) position that places [pose]'s gloves at [glove].
+  /// Inverse of [gloveScreenPosition].
+  Vector2 _feetForGlove(String pose, Offset glove) {
+    final frac = _handFractions[pose] ?? const Offset(0.5, 0.3);
+    final sprite = _sprites[pose];
+    final imgAspect = sprite != null ? sprite.width / sprite.height : 1.0;
+    final boxAspect = size.x / size.y;
+    final Rect dest;
+    if (imgAspect > boxAspect) {
+      final h = size.x / imgAspect;
+      dest = Rect.fromLTWH(0, size.y - h, size.x, h);
+    } else {
+      final w = size.y * imgAspect;
+      dest = Rect.fromLTWH((size.x - w) / 2, 0, w, size.y);
+    }
+    final lx = dest.left + frac.dx * dest.width;
+    final ly = dest.top + frac.dy * dest.height;
+    final vs = _visualScale;
+    final px = glove.dx - (lx - size.x / 2) * vs;
+    final py = glove.dy - (ly - size.y) * vs;
+
+    final halfW = size.x * vs * 0.5;
+    final clampedX = px.clamp(
+      _effectiveGoalRect.left - halfW * 0.3,
+      _effectiveGoalRect.right + halfW * 0.3,
     );
-
-    debugPrint(
-      '[GK_DIVE] dir=${strike.dx.toStringAsFixed(3)} '
-      'ball_lateral=${strike.dx.toStringAsFixed(3)} '
-      'gkX=${clampedX.toStringAsFixed(1)} '
-      'predicted=$usePrediction',
-    );
-
-    final diveY = _diveIsHigh
-        ? goal.top + goal.height * 0.35
-        : goal.bottom;
-    return Vector2(clampedX, diveY);
+    return Vector2(clampedX, py);
   }
 
   void flashSave() {
@@ -253,6 +375,8 @@ class GoalkeeperComponent extends PositionComponent {
         _updateCrouching(dt);
       case GoalkeeperPhase.diving:
         _updateDiving(dt);
+      case GoalkeeperPhase.holding:
+        _updateHolding(dt);
       case GoalkeeperPhase.recoverTransition:
         _updateRecoverTransition(dt);
       case GoalkeeperPhase.recovering:
@@ -277,6 +401,18 @@ class GoalkeeperComponent extends PositionComponent {
     position = _centerPosition + (target - _centerPosition) * _diveT;
 
     if (_diveT >= 1.0) {
+      _holdT = 0;
+      _phase = GoalkeeperPhase.holding;
+    }
+  }
+
+  /// Stay fully extended at the dive target (gloves out) so a slightly later
+  /// ball is still caught, then begin recovery.
+  void _updateHolding(double dt) {
+    final target = _diveTarget;
+    if (target != null) position = target.clone();
+    _holdT += dt / _holdDuration;
+    if (_holdT >= 1.0) {
       _beginRecover();
     }
   }
