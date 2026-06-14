@@ -155,6 +155,9 @@ class _AppBootstrapState extends State<AppBootstrap> {
 
     return Scaffold(
       backgroundColor: Colors.black,
+      // Keep the home screen layout fixed when a bottom-sheet field opens
+      // the keyboard — the sheet handles its own inset instead.
+      resizeToAvoidBottomInset: false,
       body: body,
     );
   }

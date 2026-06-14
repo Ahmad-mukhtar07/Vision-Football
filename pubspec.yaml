@@ -19,6 +19,7 @@ dependencies:
   audioplayers: ^6.7.1
   wakelock_plus: ^1.6.1
   country_flags: ^4.1.2
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:

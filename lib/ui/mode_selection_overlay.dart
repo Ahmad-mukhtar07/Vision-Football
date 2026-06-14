@@ -7,6 +7,9 @@ import 'package:flutter/services.dart';
 
 import 'glass_panel.dart';
 import 'main_page_sound.dart';
+import '../data/user_profile_store.dart';
+import '../models/user_profile.dart';
+import 'profile_settings_sheet.dart';
 
 /// Selectable game mode from the start screen.
 enum GameMode {
@@ -77,11 +80,13 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   late final AnimationController _masterController;
   late final List<_ParticleSeed> _particleSeeds;
   late final String _avatarAsset;
+  UserProfile _profile = UserProfile.defaults;
 
   @override
   void initState() {
     super.initState();
     _avatarAsset = _avatars[math.Random().nextInt(_avatars.length)];
+    unawaited(_loadProfile());
 
     _masterController = AnimationController(
       vsync: this,
@@ -107,6 +112,11 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   }
 
   double get _elapsedSeconds => _masterController.value * _masterLoopSeconds;
+
+  Future<void> _loadProfile() async {
+    final profile = await UserProfileStore.load();
+    if (mounted) setState(() => _profile = profile);
+  }
 
   void _openProTips(BuildContext context) {
     showModalBottomSheet<void>(
@@ -143,6 +153,18 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
         },
       ),
     );
+  }
+
+  Future<void> _openSettings(BuildContext context) async {
+    final updated = await showModalBottomSheet<UserProfile>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => ProfileSettingsSheet(initial: _profile),
+    );
+    if (updated != null && mounted) {
+      setState(() => _profile = updated);
+    }
   }
 
   @override
@@ -200,7 +222,10 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _ProfileStrip(avatarAsset: _avatarAsset),
+                  _ProfileStrip(
+                    avatarAsset: _avatarAsset,
+                    profile: _profile,
+                  ),
                   const SizedBox(height: 14),
                   Expanded(
                     child: _SpotlightHero(
@@ -219,6 +244,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
                       masterAnimation: _masterController,
                       onFullMatchTap: () => _openFullMatch(context),
                       onTutorialsTap: () => _openTutorials(context),
+                      onSettingsTap: () => _openSettings(context),
                     ),
                   ),
                 ],
@@ -354,16 +380,23 @@ class _DriftingParticlePainter extends CustomPainter {
 }
 
 class _ProfileStrip extends StatelessWidget {
-  const _ProfileStrip({required this.avatarAsset});
+  const _ProfileStrip({
+    required this.avatarAsset,
+    required this.profile,
+  });
 
   static const _logoAsset = 'assets/images/VisionFootball-Logo-NoBG.png';
   static const _avatarSize = 44.0;
   static const _logoHeight = 54.0;
 
   final String avatarAsset;
+  final UserProfile profile;
 
   @override
   Widget build(BuildContext context) {
+    final subtitle =
+        '${profile.countryName.toUpperCase()}  •  ${profile.position.toUpperCase()}';
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -399,10 +432,11 @@ class _ProfileStrip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Striker10',
+            Text(
+              profile.displayName,
               maxLines: 1,
-              style: TextStyle(
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
@@ -412,7 +446,7 @@ class _ProfileStrip extends StatelessWidget {
             ),
             const SizedBox(height: 1),
             Text(
-              'LEVEL 3  •  STRIKER',
+              subtitle,
               style: TextStyle(
                 color: _Arcade.lime.withValues(alpha: 0.9),
                 fontSize: 10,
@@ -455,19 +489,19 @@ class _SpotlightSlide {
 const _proTipSlides = <_SpotlightSlide>[
   _SpotlightSlide(
     title: 'Set Up Your Shot 🎯',
-    body: 'Place your phone at knee height for the best shooting experience.',
+    body: 'Shooting game: Place your phone at knee height for the best shooting experience.',
     backgroundAsset: 'assets/images/tips/Tips-Shooting.png',
     accent: _Arcade.green,
   ),
   _SpotlightSlide(
     title: 'Own Your Goal 🧤',
-    body: 'Center your head in the screen before going into keeping mode.',
+    body: 'Keeping game: Center your head in the screen before going into keeping mode.',
     backgroundAsset: 'assets/images/tips/Tips-Keeping.png',
     accent: _Arcade.cyan,
   ),
   _SpotlightSlide(
     title: 'Find Your Range 📏',
-    body: 'Stand 4–6 feet from your phone for full-body tracking.',
+    body: 'Stand 4–6 feet from your phone for better body tracking.',
     backgroundAsset: 'assets/images/tips/Tips-Distance.png',
     accent: _Arcade.lime,
   ),
@@ -706,6 +740,7 @@ class _ModeSelectorGrid extends StatelessWidget {
     required this.masterAnimation,
     required this.onFullMatchTap,
     required this.onTutorialsTap,
+    required this.onSettingsTap,
   });
 
   final String matchArt;
@@ -716,6 +751,7 @@ class _ModeSelectorGrid extends StatelessWidget {
   final Animation<double> masterAnimation;
   final VoidCallback onFullMatchTap;
   final VoidCallback onTutorialsTap;
+  final VoidCallback onSettingsTap;
 
   static const double _rowGap = 14;
 
@@ -771,6 +807,11 @@ class _ModeSelectorGrid extends StatelessWidget {
                       artAsset: tutorialArt,
                       onTap: onTutorialsTap,
                     ),
+                  ),
+                  const SizedBox(width: _rowGap),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _SettingsModeCard(onTap: onSettingsTap),
                   ),
                 ],
               );
@@ -857,6 +898,103 @@ class _TutorialModeCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     const Text(
                       'Learn the basics',
+                      style: TextStyle(
+                        color: _accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tappable "Settings" card in the scrollable bottom strip.
+class _SettingsModeCard extends StatelessWidget {
+  const _SettingsModeCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  static const _accent = _Arcade.violet;
+  static const _cardStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w900,
+    fontStyle: FontStyle.italic,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return _TapScaleCard(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF1A0B33),
+                      _accent.withValues(alpha: 0.35),
+                      const Color(0xFF0C0620),
+                    ],
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: _accent.withValues(alpha: 0.7),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _accent.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                      spreadRadius: 0.5,
+                    ),
+                  ],
+                ),
+              ),
+              Center(
+                child: Icon(
+                  Icons.settings_rounded,
+                  size: 32,
+                  color: Colors.white.withValues(alpha: 0.92),
+                ),
+              ),
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 12,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'SETTINGS',
+                      textAlign: TextAlign.center,
+                      style: _cardStyle.copyWith(
+                        fontSize: 13,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Name & profile',
                       style: TextStyle(
                         color: _accent,
                         fontSize: 11,
