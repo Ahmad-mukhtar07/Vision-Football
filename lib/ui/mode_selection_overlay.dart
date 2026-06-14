@@ -25,7 +25,7 @@ const _kShowStandalonePracticeModes = false;
 
 /// When false, the Tutorials card and kicking/keeping tutorial picker are
 /// hidden from the home screen. Routing in [main.dart] is unchanged.
-const _kShowTutorialModes = false;
+const _kShowTutorialModes = true;
 
 /// Plays the main-menu click sound + light haptic for button feedback.
 void _playTapFeedback() {
