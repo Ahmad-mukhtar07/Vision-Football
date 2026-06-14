@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -216,17 +215,19 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
             painter: _AthleticStripePainter(),
             size: Size.infinite,
           ),
-          AnimatedBuilder(
-            animation: _masterController,
-            builder: (context, _) {
-              return CustomPaint(
-                painter: _DriftingParticlePainter(
-                  elapsedSeconds: _elapsedSeconds,
-                  seeds: _particleSeeds,
-                ),
-                size: Size.infinite,
-              );
-            },
+          RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _masterController,
+              builder: (context, _) {
+                return CustomPaint(
+                  painter: _DriftingParticlePainter(
+                    elapsedSeconds: _elapsedSeconds,
+                    seeds: _particleSeeds,
+                  ),
+                  size: Size.infinite,
+                );
+              },
+            ),
           ),
           SafeArea(
             child: Padding(
@@ -431,6 +432,9 @@ class _ProfileStrip extends StatelessWidget {
             child: Image.asset(
               avatarAsset,
               fit: BoxFit.cover,
+              // Avatar renders at 44px; decode it small to save memory on
+              // low-end devices instead of keeping the full-res bitmap.
+              cacheWidth: 132,
               errorBuilder: (context, error, stack) => const Icon(
                 Icons.person_rounded,
                 size: 24,
@@ -582,103 +586,100 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
       ),
       child: ClipRRect(
         borderRadius: cardRadius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.asset(
-                slide.backgroundAsset,
-                fit: BoxFit.cover,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              slide.backgroundAsset,
+              fit: BoxFit.cover,
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.15),
+                    Colors.black.withValues(alpha: 0.65),
+                  ],
+                ),
               ),
-              DecoratedBox(
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF1A0B33).withValues(alpha: 0.35),
+                    slide.accent.withValues(alpha: 0.12),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              right: -20,
+              top: -20,
+              child: Container(
+                width: 120,
+                height: 120,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
                     colors: [
-                      Colors.black.withValues(alpha: 0.15),
-                      Colors.black.withValues(alpha: 0.65),
+                      slide.accent.withValues(alpha: 0.4),
+                      slide.accent.withValues(alpha: 0.0),
                     ],
                   ),
                 ),
               ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFF1A0B33).withValues(alpha: 0.35),
-                      slide.accent.withValues(alpha: 0.12),
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
-                right: -20,
-                top: -20,
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        slide.accent.withValues(alpha: 0.4),
-                        slide.accent.withValues(alpha: 0.0),
-                      ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 16, 14),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 450),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0.06, 0),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
                     ),
-                  ),
+                  );
+                },
+                child: _SlideContent(
+                  key: ValueKey(_index),
+                  slide: slide,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 16, 14),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 450),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeIn,
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0.06, 0),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: _SlideContent(
-                    key: ValueKey(_index),
-                    slide: slide,
-                  ),
-                ),
+            ),
+            Positioned(
+              left: 18,
+              bottom: 12,
+              child: Row(
+                children: List.generate(_slides.length, (i) {
+                  final active = i == _index;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    margin: const EdgeInsets.only(right: 6),
+                    width: active ? 18 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: active
+                          ? slide.accent
+                          : Colors.white.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  );
+                }),
               ),
-              Positioned(
-                left: 18,
-                bottom: 12,
-                child: Row(
-                  children: List.generate(_slides.length, (i) {
-                    final active = i == _index;
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      margin: const EdgeInsets.only(right: 6),
-                      width: active ? 18 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: active
-                            ? slide.accent
-                            : Colors.white.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -861,69 +862,66 @@ class _TutorialModeCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.asset(artAsset, fit: BoxFit.cover),
-              ColoredBox(
-                color: const Color(0xFF0C0620).withValues(alpha: 0.55),
-              ),
-              ColoredBox(color: _accent.withValues(alpha: 0.16)),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: _accent.withValues(alpha: 0.7),
-                    width: 1.5,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(artAsset, fit: BoxFit.cover),
+            ColoredBox(
+              color: const Color(0xFF0C0620).withValues(alpha: 0.55),
+            ),
+            ColoredBox(color: _accent.withValues(alpha: 0.16)),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _accent.withValues(alpha: 0.7),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _accent.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    spreadRadius: 0.5,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _accent.withValues(alpha: 0.35),
-                      blurRadius: 14,
-                      spreadRadius: 0.5,
-                    ),
-                  ],
-                ),
+                ],
               ),
-              Center(
-                child: Icon(
-                  Icons.school_rounded,
-                  size: 32,
-                  color: Colors.white.withValues(alpha: 0.92),
-                ),
+            ),
+            Center(
+              child: Icon(
+                Icons.school_rounded,
+                size: 32,
+                color: Colors.white.withValues(alpha: 0.92),
               ),
-              Positioned(
-                left: 8,
-                right: 8,
-                bottom: 12,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'TUTORIALS',
-                      textAlign: TextAlign.center,
-                      style: _cardStyle.copyWith(
-                        fontSize: 13,
-                        letterSpacing: 1.2,
-                      ),
+            ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 12,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'TUTORIALS',
+                    textAlign: TextAlign.center,
+                    style: _cardStyle.copyWith(
+                      fontSize: 13,
+                      letterSpacing: 1.2,
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Learn the basics',
-                      style: TextStyle(
-                        color: _accent,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Learn the basics',
+                    style: TextStyle(
+                      color: _accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -950,77 +948,77 @@ class _SettingsModeCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFF1A0B33),
-                      _accent.withValues(alpha: 0.35),
-                      const Color(0xFF0C0620),
-                    ],
-                  ),
-                ),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: _accent.withValues(alpha: 0.7),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _accent.withValues(alpha: 0.35),
-                      blurRadius: 14,
-                      spreadRadius: 0.5,
-                    ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Opaque base so the card looks identical without a (no-op)
+            // backdrop blur behind it.
+            const ColoredBox(color: Color(0xFF0C0620)),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF1A0B33),
+                    _accent.withValues(alpha: 0.35),
+                    const Color(0xFF0C0620),
                   ],
                 ),
               ),
-              Center(
-                child: Icon(
-                  Icons.settings_rounded,
-                  size: 32,
-                  color: Colors.white.withValues(alpha: 0.92),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _accent.withValues(alpha: 0.7),
+                  width: 1.5,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _accent.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    spreadRadius: 0.5,
+                  ),
+                ],
               ),
-              Positioned(
-                left: 8,
-                right: 8,
-                bottom: 12,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'SETTINGS',
-                      textAlign: TextAlign.center,
-                      style: _cardStyle.copyWith(
-                        fontSize: 13,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Name & profile',
-                      style: TextStyle(
-                        color: _accent,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ],
-                ),
+            ),
+            Center(
+              child: Icon(
+                Icons.settings_rounded,
+                size: 32,
+                color: Colors.white.withValues(alpha: 0.92),
               ),
-            ],
-          ),
+            ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 12,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'SETTINGS',
+                    textAlign: TextAlign.center,
+                    style: _cardStyle.copyWith(
+                      fontSize: 13,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Name & profile',
+                    style: TextStyle(
+                      color: _accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1056,125 +1054,154 @@ class _FullMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: masterAnimation,
-      builder: (context, _) {
-        final elapsedSeconds = masterAnimation.value * _loopSeconds;
-        final glowBlur = _glowBlurRadius(elapsedSeconds);
-        return _TapScaleCard(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(22),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(
-                colors: [_Arcade.magenta, _Arcade.cyan, _Arcade.green],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _Arcade.green.withValues(alpha: 0.5),
-                  blurRadius: glowBlur,
-                  spreadRadius: 1,
-                ),
-                BoxShadow(
-                  color: _Arcade.cyan.withValues(alpha: 0.4),
-                  blurRadius: glowBlur * 0.6,
-                  spreadRadius: 0,
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.all(1.5),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20.5),
-                gradient: const LinearGradient(
-                  colors: [_Arcade.cyan, _Arcade.magenta, _Arcade.green],
+    // Static visuals (images, gradients, text) are built ONCE and cached in a
+    // RepaintBoundary, so the per-frame animation only re-composites them
+    // instead of rebuilding/re-decoding. The blurred backdrop was fully hidden
+    // behind the cover image, so it has been dropped (no visual change).
+    final cardBody = RepaintBoundary(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20.5),
+          gradient: const LinearGradient(
+            colors: [_Arcade.cyan, _Arcade.magenta, _Arcade.green],
+          ),
+        ),
+        padding: const EdgeInsets.all(1.5),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(19),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: Image.asset(
+                  artAsset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
                 ),
               ),
-              padding: const EdgeInsets.all(1.5),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(19),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Positioned.fill(
-                        child: Image.asset(
-                          artAsset,
-                          fit: BoxFit.cover,
-                          alignment: Alignment.center,
-                        ),
-                      ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              const Color(0xFF150826).withValues(alpha: 0.82),
-                              _Arcade.violet.withValues(alpha: 0.24),
-                              Colors.transparent,
-                            ],
-                            stops: const [0.0, 0.5, 0.85],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 14,
-                        top: 14,
-                        child: Transform.rotate(
-                          angle:
-                              (elapsedSeconds / _loopSeconds) * math.pi * 2,
-                          child: Image.asset(
-                            ballArt,
-                            width: 44,
-                            height: 44,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'FEATURED MODE',
-                              style: TextStyle(
-                                color: _Arcade.lime,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 3.4,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              'FULL MATCH',
-                              style: _cardStyle.copyWith(
-                                fontSize: 26,
-                                letterSpacing: 0.6,
-                                height: 1.1,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Shoot & save — take your team to victory',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      const Color(0xFF150826).withValues(alpha: 0.82),
+                      _Arcade.violet.withValues(alpha: 0.24),
+                      Colors.transparent,
                     ],
+                    stops: const [0.0, 0.5, 0.85],
                   ),
                 ),
               ),
-            ),
+              Positioned(
+                right: 14,
+                top: 14,
+                child: _SpinningBall(animation: masterAnimation, asset: ballArt),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'FEATURED MODE',
+                      style: TextStyle(
+                        color: _Arcade.lime,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 3.4,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'FULL MATCH',
+                      style: _cardStyle.copyWith(
+                        fontSize: 26,
+                        letterSpacing: 0.6,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Shoot & save — take your team to victory',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+        ),
+      ),
+    );
+
+    return _TapScaleCard(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: masterAnimation,
+          child: cardBody,
+          builder: (context, child) {
+            final glowBlur = _glowBlurRadius(masterAnimation.value * _loopSeconds);
+            return Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                gradient: const LinearGradient(
+                  colors: [_Arcade.magenta, _Arcade.cyan, _Arcade.green],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _Arcade.green.withValues(alpha: 0.5),
+                    blurRadius: glowBlur,
+                    spreadRadius: 1,
+                  ),
+                  BoxShadow(
+                    color: _Arcade.cyan.withValues(alpha: 0.4),
+                    blurRadius: glowBlur * 0.6,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(1.5),
+              child: child,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Continuously-rotating ball badge. The image decodes once and is cached as a
+/// retained layer; only the rotation matrix updates per frame.
+class _SpinningBall extends StatelessWidget {
+  const _SpinningBall({required this.animation, required this.asset});
+
+  final Animation<double> animation;
+  final String asset;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: RepaintBoundary(
+        child: Image.asset(
+          asset,
+          width: 44,
+          height: 44,
+          fit: BoxFit.contain,
+          cacheWidth: 132,
+        ),
+      ),
+      builder: (context, child) {
+        return Transform.rotate(
+          angle: animation.value * 2 * math.pi,
+          child: child,
         );
       },
     );
@@ -1202,67 +1229,64 @@ class _LockedModeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.asset(
-              artAsset,
-              fit: BoxFit.cover,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            artAsset,
+            fit: BoxFit.cover,
+          ),
+          ColoredBox(
+            color: const Color(0xFF0C0620).withValues(alpha: 0.6),
+          ),
+          ColoredBox(
+            color: accent.withValues(alpha: 0.16),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: accent.withValues(alpha: 0.6),
+                width: 1.5,
+              ),
             ),
-            ColoredBox(
-              color: const Color(0xFF0C0620).withValues(alpha: 0.6),
+          ),
+          Center(
+            child: Icon(
+              Icons.lock_outline,
+              size: 32,
+              color: Colors.white.withValues(alpha: 0.85),
             ),
-            ColoredBox(
-              color: accent.withValues(alpha: 0.16),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: accent.withValues(alpha: 0.6),
-                  width: 1.5,
+          ),
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 12,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: _cardStyle.copyWith(
+                    fontSize: 13,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              ),
-            ),
-            Center(
-              child: Icon(
-                Icons.lock_outline,
-                size: 32,
-                color: Colors.white.withValues(alpha: 0.85),
-              ),
-            ),
-            Positioned(
-              left: 8,
-              right: 8,
-              bottom: 12,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: _cardStyle.copyWith(
-                      fontSize: 13,
-                      letterSpacing: 1.2,
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  'Coming Soon',
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Coming Soon',
-                    style: TextStyle(
-                      color: accent,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
