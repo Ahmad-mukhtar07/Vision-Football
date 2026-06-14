@@ -736,23 +736,17 @@ class _ModeSelectorGrid extends StatelessWidget {
         const SizedBox(height: _rowGap),
         Expanded(
           flex: 2,
-          // Horizontally scrollable strip — swipe left to reveal Tutorials.
+          // Horizontally scrollable strip — sized so the next card peeks in.
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final cardWidth = (constraints.maxWidth - _rowGap) / 2;
+              const peek = 44.0;
+              final cardWidth =
+                  (constraints.maxWidth - _rowGap * 2 - peek) / 2;
               return ListView(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
                 clipBehavior: Clip.none,
                 children: [
-                  SizedBox(
-                    width: cardWidth,
-                    child: _TutorialModeCard(
-                      artAsset: tutorialArt,
-                      onTap: onTutorialsTap,
-                    ),
-                  ),
-                  const SizedBox(width: _rowGap),
                   SizedBox(
                     width: cardWidth,
                     child: _LockedModeCard(
@@ -768,6 +762,14 @@ class _ModeSelectorGrid extends StatelessWidget {
                       title: 'ONLINE ARENA',
                       artAsset: onlineArt,
                       accent: _Arcade.cyan,
+                    ),
+                  ),
+                  const SizedBox(width: _rowGap),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _TutorialModeCard(
+                      artAsset: tutorialArt,
+                      onTap: onTutorialsTap,
                     ),
                   ),
                 ],

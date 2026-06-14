@@ -48,6 +48,8 @@ class _KickingTutorialScreenState extends State<KickingTutorialScreen> {
 
   static const _tips = <String>[
     'Keep the camera at knee height.',
+    'Include the ground space in front of you on camera to fully capture '
+        'your kicking step and follow-through.',
     'Play in a well-lit area.',
     'The boot on screen follows the foot you selected.',
     'Pass the boot through the curved ball indicator to shoot that way.',
