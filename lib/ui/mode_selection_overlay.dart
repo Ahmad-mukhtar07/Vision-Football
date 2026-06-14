@@ -20,6 +20,14 @@ enum GameMode {
   keepingTutorial,
 }
 
+/// When false, standalone practice modes are hidden from the Full Match picker
+/// (Take Shots / Be the Keeper). Routing in [main.dart] is unchanged.
+const _kShowStandalonePracticeModes = false;
+
+/// When false, the Tutorials card and kicking/keeping tutorial picker are
+/// hidden from the home screen. Routing in [main.dart] is unchanged.
+const _kShowTutorialModes = false;
+
 /// Plays the main-menu click sound + light haptic for button feedback.
 void _playTapFeedback() {
   MainPageSound.playButtonClick();
@@ -128,6 +136,10 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   }
 
   void _openFullMatch(BuildContext context) {
+    if (!_kShowStandalonePracticeModes) {
+      widget.onModeSelected(GameMode.fullMatch);
+      return;
+    }
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -800,14 +812,16 @@ class _ModeSelectorGrid extends StatelessWidget {
                       accent: _Arcade.cyan,
                     ),
                   ),
-                  const SizedBox(width: _rowGap),
-                  SizedBox(
-                    width: cardWidth,
-                    child: _TutorialModeCard(
-                      artAsset: tutorialArt,
-                      onTap: onTutorialsTap,
+                  if (_kShowTutorialModes) ...[
+                    const SizedBox(width: _rowGap),
+                    SizedBox(
+                      width: cardWidth,
+                      child: _TutorialModeCard(
+                        artAsset: tutorialArt,
+                        onTap: onTutorialsTap,
+                      ),
                     ),
-                  ),
+                  ],
                   const SizedBox(width: _rowGap),
                   SizedBox(
                     width: cardWidth,
@@ -1145,7 +1159,7 @@ class _FullMatchCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Shoot & save — pick your role',
+                              'Shoot & save — take your team to victory',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.8),
                                 fontSize: 14,
@@ -1475,33 +1489,35 @@ class _FullMatchRoleSheet extends StatelessWidget {
               icon: Icons.emoji_events_rounded,
               onTap: () => onModeSelected(GameMode.fullMatch),
             ),
-            const SizedBox(height: 18),
-            Text(
-              'PRACTICE',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.55),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2.0,
+            if (_kShowStandalonePracticeModes) ...[
+              const SizedBox(height: 18),
+              Text(
+                'PRACTICE',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.0,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            _RoleButton(
-              title: 'Take Shots',
-              subtitle: 'Beat the keeper with your feet',
-              accent: _Arcade.green,
-              icon: Icons.sports_soccer_rounded,
-              onTap: () => onModeSelected(GameMode.takeShots),
-            ),
-            const SizedBox(height: 12),
-            _RoleButton(
-              title: 'Be the Keeper',
-              subtitle: 'Save shots with your hands',
-              accent: _Arcade.cyan,
-              icon: Icons.back_hand_outlined,
-              onTap: () => onModeSelected(GameMode.beTheKeeper),
-            ),
+              const SizedBox(height: 12),
+              _RoleButton(
+                title: 'Take Shots',
+                subtitle: 'Beat the keeper with your feet',
+                accent: _Arcade.green,
+                icon: Icons.sports_soccer_rounded,
+                onTap: () => onModeSelected(GameMode.takeShots),
+              ),
+              const SizedBox(height: 12),
+              _RoleButton(
+                title: 'Be the Keeper',
+                subtitle: 'Save shots with your hands',
+                accent: _Arcade.cyan,
+                icon: Icons.back_hand_outlined,
+                onTap: () => onModeSelected(GameMode.beTheKeeper),
+              ),
+            ],
           ],
         ),
       ),
