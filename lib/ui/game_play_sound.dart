@@ -190,6 +190,16 @@ class GamePlaySound {
     unawaited(_restartCheer(fadeOutAlignedTo));
   }
 
+  /// Just the goal "ding" with no crowd cheer — used by the kicking tutorial,
+  /// which deliberately keeps the soundscape minimal.
+  static void playGoalDing() {
+    if (!_ready) {
+      warmUp().then((_) => _replay(_goalPlayer, _goalSound));
+      return;
+    }
+    _replay(_goalPlayer, _goalSound);
+  }
+
   static Future<void> _restartCheer(Duration? fadeOutAlignedTo) async {
     _cheerFadeTimer?.cancel();
     await _cheerPlayer.stop();

@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'keeper/keeper_screen.dart';
 import 'ui/full_match_screen.dart';
 import 'ui/mode_selection_overlay.dart';
+import 'ui/tutorial/keeping_tutorial_screen.dart';
+import 'ui/tutorial/kicking_tutorial_screen.dart';
 import 'ui/vision_football_screen.dart';
 
 Future<void> main() async {
@@ -131,6 +133,16 @@ class _AppBootstrapState extends State<AppBootstrap> {
       );
     } else if (_selectedMode == GameMode.takeShots) {
       body = VisionFootballScreen(
+        cameras: _cameras!,
+        onReturnToMenu: _returnToMainMenu,
+      );
+    } else if (_selectedMode == GameMode.kickingTutorial) {
+      body = KickingTutorialScreen(
+        cameras: _cameras!,
+        onReturnToMenu: _returnToMainMenu,
+      );
+    } else if (_selectedMode == GameMode.keepingTutorial) {
+      body = KeepingTutorialScreen(
         cameras: _cameras!,
         onReturnToMenu: _returnToMainMenu,
       );

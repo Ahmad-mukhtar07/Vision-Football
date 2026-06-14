@@ -40,6 +40,18 @@ class KeeperGame extends FlameGame {
   /// each [prepareShot] so power/accuracy/curve shape the shot. Null = neutral.
   Player? incomingShooter;
 
+  /// Tutorial mode: when true the shot aims at a scripted point ([tutorialTargets]
+  /// indexed by [tutorialShotIndex]), commentary/crowd are silenced, and the
+  /// keeper match controller is NOT mutated on resolve — the screen owns the
+  /// 3-shot progression and retries. Default false leaves match behavior intact.
+  bool tutorialMode = false;
+  int tutorialShotIndex = 0;
+  List<Offset Function(Rect mouth)>? tutorialTargets;
+
+  /// Screen-space point the current scripted shot is aimed at, so the screen
+  /// can draw the "move your gloves here" marker. Null outside tutorial mode.
+  final ValueNotifier<Offset?> tutorialMarker = ValueNotifier<Offset?>(null);
+
   /// Fraction of flight after which a glove overlap counts as a save. Lower
   /// (better prediction) = saves register earlier.
   double saveWindowStart = 0.55;
@@ -162,7 +174,13 @@ class KeeperGame extends FlameGame {
     final acc = incomingShooter?.accuracyNorm ?? 0.0;
     final double tx;
     final double ty;
-    if (acc > 0) {
+    final targets = tutorialTargets;
+    if (tutorialMode && targets != null && targets.isNotEmpty) {
+      final selector = targets[tutorialShotIndex.clamp(0, targets.length - 1)];
+      final p = selector(mouth);
+      tx = p.dx;
+      ty = p.dy;
+    } else if (acc > 0) {
       // Aim in screen space (0..1 across the visible goal). Accurate shooters
       // pull toward a reachable post and high into the mouth — away from the
       // comfortable centre — so they're hard to save. Weaker shooters stay
@@ -183,6 +201,7 @@ class KeeperGame extends FlameGame {
       ty = mouth.top + mouth.height * (0.10 + r.nextDouble() * 0.80);
     }
     _pendingTarget = Offset(tx, ty);
+    if (tutorialMode) tutorialMarker.value = _pendingTarget;
     _ball.showAtShooter(_shooter.ballEmitPoint, _pendingTarget!);
   }
 
@@ -225,23 +244,30 @@ class KeeperGame extends FlameGame {
     if (saved) {
       GamePlaySound.playSave();
       _flash.flash(Colors.greenAccent);
-      lastCommentaryDuration =
-          CommentarySound.playSave(_classifySave(ballLandingScreen));
+      if (!tutorialMode) {
+        lastCommentaryDuration =
+            CommentarySound.playSave(_classifySave(ballLandingScreen));
+      }
     } else {
       _goal.flashRed();
       _flash.flash(Colors.redAccent.withValues(alpha: 0.35));
-      lastCommentaryDuration = CommentarySound.playGoal(
-        placement: _classifyConceded(ballLandingScreen),
-        isSlow: false,
-      );
-      // Fade the longer cheer out to finish with the commentary line.
-      GamePlaySound.playGoalCheer(fadeOutAlignedTo: lastCommentaryDuration);
+      if (!tutorialMode) {
+        lastCommentaryDuration = CommentarySound.playGoal(
+          placement: _classifyConceded(ballLandingScreen),
+          isSlow: false,
+        );
+        // Fade the longer cheer out to finish with the commentary line.
+        GamePlaySound.playGoalCheer(fadeOutAlignedTo: lastCommentaryDuration);
+      }
     }
     final result = saved ? KeeperShotResult.saved : KeeperShotResult.conceded;
-    controller.onShotResolved(
-      result,
-      goalScorer: saved ? null : incomingShooter?.name,
-    );
+    // Tutorial owns its own progression/retries; don't advance the match.
+    if (!tutorialMode) {
+      controller.onShotResolved(
+        result,
+        goalScorer: saved ? null : incomingShooter?.name,
+      );
+    }
     onShotResolved(result);
   }
 

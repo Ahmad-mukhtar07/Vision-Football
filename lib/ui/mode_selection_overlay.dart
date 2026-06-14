@@ -9,7 +9,13 @@ import 'glass_panel.dart';
 import 'main_page_sound.dart';
 
 /// Selectable game mode from the start screen.
-enum GameMode { fullMatch, takeShots, beTheKeeper }
+enum GameMode {
+  fullMatch,
+  takeShots,
+  beTheKeeper,
+  kickingTutorial,
+  keepingTutorial,
+}
 
 /// Plays the main-menu click sound + light haptic for button feedback.
 void _playTapFeedback() {
@@ -55,6 +61,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   static const _tournamentArt = 'assets/images/main_page/tournament_art.png';
   static const _onlineArt = 'assets/images/main_page/online_art.jpeg';
   static const _ballArt = 'assets/images/ball/Ball-left.png';
+  static const _tutorialArt = 'assets/images/tips/Tips-Shooting.png';
 
   static const _avatars = <String>[
     'assets/images/main_page/avatars/avatar_1.png',
@@ -116,6 +123,20 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => _FullMatchRoleSheet(
+        onModeSelected: (mode) {
+          Navigator.of(ctx).pop();
+          widget.onModeSelected(mode);
+        },
+      ),
+    );
+  }
+
+  void _openTutorials(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _TutorialPickerSheet(
         onModeSelected: (mode) {
           Navigator.of(ctx).pop();
           widget.onModeSelected(mode);
@@ -194,8 +215,10 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
                       ballArt: _ballArt,
                       tournamentArt: _tournamentArt,
                       onlineArt: _onlineArt,
+                      tutorialArt: _tutorialArt,
                       masterAnimation: _masterController,
                       onFullMatchTap: () => _openFullMatch(context),
+                      onTutorialsTap: () => _openTutorials(context),
                     ),
                   ),
                 ],
@@ -679,16 +702,22 @@ class _ModeSelectorGrid extends StatelessWidget {
     required this.ballArt,
     required this.tournamentArt,
     required this.onlineArt,
+    required this.tutorialArt,
     required this.masterAnimation,
     required this.onFullMatchTap,
+    required this.onTutorialsTap,
   });
 
   final String matchArt;
   final String ballArt;
   final String tournamentArt;
   final String onlineArt;
+  final String tutorialArt;
   final Animation<double> masterAnimation;
   final VoidCallback onFullMatchTap;
+  final VoidCallback onTutorialsTap;
+
+  static const double _rowGap = 14;
 
   @override
   Widget build(BuildContext context) {
@@ -704,31 +733,142 @@ class _ModeSelectorGrid extends StatelessWidget {
             onTap: onFullMatchTap,
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: _rowGap),
         Expanded(
           flex: 2,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          // Horizontally scrollable strip — swipe left to reveal Tutorials.
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final cardWidth = (constraints.maxWidth - _rowGap) / 2;
+              return ListView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                clipBehavior: Clip.none,
+                children: [
+                  SizedBox(
+                    width: cardWidth,
+                    child: _TutorialModeCard(
+                      artAsset: tutorialArt,
+                      onTap: onTutorialsTap,
+                    ),
+                  ),
+                  const SizedBox(width: _rowGap),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _LockedModeCard(
+                      title: 'TOURNAMENTS',
+                      artAsset: tournamentArt,
+                      accent: _Arcade.lime,
+                    ),
+                  ),
+                  const SizedBox(width: _rowGap),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _LockedModeCard(
+                      title: 'ONLINE ARENA',
+                      artAsset: onlineArt,
+                      accent: _Arcade.cyan,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Tappable "Tutorials" card living in the scrollable bottom strip.
+class _TutorialModeCard extends StatelessWidget {
+  const _TutorialModeCard({
+    required this.artAsset,
+    required this.onTap,
+  });
+
+  final String artAsset;
+  final VoidCallback onTap;
+
+  static const _accent = _Arcade.magenta;
+  static const _cardStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w900,
+    fontStyle: FontStyle.italic,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return _TapScaleCard(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Expanded(
-                child: _LockedModeCard(
-                  title: 'TOURNAMENTS',
-                  artAsset: tournamentArt,
-                  accent: _Arcade.lime,
+              Image.asset(artAsset, fit: BoxFit.cover),
+              ColoredBox(
+                color: const Color(0xFF0C0620).withValues(alpha: 0.55),
+              ),
+              ColoredBox(color: _accent.withValues(alpha: 0.16)),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: _accent.withValues(alpha: 0.7),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _accent.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                      spreadRadius: 0.5,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: _LockedModeCard(
-                  title: 'ONLINE ARENA',
-                  artAsset: onlineArt,
-                  accent: _Arcade.cyan,
+              Center(
+                child: Icon(
+                  Icons.school_rounded,
+                  size: 32,
+                  color: Colors.white.withValues(alpha: 0.92),
+                ),
+              ),
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 12,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'TUTORIALS',
+                      textAlign: TextAlign.center,
+                      style: _cardStyle.copyWith(
+                        fontSize: 13,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Learn the basics',
+                      style: TextStyle(
+                        color: _accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -1221,6 +1361,59 @@ class _FullMatchRoleSheet extends StatelessWidget {
               accent: _Arcade.cyan,
               icon: Icons.back_hand_outlined,
               onTap: () => onModeSelected(GameMode.beTheKeeper),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TutorialPickerSheet extends StatelessWidget {
+  const _TutorialPickerSheet({required this.onModeSelected});
+
+  final ValueChanged<GameMode> onModeSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        MediaQuery.paddingOf(context).bottom + 20,
+      ),
+      child: GlassPanel(
+        padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'TUTORIALS',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _Arcade.magenta,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2.2,
+              ),
+            ),
+            const SizedBox(height: 18),
+            _RoleButton(
+              title: 'Kicking',
+              subtitle: 'Place your shots into the goal',
+              accent: _Arcade.green,
+              icon: Icons.sports_soccer_rounded,
+              onTap: () => onModeSelected(GameMode.kickingTutorial),
+            ),
+            const SizedBox(height: 12),
+            _RoleButton(
+              title: 'Keeping',
+              subtitle: 'Get your gloves to the ball',
+              accent: _Arcade.cyan,
+              icon: Icons.back_hand_outlined,
+              onTap: () => onModeSelected(GameMode.keepingTutorial),
             ),
           ],
         ),
