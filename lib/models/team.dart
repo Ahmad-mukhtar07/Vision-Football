@@ -9,6 +9,7 @@ library;
 class Player {
   const Player({
     required this.name,
+    required this.overall,
     required this.power,
     required this.accuracy,
     required this.curve,
@@ -19,6 +20,9 @@ class Player {
 
   /// Optional shirt number (cosmetic only).
   final int? number;
+
+  /// Display overall rating (authored independently of stat breakdown). 0–100.
+  final int overall;
 
   /// Shot force — ball pace + arc/distance. 0–100.
   final int power;
@@ -32,15 +36,13 @@ class Player {
   double get powerNorm => power / 100.0;
   double get accuracyNorm => accuracy / 100.0;
   double get curveNorm => curve / 100.0;
-
-  /// Display overall (simple average of the three shot attributes).
-  int get overall => ((power + accuracy + curve) / 3).round();
 }
 
 /// Goalkeeper rating for a team.
 class GoalkeeperRating {
   const GoalkeeperRating({
     required this.name,
+    required this.overall,
     required this.reflex,
     required this.prediction,
     this.number,
@@ -48,6 +50,9 @@ class GoalkeeperRating {
 
   final String name;
   final int? number;
+
+  /// Display overall rating (authored independently of stat breakdown). 0–100.
+  final int overall;
 
   /// Reaction speed — how quickly the keeper commits to a dive. 0–100.
   final int reflex;
@@ -57,8 +62,6 @@ class GoalkeeperRating {
 
   double get reflexNorm => reflex / 100.0;
   double get predictionNorm => prediction / 100.0;
-
-  int get overall => ((reflex + prediction) / 2).round();
 }
 
 /// An international team: 5 shooters + 1 keeper.
@@ -66,6 +69,7 @@ class Team {
   const Team({
     required this.name,
     required this.countryCode,
+    required this.overall,
     required this.shooters,
     required this.keeper,
   });
@@ -75,16 +79,13 @@ class Team {
   /// ISO-3166 alpha-2 country code (e.g. 'BR'), used to render the flag.
   final String countryCode;
 
+  /// Display overall rating (authored independently of squad averages). 0–100.
+  final int overall;
+
   /// Exactly five shooters, in shooting order.
   final List<Player> shooters;
 
   final GoalkeeperRating keeper;
-
-  /// Team overall: average of the shooters' overalls plus the keeper.
-  int get overall {
-    final shooterSum = shooters.fold<int>(0, (s, p) => s + p.overall);
-    return ((shooterSum + keeper.overall) / (shooters.length + 1)).round();
-  }
 
   /// Average shooter attack rating (excludes keeper) — handy for sorting.
   int get attackRating {
