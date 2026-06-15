@@ -11,6 +11,19 @@ class UserProfileStore {
   static const _keyCountry = 'profile_country_name';
   static const _keyCountryCodeLegacy = 'profile_country_code';
   static const _keyPosition = 'profile_position';
+  static const _keyOnboarded = 'onboarding_complete';
+
+  /// Whether the first-run flow (profile setup + tutorials) has been finished.
+  static Future<bool> isOnboardingComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyOnboarded) ?? false;
+  }
+
+  /// Marks the first-run flow as done so it never shows again.
+  static Future<void> markOnboardingComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyOnboarded, true);
+  }
 
   static Future<UserProfile> load() async {
     final prefs = await SharedPreferences.getInstance();

@@ -6,9 +6,11 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'data/user_profile_store.dart';
 import 'keeper/keeper_screen.dart';
 import 'ui/full_match_screen.dart';
 import 'ui/mode_selection_overlay.dart';
+import 'ui/onboarding/onboarding_profile_screen.dart';
 import 'ui/tutorial/keeping_tutorial_screen.dart';
 import 'ui/tutorial/kicking_tutorial_screen.dart';
 import 'ui/vision_football_screen.dart';
@@ -34,6 +36,10 @@ class VisionFootballApp extends StatelessWidget {
   }
 }
 
+/// The sequential first-run steps shown before the main menu on a fresh
+/// install: profile setup, then the kicking and keeping tutorials.
+enum _OnboardingStep { profile, kickingTutorial, keepingTutorial }
+
 /// Starts the camera pipeline or shows a permission/settings fallback.
 class AppBootstrap extends StatefulWidget {
   const AppBootstrap({super.key});
@@ -50,6 +56,9 @@ class _AppBootstrapState extends State<AppBootstrap> {
   bool _loadingComplete = false;
   GameMode? _selectedMode;
 
+  /// Non-null only during the first-run flow; cleared once onboarding is done.
+  _OnboardingStep? _onboardingStep;
+
   @override
   void initState() {
     super.initState();
@@ -61,13 +70,17 @@ class _AppBootstrapState extends State<AppBootstrap> {
     // visible for at least the loading-strip animation so it never flashes.
     final loadingStart = DateTime.now();
     await _startCameraPipeline();
+    final onboardingComplete = await UserProfileStore.isOnboardingComplete();
     final elapsed = DateTime.now().difference(loadingStart);
     final remaining = _loadingMinDuration - elapsed;
     if (remaining > Duration.zero) {
       await Future<void>.delayed(remaining);
     }
     if (!mounted) return;
-    setState(() => _loadingComplete = true);
+    setState(() {
+      _loadingComplete = true;
+      if (!onboardingComplete) _onboardingStep = _OnboardingStep.profile;
+    });
   }
 
   Future<void> _startCameraPipeline() async {
@@ -117,6 +130,37 @@ class _AppBootstrapState extends State<AppBootstrap> {
     setState(() => _selectedMode = null);
   }
 
+  Future<void> _finishOnboarding() async {
+    await UserProfileStore.markOnboardingComplete();
+    if (!mounted) return;
+    setState(() => _onboardingStep = null);
+  }
+
+  /// Builds the current first-run step. Reached only after the camera pipeline
+  /// is ready, so [_cameras] is guaranteed non-null here.
+  Widget _buildOnboarding() {
+    switch (_onboardingStep!) {
+      case _OnboardingStep.profile:
+        return OnboardingProfileScreen(
+          onComplete: () => setState(
+            () => _onboardingStep = _OnboardingStep.kickingTutorial,
+          ),
+        );
+      case _OnboardingStep.kickingTutorial:
+        return KickingTutorialScreen(
+          cameras: _cameras!,
+          onReturnToMenu: () => setState(
+            () => _onboardingStep = _OnboardingStep.keepingTutorial,
+          ),
+        );
+      case _OnboardingStep.keepingTutorial:
+        return KeepingTutorialScreen(
+          cameras: _cameras!,
+          onReturnToMenu: _finishOnboarding,
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Widget body;
@@ -124,6 +168,8 @@ class _AppBootstrapState extends State<AppBootstrap> {
       body = const CameraPermissionRequiredScreen();
     } else if (!_loadingComplete || _cameras == null) {
       body = const _LoadingScreen();
+    } else if (_onboardingStep != null) {
+      body = _buildOnboarding();
     } else if (_selectedMode == null) {
       body = ModeSelectionOverlay(onModeSelected: _onModeSelected);
     } else if (_selectedMode == GameMode.fullMatch) {
