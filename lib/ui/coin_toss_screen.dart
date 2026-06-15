@@ -129,17 +129,24 @@ class _CoinTossScreenState extends State<CoinTossScreen>
           children: [
             _header(),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: Column(
-                  children: [
-                    _matchupRow(),
-                    const SizedBox(height: 28),
-                    _coin(),
-                    const SizedBox(height: 28),
-                    _phaseContent(),
-                  ],
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight - 36),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _matchupRow(),
+                          _coin(),
+                          _phaseContent(),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -256,58 +263,130 @@ class _CoinTossScreenState extends State<CoinTossScreen>
         // Several full rotations during the flip; settles flat at rest.
         final spinning = _phase == _TossPhase.flipping;
         final angle = spinning ? _flip.value * math.pi * 2 * 5 : 0.0;
-        // Show a neutral face while spinning; reveal the result at rest.
-        final label = switch (_phase) {
-          _TossPhase.calling => '?',
-          _TossPhase.flipping => '',
-          _ => _result == _CoinFace.heads ? 'H' : 'T',
-        };
-        final lift = spinning
-            ? math.sin(_flip.value * math.pi) * 26
-            : 0.0;
-        return Transform.translate(
-          offset: Offset(0, -lift),
-          child: Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.0015)
-              ..rotateX(angle),
-            child: Container(
-              width: 116,
-              height: 116,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const RadialGradient(
-                  colors: [Color(0xFFFFF1A8), _Pal.gold, Color(0xFFB8860B)],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  width: 3,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _Pal.gold.withValues(alpha: 0.5),
-                    blurRadius: 22,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    color: Color(0xFF5A4500),
-                    fontSize: 48,
-                    fontWeight: FontWeight.w900,
+        final lift = spinning ? math.sin(_flip.value * math.pi) * 30 : 0.0;
+        // A flipping coin alternately shows its edge — fake that by squashing
+        // the disc and hiding the face when it's near side-on.
+        final faceVisible = math.cos(angle).abs() > 0.32;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Transform.translate(
+              offset: Offset(0, -lift),
+              child: Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.0015)
+                  ..rotateX(angle),
+                child: SizedBox(
+                  width: 132,
+                  height: 132,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const RadialGradient(
+                            center: Alignment(-0.3, -0.4),
+                            colors: [
+                              Color(0xFFFFF7C8),
+                              _Pal.gold,
+                              Color(0xFFA9760A),
+                            ],
+                            stops: [0.0, 0.58, 1.0],
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            width: 3,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _Pal.gold.withValues(alpha: 0.5),
+                              blurRadius: 26,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: const SizedBox(width: 132, height: 132),
+                      ),
+                      const CustomPaint(
+                        size: Size(132, 132),
+                        painter: _CoinEdgePainter(),
+                      ),
+                      // Inner minted disc.
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const RadialGradient(
+                            colors: [Color(0xFFFFEFA6), Color(0xFFE2A938)],
+                            stops: [0.0, 1.0],
+                          ),
+                          border: Border.all(
+                            color: const Color(0xFF8A6508).withValues(alpha: 0.7),
+                            width: 2,
+                          ),
+                        ),
+                        child: Center(
+                          child: Opacity(
+                            opacity: faceVisible ? 1 : 0,
+                            child: _coinFace(),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         );
       },
     );
+  }
+
+  /// The embossed content stamped on the coin for the current phase.
+  Widget _coinFace() {
+    const inkColor = Color(0xFF5A4500);
+
+    switch (_phase) {
+      case _TossPhase.calling:
+        return const Text(
+          '?',
+          style: TextStyle(
+            color: inkColor,
+            fontSize: 52,
+            fontWeight: FontWeight.w900,
+          ),
+        );
+      case _TossPhase.flipping:
+        return const SizedBox.shrink();
+      case _TossPhase.won:
+      case _TossPhase.lost:
+        final heads = _result == _CoinFace.heads;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              heads ? Icons.sports_soccer_rounded : Icons.shield_rounded,
+              color: inkColor,
+              size: 40,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              heads ? 'HEADS' : 'TAILS',
+              style: const TextStyle(
+                color: inkColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ],
+        );
+    }
   }
 
   Widget _phaseContent() {
@@ -492,4 +571,34 @@ class _CoinTossScreenState extends State<CoinTossScreen>
       ),
     );
   }
+}
+
+/// Draws the milled ridges around a coin's rim so it reads as minted metal
+/// rather than a flat disc.
+class _CoinEdgePainter extends CustomPainter {
+  const _CoinEdgePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.width / 2;
+    final paint = Paint()
+      ..color = const Color(0xFF8A6508).withValues(alpha: 0.55)
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+
+    const ticks = 54;
+    for (var i = 0; i < ticks; i++) {
+      final a = (i / ticks) * 2 * math.pi;
+      final dir = Offset(math.cos(a), math.sin(a));
+      canvas.drawLine(
+        center + dir * (radius - 10),
+        center + dir * (radius - 4),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CoinEdgePainter oldDelegate) => false;
 }
