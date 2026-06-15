@@ -505,7 +505,7 @@ class _SpotlightSlide {
 const _proTipSlides = <_SpotlightSlide>[
   _SpotlightSlide(
     title: 'Set Up Your Shot 🎯',
-    body: 'Shooting game: Place your phone at knee height for the best shooting experience.',
+    body: 'Shooting game: Place your phone at waist height for the best shooting experience.',
     backgroundAsset: 'assets/images/tips/Tips-Shooting.png',
     accent: _Arcade.green,
   ),

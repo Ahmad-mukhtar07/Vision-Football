@@ -42,7 +42,7 @@ class _KeepingTutorialScreenState extends State<KeepingTutorialScreen> {
 
   static const _tips = <String>[
     'Keep your body centered so your hands can cover more space.',
-    'If your camera is placed at knee height, tilt the phone slightly '
+    'If your camera is placed at waist height, tilt the phone slightly '
         'upwards to capture more upper body area.',
     'The gloves follow your hands.',
     'Bring your hands onto the marked point to save the shot.',
