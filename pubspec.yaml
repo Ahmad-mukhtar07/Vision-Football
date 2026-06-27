@@ -81,6 +81,8 @@ flutter:
     - assets/images/tips/Tips-Keeping.png
     - assets/images/tips/Tips-Distance.png
     - assets/images/tips/Tips-Light.png
+    - assets/images/calibration/Shooting-calibration-guide.jpeg
+    - assets/images/calibration/Keeping-calibration-guide.jpeg
     - assets/sounds/main-page/button-click.wav
     - assets/sounds/game-play/pause-button.wav
     - assets/sounds/game-play/pause-button-reverse.wav

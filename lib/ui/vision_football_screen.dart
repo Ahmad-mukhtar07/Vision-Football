@@ -24,6 +24,7 @@ import 'hud_overlay.dart';
 import 'match_over_overlay.dart';
 import 'pause_menu_overlay.dart';
 import 'shooting_calibration_overlay.dart';
+import 'tutorial/tutorial_common.dart';
 
 enum _SetupPhase {
   positioning,
@@ -76,6 +77,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   KickingFoot? _kickingFoot;
   _SetupPhase? _setupPhase;
   bool _isPaused = false;
+  bool _calibrationHelpVisible = false;
   StreamSubscription<MatchState>? _matchStateSub;
 
   StreamSubscription<List<PoseLandmark>>? _positioningPoseSub;
@@ -369,6 +371,23 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     }
   }
 
+  bool get _inSetupCalibration =>
+      _setupPhase == _SetupPhase.positioning ||
+      _setupPhase == _SetupPhase.calibrating;
+
+  void _openCalibrationHelp() {
+    setState(() => _calibrationHelpVisible = true);
+  }
+
+  void _cancelCalibrationHelp() {
+    setState(() => _calibrationHelpVisible = false);
+  }
+
+  void _finishCalibrationHelp() {
+    setState(() => _calibrationHelpVisible = false);
+    _resumeGame();
+  }
+
   void _quitGame() {
     if (_setupPhase == _SetupPhase.playing && _isPaused) {
       _game.resumeEngine();
@@ -503,10 +522,18 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             opponentTeam: widget.opponentTeam,
             opponentScore: widget.opponentScore,
           ),
-        if (_isPaused)
+        if (_isPaused && !_calibrationHelpVisible)
           PauseMenuOverlay(
             onResume: _resumeGame,
             onQuit: _quitGame,
+            onHowToCalibrate:
+                _inSetupCalibration ? _openCalibrationHelp : null,
+          ),
+        if (_calibrationHelpVisible)
+          CalibrationHelpFlow(
+            kind: CalibrationHelpKind.shooting,
+            onDone: _finishCalibrationHelp,
+            onCancel: _cancelCalibrationHelp,
           ),
         if (_kickingFoot == null)
           FootSelectionOverlay(onFootSelected: _onFootSelected)

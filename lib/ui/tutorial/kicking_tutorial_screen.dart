@@ -22,6 +22,8 @@ import '../pause_menu_overlay.dart';
 import '../shooting_calibration_overlay.dart';
 import 'tutorial_common.dart';
 
+enum _IntroPhase { tips, placementGuide, active }
+
 enum _SetupPhase { positioning, calibrating, playing }
 
 /// Standalone kicking tutorial: empty goal split into a green (valid) and red
@@ -46,15 +48,6 @@ class _KickingTutorialScreenState extends State<KickingTutorialScreen> {
   static const _accent = TutorialPalette.green;
   static const _totalShots = 2;
 
-  static const _tips = <String>[
-    'Keep the camera at waist height.',
-    'Include the ground space in front of you on camera to fully capture '
-        'your kicking step and follow-through.',
-    'Play in a well-lit area.',
-    'The boot on screen follows the foot you selected.',
-    'Pass the boot through the curved ball indicator to shoot that way.',
-  ];
-
   late final KickDetector _kickDetector;
   late final PlayerCalibration _calibration;
   final GameFootMarkerController _gameFootMarker = GameFootMarkerController();
@@ -71,7 +64,7 @@ class _KickingTutorialScreenState extends State<KickingTutorialScreen> {
   static const double _minAnkleLikelihood = 0.55;
   static const Duration _calibrationMinDisplay = Duration(milliseconds: 800);
 
-  bool _showTips = true;
+  _IntroPhase _introPhase = _IntroPhase.tips;
   KickingFoot? _kickingFoot;
   _SetupPhase? _setupPhase;
   bool _isPaused = false;
@@ -125,7 +118,11 @@ class _KickingTutorialScreenState extends State<KickingTutorialScreen> {
   // ── Tips ────────────────────────────────────────────────────────────────
 
   void _startFromTips() {
-    setState(() => _showTips = false);
+    setState(() => _introPhase = _IntroPhase.placementGuide);
+  }
+
+  void _startFromPlacementGuide() {
+    setState(() => _introPhase = _IntroPhase.active);
   }
 
   // ── Foot selection / setup (mirrors the real shooting flow) ──────────────
@@ -413,13 +410,33 @@ class _KickingTutorialScreenState extends State<KickingTutorialScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_showTips) {
+    if (_introPhase == _IntroPhase.tips) {
       return TutorialTipsScreen(
         title: 'Kicking Tutorial',
-        tips: _tips,
+        tips: CalibrationHelpContent.tips(CalibrationHelpKind.shooting),
         accent: _accent,
         onStart: _startFromTips,
         onBack: widget.onReturnToMenu,
+      );
+    }
+
+    if (_introPhase == _IntroPhase.placementGuide) {
+      return TutorialPlacementGuideScreen(
+        title: CalibrationHelpContent.placementTitle(
+          CalibrationHelpKind.shooting,
+        ),
+        headline: CalibrationHelpContent.placementHeadline(
+          CalibrationHelpKind.shooting,
+        ),
+        body: CalibrationHelpContent.placementBody(
+          CalibrationHelpKind.shooting,
+        ),
+        imageAsset: CalibrationHelpContent.placementImage(
+          CalibrationHelpKind.shooting,
+        ),
+        accent: _accent,
+        onContinue: _startFromPlacementGuide,
+        onBack: () => setState(() => _introPhase = _IntroPhase.tips),
       );
     }
 

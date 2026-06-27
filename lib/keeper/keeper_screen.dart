@@ -9,6 +9,7 @@ import '../models/team.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import '../ui/pause_menu_overlay.dart';
+import '../ui/tutorial/tutorial_common.dart';
 import 'glove_overlay.dart';
 import 'hand_detector_service.dart';
 import 'keeper_calibration_overlay.dart';
@@ -65,6 +66,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
   Timer? _calibrationTimer;
   StreamSubscription<HandFrame>? _handSub;
   bool _isPaused = false;
+  bool _calibrationHelpVisible = false;
   bool _calibrationCountdownActive = false;
   bool _bothHandsVisible = false;
   int _calibrationSecondsLeft = 0;
@@ -266,6 +268,19 @@ class _KeeperScreenState extends State<KeeperScreen> {
     }
   }
 
+  void _openCalibrationHelp() {
+    setState(() => _calibrationHelpVisible = true);
+  }
+
+  void _cancelCalibrationHelp() {
+    setState(() => _calibrationHelpVisible = false);
+  }
+
+  void _finishCalibrationHelp() {
+    setState(() => _calibrationHelpVisible = false);
+    _resumeGame();
+  }
+
   void _quitToMenu() {
     if (_isPaused) {
       _game.resumeEngine();
@@ -361,10 +376,17 @@ class _KeeperScreenState extends State<KeeperScreen> {
             secondsLeft: _calibrationSecondsLeft,
           ),
         // 6. Modal overlays.
-        if (_isPaused)
+        if (_isPaused && !_calibrationHelpVisible)
           PauseMenuOverlay(
             onResume: _resumeGame,
             onQuit: _quitToMenu,
+            onHowToCalibrate: isCalibrating ? _openCalibrationHelp : null,
+          ),
+        if (_calibrationHelpVisible)
+          CalibrationHelpFlow(
+            kind: CalibrationHelpKind.keeping,
+            onDone: _finishCalibrationHelp,
+            onCancel: _cancelCalibrationHelp,
           ),
         // In Full Match the orchestrator shows the half-time / full-time
         // screen, so the local match-over overlay is suppressed.

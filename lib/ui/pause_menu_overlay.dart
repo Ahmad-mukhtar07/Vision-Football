@@ -10,10 +10,12 @@ class PauseMenuOverlay extends StatelessWidget {
     super.key,
     required this.onResume,
     required this.onQuit,
+    this.onHowToCalibrate,
   });
 
   final VoidCallback onResume;
   final VoidCallback onQuit;
+  final VoidCallback? onHowToCalibrate;
 
   void _resume() {
     GamePlaySound.playPauseMenuButton();
@@ -25,8 +27,14 @@ class PauseMenuOverlay extends StatelessWidget {
     onQuit();
   }
 
+  void _howToCalibrate() {
+    GamePlaySound.playPauseMenuButton();
+    onHowToCalibrate?.call();
+  }
+
   static const _gold = Color(0xFFFFD700);
   static const _orange = Color(0xFFFF6B00);
+  static const _cyan = Color(0xFF00E5FF);
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +93,33 @@ class PauseMenuOverlay extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onHowToCalibrate != null) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: 260,
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: _howToCalibrate,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _cyan,
+                          side: BorderSide(
+                            color: _cyan.withValues(alpha: 0.85),
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                        child: const Text(
+                          'How to calibrate?',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   SizedBox(
                     width: 260,

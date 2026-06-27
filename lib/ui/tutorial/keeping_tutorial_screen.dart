@@ -17,6 +17,8 @@ import '../game_play_sound.dart';
 import '../pause_menu_overlay.dart';
 import 'tutorial_common.dart';
 
+enum _IntroPhase { tips, placementGuide, active }
+
 /// Standalone keeping tutorial: three scripted shots aimed at marked points
 /// (top-right, bottom-left, then centre). The player brings their gloves onto
 /// the ring marker to save. A conceded shot is repeated. Reuses the keeper
@@ -40,14 +42,6 @@ class _KeepingTutorialScreenState extends State<KeepingTutorialScreen> {
   static const _accent = TutorialPalette.cyan;
   static const _totalShots = 3;
 
-  static const _tips = <String>[
-    'Keep your body centered so your hands can cover more space.',
-    'If your camera is placed at waist height, tilt the phone slightly '
-        'upwards to capture more upper body area.',
-    'The gloves follow your hands.',
-    'Bring your hands onto the marked point to save the shot.',
-  ];
-
   /// Scripted targets within the goal mouth: top-right, bottom-left, centre.
   static final List<Offset Function(Rect mouth)> _targets = [
     (m) => Offset(m.left + m.width * 0.80, m.top + m.height * 0.22),
@@ -62,7 +56,7 @@ class _KeepingTutorialScreenState extends State<KeepingTutorialScreen> {
   Timer? _calibrationTimer;
   Timer? _shotTimer;
 
-  bool _showTips = true;
+  _IntroPhase _introPhase = _IntroPhase.tips;
   bool _isPaused = false;
   bool _complete = false;
 
@@ -92,15 +86,24 @@ class _KeepingTutorialScreenState extends State<KeepingTutorialScreen> {
       ..tutorialMode = true
       ..tutorialTargets = _targets;
     _handSub = HandDetectorService.instance.handFrames.listen(_onHandFrame);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _controller.startMatch();
-    });
     unawaited(_game.ready().then((_) {
       if (mounted) setState(() {});
     }));
   }
 
-  void _startFromTips() => setState(() => _showTips = false);
+  void _startMatchIfNeeded() {
+    if (_controller.state.phase == KeeperPhase.calibrating) return;
+    _controller.startMatch();
+  }
+
+  void _startFromTips() {
+    setState(() => _introPhase = _IntroPhase.placementGuide);
+  }
+
+  void _startFromPlacementGuide() {
+    setState(() => _introPhase = _IntroPhase.active);
+    _startMatchIfNeeded();
+  }
 
   // ── Calibration gate (both hands visible → countdown) ─────────────────────
 
@@ -271,13 +274,33 @@ class _KeepingTutorialScreenState extends State<KeepingTutorialScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_showTips) {
+    if (_introPhase == _IntroPhase.tips) {
       return TutorialTipsScreen(
         title: 'Keeping Tutorial',
-        tips: _tips,
+        tips: CalibrationHelpContent.tips(CalibrationHelpKind.keeping),
         accent: _accent,
         onStart: _startFromTips,
         onBack: widget.onReturnToMenu,
+      );
+    }
+
+    if (_introPhase == _IntroPhase.placementGuide) {
+      return TutorialPlacementGuideScreen(
+        title: CalibrationHelpContent.placementTitle(
+          CalibrationHelpKind.keeping,
+        ),
+        headline: CalibrationHelpContent.placementHeadline(
+          CalibrationHelpKind.keeping,
+        ),
+        body: CalibrationHelpContent.placementBody(
+          CalibrationHelpKind.keeping,
+        ),
+        imageAsset: CalibrationHelpContent.placementImage(
+          CalibrationHelpKind.keeping,
+        ),
+        accent: _accent,
+        onContinue: _startFromPlacementGuide,
+        onBack: () => setState(() => _introPhase = _IntroPhase.tips),
       );
     }
 
