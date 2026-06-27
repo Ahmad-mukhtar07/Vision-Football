@@ -1,4 +1,5 @@
-import 'dart:ui';
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
 
 /// Shared layout for calibration camera preview boxes (keeper + shooting).
 class CalibrationPreviewLayout {
@@ -23,6 +24,33 @@ class CalibrationPreviewLayout {
       return Size(previewSize.height, previewSize.width);
     }
     return previewSize;
+  }
+
+  /// Cover-fit camera feed for portrait UI.
+  ///
+  /// [CameraController.value.previewSize] is reported in sensor (landscape)
+  /// coordinates on most phones. Feeding those dimensions directly into a
+  /// portrait layout makes [FittedBox] scale with the wrong aspect ratio,
+  /// which looks zoomed-in and stretched. We size the child using
+  /// [orientedPreviewSize] so the preview matches what the user sees.
+  static Widget coverFitPreview(CameraController controller) {
+    final previewSize = controller.value.previewSize;
+    if (previewSize == null) {
+      return const SizedBox.shrink();
+    }
+    final oriented = orientedPreviewSize(previewSize);
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: oriented.width,
+          height: oriented.height,
+          child: CameraPreview(controller),
+        ),
+      ),
+    );
   }
 
   /// Computes the on-screen rect for a portrait front-camera preview.

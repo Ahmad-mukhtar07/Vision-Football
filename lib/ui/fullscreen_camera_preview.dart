@@ -1,6 +1,8 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import 'calibration_preview_layout.dart';
+
 /// Edge-to-edge camera feed using [BoxFit.cover] — no letterboxing.
 class FullscreenCameraPreview extends StatelessWidget {
   const FullscreenCameraPreview({super.key, required this.controller});
@@ -9,25 +11,17 @@ class FullscreenCameraPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final previewSize = controller.value.previewSize;
-    if (previewSize == null) {
-      return const SizedBox.expand();
+    if (controller.value.previewSize == null) {
+      return const ColoredBox(
+        color: Colors.black,
+        child: SizedBox.expand(),
+      );
     }
 
-    return SizedBox(
-      width: MediaQuery.sizeOf(context).width,
-      height: MediaQuery.sizeOf(context).height,
-      child: ClipRect(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-          clipBehavior: Clip.hardEdge,
-          child: SizedBox(
-            width: previewSize.width,
-            height: previewSize.height,
-            child: CameraPreview(controller),
-          ),
-        ),
+    return ColoredBox(
+      color: Colors.black,
+      child: SizedBox.expand(
+        child: CalibrationPreviewLayout.coverFitPreview(controller),
       ),
     );
   }

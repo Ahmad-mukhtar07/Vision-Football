@@ -11,6 +11,7 @@ import '../pose/kick_detection_config.dart';
 import '../pose/kick_detector.dart';
 import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
+import 'calibration_preview_layout.dart';
 import 'fullscreen_camera_preview.dart';
 import 'pose_coordinate_mapper.dart';
 
@@ -328,15 +329,8 @@ class _PortraitCameraPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: controller.value.previewSize?.width ?? 1,
-          height: controller.value.previewSize?.height ?? 1,
-          child: CameraPreview(controller),
-        ),
-      ),
+    return SizedBox.expand(
+      child: CalibrationPreviewLayout.coverFitPreview(controller),
     );
   }
 }

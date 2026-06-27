@@ -68,16 +68,7 @@ class CalibrationCameraBox extends StatelessWidget {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        FittedBox(
-                          fit: BoxFit.cover,
-                          alignment: Alignment.center,
-                          clipBehavior: Clip.hardEdge,
-                          child: SizedBox(
-                            width: previewSize.width,
-                            height: previewSize.height,
-                            child: CameraPreview(controller),
-                          ),
-                        ),
+                        CalibrationPreviewLayout.coverFitPreview(controller),
                         if (guideStyle != CalibrationGuideStyle.none)
                           Positioned.fill(
                             child: IgnorePointer(child: _guideOverlay()),
