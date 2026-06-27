@@ -148,8 +148,10 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
                     itemCount: kAllTeams.length,
                     itemBuilder: (context, i) {
                       final team = kAllTeams[i];
-                      final isUser = identical(team, _userTeam);
-                      final isOpp = identical(team, _opponentTeam);
+                      final isUser =
+                          _userTeam != null && teamsMatch(team, _userTeam!);
+                      final isOpp = _opponentTeam != null &&
+                          teamsMatch(team, _opponentTeam!);
                       return _TeamTile(
                         team: team,
                         selectedAsUser: isUser,
@@ -625,9 +627,13 @@ class _Flag extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: CountryFlag.fromCountryCode(
-        countryCode,
-        theme: ImageTheme(width: width, height: height),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: CountryFlag.fromCountryCode(
+          countryCode,
+          theme: ImageTheme(width: width, height: height),
+        ),
       ),
     );
   }

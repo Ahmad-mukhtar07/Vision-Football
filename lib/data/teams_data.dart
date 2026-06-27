@@ -137,26 +137,144 @@ const Team germany = Team(
   ),
 );
 
-const Team pakistan = Team(
-  name: 'Pakistan',
-  countryCode: 'PK',
-  overall: 68,
+
+const Team italy = Team(
+  name: 'Italy',
+  countryCode: 'IT',
+  overall: 83,
   shooters: [
-    Player(name: 'Otis Khan', overall: 75, power: 65, accuracy: 70, curve: 72),
-    Player(name: 'Rahis Nabi', overall: 67, power: 67, accuracy: 65, curve: 68),
-    Player(name: 'Shayak Dost', overall: 64, power: 63, accuracy: 66, curve: 63),
-    Player(name: 'Alamgir Ghazi', overall: 62, power: 61, accuracy: 64, curve: 60),
-    Player(name: 'Fareed Ullah', overall: 63, power: 69, accuracy: 63, curve: 56),
+    Player(name: 'Federigo Chieza', overall: 83, power: 82, accuracy: 78, curve: 81),
+    Player(name: 'Nikolo Barela', overall: 86, power: 78, accuracy: 76, curve: 80),
+    Player(name: 'Lorenso Pelegrini', overall: 81, power: 77, accuracy: 79, curve: 83),
+    Player(name: 'Janluca Skamaka', overall: 81, power: 87, accuracy: 80, curve: 68),
+    Player(name: 'Jakomo Razpadori', overall: 79, power: 75, accuracy: 78, curve: 74),
   ],
   keeper: GoalkeeperRating(
-    name: 'Yousuf Butt',
-    overall: 73,
-    reflex: 74,
-    prediction: 72,
+    name: 'Janluigi Donaruma',
+    overall: 87,
+    reflex: 89,
+    prediction: 85,
   ),
 );
 
-/// All teams available in the selection screen.
+const Team belgium = Team(
+  name: 'Belgium',
+  countryCode: 'BE',
+  overall: 82,
+  shooters: [
+    Player(name: 'Kevin De Broyna', overall: 90, power: 85, accuracy: 88, curve: 92),
+    Player(name: 'Romelo Lukako', overall: 83, power: 88, accuracy: 81, curve: 72),
+    Player(name: 'Leandri Trosard', overall: 82, power: 79, accuracy: 82, curve: 84),
+    Player(name: 'Jeremi Dokku', overall: 81, power: 74, accuracy: 71, curve: 76),
+    Player(name: 'Lowis Openda', overall: 82, power: 80, accuracy: 79, curve: 68),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Tybo Kortwa',
+    overall: 89,
+    reflex: 89,
+    prediction: 88,
+  ),
+);
+
+const Team netherlands = Team(
+  name: 'Netherlands',
+  countryCode: 'NL',
+  overall: 84,
+  shooters: [
+    Player(name: 'Kodi Jakpo', overall: 83, power: 81, accuracy: 82, curve: 83),
+    Player(name: 'Memfis Depai', overall: 81, power: 82, accuracy: 79, curve: 84),
+    Player(name: 'Zavi Symons', overall: 83, power: 76, accuracy: 78, curve: 81),
+    Player(name: 'Frenky de Jonk', overall: 86, power: 68, accuracy: 75, curve: 78),
+    Player(name: 'Doniel Maylen', overall: 81, power: 83, accuracy: 77, curve: 75),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Bart Verbrugen',
+    overall: 80,
+    reflex: 82,
+    prediction: 79,
+  ),
+);
+
+const Team morocco = Team(
+  name: 'Morocco',
+  countryCode: 'MA',
+  overall: 80,
+  shooters: [
+    Player(name: 'Brahim Dyaz', overall: 82, power: 75, accuracy: 79, curve: 80),
+    Player(name: 'Yosef En-Nesri', overall: 80, power: 81, accuracy: 78, curve: 62),
+    Player(name: 'Hakim Ziyek', overall: 79, power: 76, accuracy: 77, curve: 88),
+    Player(name: 'Ashraf Hakimy', overall: 84, power: 77, accuracy: 72, curve: 74),
+    Player(name: 'Amin Adly', overall: 78, power: 72, accuracy: 73, curve: 75),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Yasine Bunu',
+    overall: 84,
+    reflex: 86,
+    prediction: 84,
+  ),
+);
+
+const Team norway = Team(
+  name: 'Norway',
+  countryCode: 'NO',
+  overall: 78,
+  shooters: [
+    Player(name: 'Erlin Hailand', overall: 91, power: 93, accuracy: 91, curve: 77),
+    Player(name: 'Martin Odegard', overall: 86, power: 76, accuracy: 82, curve: 87),
+    Player(name: 'Aleksander Sorlot', overall: 80, power: 84, accuracy: 81, curve: 70),
+    Player(name: 'Antonio Nussa', overall: 76, power: 68, accuracy: 70, curve: 74),
+    Player(name: 'Oskar Bob', overall: 76, power: 65, accuracy: 72, curve: 75),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Orian Niland',
+    overall: 74,
+    reflex: 76,
+    prediction: 74,
+  ),
+);
+
+const Team usa = Team(
+  name: 'United States',
+  countryCode: 'US',
+  overall: 77,
+  shooters: [
+    Player(name: 'Kristian Pulisik', overall: 82, power: 76, accuracy: 79, curve: 78),
+    Player(name: 'Florin Balogun', overall: 78, power: 78, accuracy: 77, curve: 66),
+    Player(name: 'Wesly Mckenny', overall: 78, power: 76, accuracy: 70, curve: 65),
+    Player(name: 'Gio Rayna', overall: 77, power: 72, accuracy: 74, curve: 78),
+    Player(name: 'Timoty Wea', overall: 76, power: 74, accuracy: 71, curve: 70),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Mat Turnor',
+    overall: 76,
+    reflex: 80,
+    prediction: 75,
+  ),
+);
+
+const Team pakistan = Team(
+  name: 'Pakistan',
+  countryCode: 'PK',
+  overall: 98,
+  shooters: [
+    Player(name: 'Otis Khan', overall: 98, power: 98, accuracy: 85, curve: 98),
+    Player(name: 'Rahis Nabi', overall: 94, power: 87, accuracy: 95, curve: 98),
+    Player(name: 'Shayak Dost', overall: 94, power: 95, accuracy: 96, curve: 73),
+    Player(name: 'Alamgir Ghazi', overall: 93, power: 85, accuracy: 90, curve: 90),
+    Player(name: 'Fareed Ullah', overall: 90, power: 80, accuracy: 99, curve: 96),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Yousuf Butt',
+    overall: 98,
+    reflex: 85,
+    prediction: 81,
+  ),
+);
+
+
+/// All teams shown in the team picker and available for Full Match.
+///
+/// When adding a new [Team] above, append it here so it appears in-game.
 const List<Team> kAllTeams = [
   brazil,
   argentina,
@@ -165,5 +283,24 @@ const List<Team> kAllTeams = [
   england,
   spain,
   germany,
+  italy,
+  belgium,
+  netherlands,
+  morocco,
+  norway,
+  usa,
   pakistan,
 ];
+
+/// Whether two [Team] values refer to the same selectable nation.
+bool teamsMatch(Team a, Team b) =>
+    a.countryCode.toUpperCase() == b.countryCode.toUpperCase();
+
+/// Finds a team by ISO country code, or null if it is not selectable.
+Team? teamForCountryCode(String countryCode) {
+  final code = countryCode.toUpperCase();
+  for (final team in kAllTeams) {
+    if (team.countryCode.toUpperCase() == code) return team;
+  }
+  return null;
+}
