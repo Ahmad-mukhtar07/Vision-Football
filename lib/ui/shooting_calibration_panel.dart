@@ -76,13 +76,6 @@ class _ShootingCalibrationPanelState extends State<ShootingCalibrationPanel>
         height: 1.2,
       );
 
-  TextStyle get _tertiaryStyle => TextStyle(
-        fontSize: 19,
-        fontWeight: FontWeight.w500,
-        color: Colors.white.withValues(alpha: 0.72),
-        height: 1.35,
-      );
-
   TextStyle get _statusStyle => TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.w600,
@@ -110,12 +103,6 @@ class _ShootingCalibrationPanelState extends State<ShootingCalibrationPanel>
                 'Position Your Lower Body',
                 textAlign: TextAlign.center,
                 style: _titleStyle,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Remember this spot — kick from here every time.',
-                textAlign: TextAlign.center,
-                style: _tertiaryStyle,
               ),
               const SizedBox(height: 16),
               if (widget.showCountdown)
