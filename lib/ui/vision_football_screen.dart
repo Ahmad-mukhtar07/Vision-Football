@@ -171,6 +171,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       _resetPositioningCountdown();
     });
     _kickDetector.setKickingFoot(foot);
+    _calibration.beginPlacementPreview(foot);
     _startPositioningWatch();
   }
 
@@ -217,7 +218,9 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   void _onPositioningPose(List<PoseLandmark> landmarks) {
     if (_setupPhase != _SetupPhase.positioning) return;
 
-    final footVisible = _isKickingFootVisible(landmarks);
+    // The player is only "ready" when the foot is visible AND framed so it
+    // won't leave view mid-kick (placement preview drives the red overlay).
+    final footVisible = _isKickingFootVisible(landmarks) && _calibration.placementOk;
 
     // During countdown — pause and reset if the foot leaves frame (keeper parity).
     if (_positioningCountdownActive) {

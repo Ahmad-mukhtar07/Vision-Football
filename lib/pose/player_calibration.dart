@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 import '../models/kicking_foot.dart';
+import 'calibration_placement.dart';
+import 'pose_detector_service.dart';
 import 'stable_foot_tracker.dart';
 
 enum CalibrationPhase {
@@ -61,6 +63,18 @@ class PlayerCalibration extends ChangeNotifier {
       ? null
       : (_lockedIsLeft! ? KickingFoot.left : KickingFoot.right);
 
+  /// Current framing problem (if any) for the kicking foot. Updated every
+  /// frame while a kicking foot is set — during positioning preview and
+  /// active calibration alike.
+  CalibrationPlacementIssue _placement = CalibrationPlacementIssue.footNotVisible;
+  CalibrationPlacementIssue get placement => _placement;
+
+  bool get placementOk => _placement == CalibrationPlacementIssue.none;
+
+  /// When true, the foot is locked purely to evaluate framing (positioning
+  /// step); still-sample collection / calibration does not run yet.
+  bool _placementPreviewOnly = false;
+
   Size? _imageSize;
   final List<Offset> _stillSamples = [];
   final List<double> _stillZSamples = [];
@@ -76,10 +90,22 @@ class PlayerCalibration extends ChangeNotifier {
     _imageSize = size;
   }
 
+  /// Lock the kicking foot only to evaluate framing during positioning.
+  /// Calibration sampling stays paused until [setKickingFoot] is called.
+  void beginPlacementPreview(KickingFoot foot) {
+    _footTracker = StableFootTracker(minConfidence: 0.68);
+    _footTracker.lockToFoot(foot.isLeft);
+    _lockedIsLeft = foot.isLeft;
+    _placementPreviewOnly = true;
+    _placement = CalibrationPlacementIssue.footNotVisible;
+    reset();
+  }
+
   void setKickingFoot(KickingFoot foot) {
     _footTracker = StableFootTracker(minConfidence: 0.68);
     _footTracker.lockToFoot(foot.isLeft);
     _lockedIsLeft = foot.isLeft;
+    _placementPreviewOnly = false;
     reset();
     debugPrint('[CALIBRATION] Tracking ${foot.bodyLabel} ankle only');
   }
@@ -109,13 +135,31 @@ class PlayerCalibration extends ChangeNotifier {
 
   void _onPoseFrame(List<PoseLandmark> landmarks) {
     final imageSize = _imageSize;
-    if (imageSize == null ||
-        _phase == CalibrationPhase.ready ||
-        _lockedIsLeft == null) {
+    if (imageSize == null || _lockedIsLeft == null) {
+      return;
+    }
+
+    _updatePlacement(landmarks, imageSize);
+
+    // During positioning we only evaluate framing; sampling starts later.
+    if (_placementPreviewOnly || _phase == CalibrationPhase.ready) {
       return;
     }
 
     _lastLandmarks = landmarks;
+
+    // Never lock in a neutral pose from bad framing — reset and wait for the
+    // player to fix their position (the overlay tells them how).
+    if (_placement != CalibrationPlacementIssue.none) {
+      if (_stillSamples.isNotEmpty || _phase != CalibrationPhase.searching) {
+        _stillSamples.clear();
+        _stillZSamples.clear();
+        _phase = CalibrationPhase.searching;
+        _holdStartedAt = null;
+        notifyListeners();
+      }
+      return;
+    }
 
     if (_holdStartedAt != null &&
         DateTime.now().difference(_holdStartedAt!) > holdTimeout) {
@@ -209,6 +253,21 @@ class PlayerCalibration extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _updatePlacement(List<PoseLandmark> landmarks, Size imageSize) {
+    final foot = kickingFoot;
+    if (foot == null) return;
+    final next = CalibrationPlacement.evaluate(
+      landmarks: landmarks,
+      imageSize: imageSize,
+      foot: foot,
+      isFrontCamera: PoseDetectorService.instance.isFrontCamera,
+    );
+    if (next != _placement) {
+      _placement = next;
+      notifyListeners();
+    }
+  }
+
   double? _sampleAnkleZ(List<PoseLandmark>? landmarks, Size? imageSize) {
     if (landmarks == null || imageSize == null || _lockedIsLeft == null) {
       return null;
@@ -238,6 +297,8 @@ class PlayerCalibration extends ChangeNotifier {
 
   void clearKickingFoot() {
     _lockedIsLeft = null;
+    _placementPreviewOnly = false;
+    _placement = CalibrationPlacementIssue.footNotVisible;
     _phase = CalibrationPhase.searching;
     _neutralPosition = null;
     _neutralZ = null;
