@@ -91,6 +91,7 @@ flutter:
     - assets/sounds/game-play/stadium-crowd.wav
     - assets/sounds/game-play/cheering-crowd.wav
     - assets/sounds/game-play/goal-sound.wav
+    - assets/sounds/game-play/miss-crossbar-sound.wav
     - assets/sounds/game-play/whistle/start-whistle.wav
     - assets/sounds/game-play/whistle/full-time-whistle.wav
     - assets/sounds/boo-sound.wav

@@ -110,6 +110,7 @@ class KickingTutorialGame extends FlameGame {
   void _onFlightEnd({
     required bool isGoal,
     required bool isSave,
+    required bool hitCrossbar,
     required KickEvent kick,
     required Offset landingPosition,
   }) {

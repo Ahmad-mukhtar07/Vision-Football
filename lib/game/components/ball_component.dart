@@ -41,6 +41,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   final void Function({
     required bool isGoal,
     required bool isSave,
+    required bool hitCrossbar,
     required KickEvent kick,
     required Offset landingPosition,
   })
@@ -55,6 +56,10 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   /// outside the goal — used to introduce rare misses for free kicks.
   /// Penalties leave this at 0.
   double missProbability = 0;
+
+  /// Whether the current shot is a penalty (taken from close range).
+  /// Penalties are more forgiving — much harder to send wide or over the bar.
+  bool isPenalty = true;
 
   final Random _random = Random();
   // TODO: insert LOCKED state here for run-up flow (Step N)
@@ -76,6 +81,27 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
 
   static const double _minFlightDuration = 0.5;
   static const double _maxFlightDuration = 1.2;
+
+  /// Lateral aim magnitude (from [KickEvent.lateralAim], clamped ±1.6) above
+  /// which the shot is aimed so far past a corner it misses wide of the post.
+  /// A normal corner saturates around ±1.0, so this leaves headroom. Penalties
+  /// are far more forgiving (close range → rarely missed in real life).
+  static const double _wideMissAimThresholdFreeKick = 1.55;
+  static const double _wideMissAimThresholdPenalty = 1.62;
+
+  /// How far past the near post (fraction of goal width) a wide shot lands.
+  static const double _wideMissMargin = 0.09;
+
+  /// The keeper's reach is cut to this fraction for a ball placed in a top
+  /// corner, so a perfectly-placed top-corner shot is very hard to stop.
+  static const double _topCornerCatchScale = 0.5;
+
+  /// Loft (0–1, from [KickEvent.loft]) above which an aerial shot is hit so
+  /// high it clatters the crossbar instead of dropping into the top of the net.
+  /// Kept high so only a clearly ballooned shot hits the bar; penalties need an
+  /// almost-maxed loft, so they practically never clatter the woodwork.
+  static const double _crossbarLoftThresholdFreeKick = 0.94;
+  static const double _crossbarLoftThresholdPenalty = 0.99;
   // Power is now normalized 0–1 via KickEvent.kickPower.
   static const double _postResultDelay = 1.2;
   static const double _resetDuration = 0.4;
@@ -94,6 +120,11 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
 
   double _postResultTimer = 0;
   KickEvent? _activeKick;
+
+  /// True when the resolved shot smacked the crossbar (over-hit). Forces a
+  /// miss regardless of where the ball technically lands, and cues the
+  /// crossbar thud in the flight-end handler.
+  bool _hitCrossbar = false;
 
   @override
   Future<void> onLoad() async {
@@ -121,6 +152,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     if (_state != BallState.idle) return;
 
     _activeKick = event;
+    _hitCrossbar = false;
     final trajectory = _resolveTrajectory(event, shooter);
     _trajectory = trajectory;
     _flightStart = position.clone();
@@ -143,7 +175,8 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     // share the same goal mouth (especially smaller for free kicks).
     final goalRect = goal.effectiveGoalRect;
 
-    // Lateral aim (screen-space, mirrored in PoseCoordinateMapper)
+    // Lateral aim (screen-space, mirrored in PoseCoordinateMapper). Placement
+    // within the goal is unchanged so corners stay reachable.
     final lateral = strike.dx.clamp(-1.0, 1.0);
     final halfWidth =
         goalRect.width * KickDetectionConfig.defaults.aimGoalHalfWidthFraction;
@@ -152,9 +185,19 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       goalRect.right - goalRect.width * 0.05,
     );
 
-    // Vertical aim from strike.dy. Clamp using the ball's actual visual
-    // radius at landing so the ball never appears poking above the crossbar
-    // or below the goal line.
+    // Wide miss: a swing aimed well past a corner (large [lateralAim]) sends
+    // the ball outside the near post instead of tucking into the corner.
+    final wideThreshold = isPenalty
+        ? _wideMissAimThresholdPenalty
+        : _wideMissAimThresholdFreeKick;
+    final wentWide = event.lateralAim.abs() > wideThreshold;
+    if (wentWide) {
+      clampedX = event.lateralAim > 0
+          ? goalRect.right + goalRect.width * _wideMissMargin
+          : goalRect.left - goalRect.width * _wideMissMargin;
+    }
+
+    // Vertical aim from strike.dy.
     double targetYBase = event.type == KickType.aerial
         ? goalRect.top + goalRect.height * 0.15
         : goalRect.top + goalRect.height * 0.72;
@@ -168,11 +211,27 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     // clearly land inside the goal mouth, not on/above the crossbar.
     final topPad = landingRadius * 2.0 + goalRect.height * 0.10;
     final bottomPad = landingRadius + 2.0;
-    var targetY = (targetYBase - verticalAim * verticalRange)
-        .clamp(
-          goalRect.top + topPad,
-          goalRect.bottom - bottomPad,
-        );
+
+    // Over-hit → crossbar. A ballooned kick (high loft) that's on-frame
+    // laterally smacks the woodwork and stays out instead of dropping into the
+    // top of the net. Only aerials can balloon this high.
+    final onFrameLaterally =
+        clampedX >= goalRect.left && clampedX <= goalRect.right;
+    final crossbarLoft = isPenalty
+        ? _crossbarLoftThresholdPenalty
+        : _crossbarLoftThresholdFreeKick;
+    if (event.type == KickType.aerial &&
+        event.loft > crossbarLoft &&
+        onFrameLaterally) {
+      _hitCrossbar = true;
+    }
+
+    var targetY = _hitCrossbar
+        ? goalRect.top + topPad * 0.5
+        : (targetYBase - verticalAim * verticalRange).clamp(
+            goalRect.top + topPad,
+            goalRect.bottom - bottomPad,
+          );
 
     // Rare miss: nudge the target just outside the goal frame. Direction is
     // weighted toward the side the player was aiming to (e.g. a left shot
@@ -191,15 +250,18 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     }
 
     // Accuracy spray: low-accuracy shooters scatter placement around the
-    // intended target (still kept inside the goal mouth so it's never a wild
-    // miss — just easier for the keeper). High accuracy ≈ pinpoint.
-    if (spray > 0) {
-      clampedX = (clampedX +
-              (_random.nextDouble() * 2 - 1) * goalRect.width * 0.16 * spray)
-          .clamp(
-        goalRect.left + goalRect.width * 0.05,
-        goalRect.right - goalRect.width * 0.05,
-      );
+    // intended target. Skipped for a crossbar hit (the woodwork result is
+    // deliberate). Bounds allow the ball to stay just past the post so a
+    // sprayed shot can still end up as a genuine wide miss.
+    if (spray > 0 && !_hitCrossbar) {
+      if (!wentWide) {
+        clampedX = (clampedX +
+                (_random.nextDouble() * 2 - 1) * goalRect.width * 0.16 * spray)
+            .clamp(
+          goalRect.left + goalRect.width * 0.05,
+          goalRect.right - goalRect.width * 0.05,
+        );
+      }
       targetY = (targetY +
               (_random.nextDouble() * 2 - 1) * goalRect.height * 0.16 * spray)
           .clamp(
@@ -352,13 +414,14 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   /// Returns true (and finishes the flight as a save) if the keeper's gloves
   /// overlap the ball at its current in-flight position inside the goal.
   bool _tryGloveCatch() {
+    if (_hitCrossbar) return false; // woodwork, not a save
     if (!goalkeeper.canAttemptSave) return false;
     final glove = goalkeeper.gloveScreenPosition;
     if (glove == null) return false;
     final landing = Offset(position.x, position.y);
     if (!goal.containsScreenPoint(landing)) return false;
     final ballRadius = size.x * 0.5 * _baseScale;
-    if ((glove - landing).distance > goalkeeper.catchRadius + ballRadius) {
+    if ((glove - landing).distance > _effectiveCatchRadius(landing) + ballRadius) {
       return false;
     }
     _state = BallState.missed;
@@ -368,6 +431,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     onFlightEnd(
       isGoal: false,
       isSave: true,
+      hitCrossbar: false,
       kick: _activeKick!,
       landingPosition: landing,
     );
@@ -414,12 +478,16 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     final ballRadius = size.x * 0.5 * _baseScale;
     final hitGk = goalkeeper.canAttemptSave &&
         glove != null &&
-        (glove - landing).distance <= goalkeeper.catchRadius + ballRadius;
+        (glove - landing).distance <= _effectiveCatchRadius(landing) + ballRadius;
 
     var isGoal = false;
     var isSave = false;
 
-    if (inGoal && hitGk) {
+    if (_hitCrossbar) {
+      // Over-hit shot that clattered the bar — never a goal or a save.
+      _state = BallState.missed;
+      _ballTint = Colors.redAccent;
+    } else if (inGoal && hitGk) {
       isSave = true;
       _state = BallState.missed;
       _ballTint = Colors.redAccent;
@@ -441,6 +509,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     onFlightEnd(
       isGoal: isGoal,
       isSave: isSave,
+      hitCrossbar: _hitCrossbar,
       kick: _activeKick!,
       landingPosition: landing,
     );
@@ -472,6 +541,18 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       _activeKick = null;
       onBecameIdle?.call();
     }
+  }
+
+  /// The keeper's catch reach for a ball landing at [landing]. Trimmed hard in
+  /// the top corners so a pinpoint top-corner shot beats the keeper.
+  double _effectiveCatchRadius(Offset landing) {
+    final base = goalkeeper.catchRadius;
+    final rect = goal.effectiveGoalRect;
+    if (rect.width <= 0 || rect.height <= 0) return base;
+    final nx = (landing.dx - rect.left) / rect.width;
+    final ny = (landing.dy - rect.top) / rect.height;
+    final inTopCorner = ny < 0.34 && (nx < 0.24 || nx > 0.76);
+    return inTopCorner ? base * _topCornerCatchScale : base;
   }
 
   /// Ball's [_baseScale] at landing for each kick type. Mirrors the

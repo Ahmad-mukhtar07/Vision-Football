@@ -111,6 +111,7 @@ class VisionFootballGame extends FlameGame {
   void _onFlightEnd({
     required bool isGoal,
     required bool isSave,
+    required bool hitCrossbar,
     required KickEvent kick,
     required Offset landingPosition,
   }) {
@@ -136,7 +137,13 @@ class VisionFootballGame extends FlameGame {
       // Fade the longer cheer out to finish with the commentary line.
       GamePlaySound.playGoalCheer(fadeOutAlignedTo: commentary);
     } else {
-      GamePlaySound.playBoo();
+      if (hitCrossbar) {
+        // Lead with the woodwork thud and duck the crowd's groan so it's clear.
+        GamePlaySound.playCrossbar();
+        GamePlaySound.playBoo(volume: 0.35);
+      } else {
+        GamePlaySound.playBoo();
+      }
       commentary = CommentarySound.playMiss();
     }
 
@@ -222,6 +229,7 @@ class VisionFootballGame extends FlameGame {
     // Free kicks are tougher: rare chance the shot misses just outside the
     // post / over the bar. Penalties always stay on target.
     _ball.missProbability = isPenalty ? 0.0 : 0.15;
+    _ball.isPenalty = isPenalty;
   }
 
   @override

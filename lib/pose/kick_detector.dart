@@ -108,6 +108,12 @@ class KickDetector {
   Stream<bool> get kickingFootVisible => _kickingFootVisibleController.stream;
 
   static const int _stillFramesRequired = 4;
+
+  /// Foot rise above rest (normalized image height) that maps to loft = 1.0.
+  /// A controlled aerial rises ~0.07–0.12; a ballooned over-hit exceeds this.
+  /// Higher = more forgiving (a given rise reads as less loft).
+  static const double _loftReferenceRise = 0.28;
+
   Offset? _stillPrevLeft;
   Offset? _stillPrevRight;
   int _consecutiveBothStillFrames = 0;
@@ -545,6 +551,11 @@ class KickDetector {
       (aimDelta.dx / _config.aimReferenceDelta).clamp(-1.0, 1.0),
       aimDelta.dy,
     );
+    // Same lateral aim but clamped WIDER, so a swing well past a corner keeps
+    // its magnitude. Placement still uses the ±1 value; this only flags shots
+    // that are aimed so far to the side they should miss wide of the post.
+    final lateralAimWide =
+        (aimDelta.dx / _config.aimReferenceDelta).clamp(-1.6, 1.6);
 
     // --- Fix 1 + 4: classify type relative to neutral ---
     final kickType = _classifyType(
@@ -554,6 +565,14 @@ class KickDetector {
       swingDelta: windowDelta,
       xySpeed: xySpeed,
     );
+
+    // Loft: how far the foot rose above rest at strike, normalized so a very
+    // high (ballooned) hit approaches 1.0. Used downstream to send extreme
+    // over-hits into the crossbar instead of the top of the net.
+    final relativeRise =
+        (_neutralPosition ?? curr.positionNormalized).dy -
+            curr.positionNormalized.dy;
+    final loft = (relativeRise / _loftReferenceRise).clamp(0.0, 1.0);
 
     // --- Curve / swing detection ---
     //
@@ -580,6 +599,8 @@ class KickDetector {
       zThrustCandidate: zThrustCandidate,
       kickPower: combinedPower,
       spinX: spinX,
+      loft: loft,
+      lateralAim: lateralAimWide,
     );
   }
 
@@ -730,6 +751,8 @@ class KickDetector {
       type: metrics.type,
       timestamp: DateTime.now(),
       spinX: metrics.spinX,
+      loft: metrics.loft,
+      lateralAim: metrics.lateralAim,
     );
 
     debugPrint('');
@@ -993,6 +1016,8 @@ class _KickMetrics {
     required this.zThrustCandidate,
     required this.kickPower,
     this.spinX = 0,
+    this.loft = 0,
+    this.lateralAim = 0,
   });
 
   static const _KickMetrics idle = _KickMetrics(
@@ -1040,4 +1065,6 @@ class _KickMetrics {
   final bool zThrustCandidate;
   final double kickPower;
   final double spinX;
+  final double loft;
+  final double lateralAim;
 }

@@ -17,6 +17,8 @@ class KickEvent {
     required this.type,
     required this.timestamp,
     this.spinX = 0,
+    this.loft = 0,
+    this.lateralAim = 0,
   });
 
   /// Where on screen the kick registered (0.0–1.0, origin top-left).
@@ -39,6 +41,16 @@ class KickEvent {
   ///  - <0 → ball curves to the left
   /// Magnitude scales how pronounced the in-flight curve is.
   final double spinX;
+
+  /// How high the kicking foot rose above its resting height at strike,
+  /// normalized 0–1. Near 1 means the ball was hit very high (ballooned) and
+  /// should clatter the crossbar rather than nestle into the top of the net.
+  final double loft;
+
+  /// Lateral aim magnitude clamped to ±1.6 (placement uses the ±1
+  /// [strikeDeltaNormalized]). Values beyond ±1 mean the player swung well
+  /// past a corner and the shot should miss wide of the post.
+  final double lateralAim;
 
   final DateTime timestamp;
 

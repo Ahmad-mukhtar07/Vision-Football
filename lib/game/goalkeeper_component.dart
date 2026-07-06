@@ -25,7 +25,10 @@ class GoalkeeperComponent extends PositionComponent {
     required GameLayout layout,
     GoalkeeperRating? keeperRating,
   })  : _layout = layout,
-        gkPredictionAccuracy = keeperRating?.predictionNorm ?? 0.7,
+        // Eased down slightly so shots beat the keeper a bit more often while
+        // keeping stronger teams' keepers relatively better.
+        gkPredictionAccuracy =
+            (keeperRating?.predictionNorm ?? 0.7) * _saveDifficultyEase,
         _reflexNorm = keeperRating?.reflexNorm ?? 0.7,
         _reactionDelayMinMs = keeperRating == null
             ? 200
@@ -47,6 +50,10 @@ class GoalkeeperComponent extends PositionComponent {
   }
 
   final GameLayout _layout;
+
+  /// Global multiplier that makes the keeper a touch easier to beat (applied
+  /// to prediction accuracy). 1.0 = original difficulty.
+  static const double _saveDifficultyEase = 0.85;
 
   /// Chance (0–1) the keeper dives toward the real shot (vs a random guess).
   /// Driven by the opponent keeper's prediction rating.
@@ -222,9 +229,10 @@ class GoalkeeperComponent extends PositionComponent {
     );
   }
 
-  /// Glove catch radius — elite keepers cover a wider effective reach.
+  /// Glove catch radius — elite keepers cover a wider effective reach. Trimmed
+  /// slightly so well-placed shots squeeze past the gloves more often.
   double get catchRadius =>
-      _effectiveGoalRect.width * ui.lerpDouble(0.038, 0.092, _reflexNorm)!;
+      _effectiveGoalRect.width * ui.lerpDouble(0.032, 0.080, _reflexNorm)!;
 
   /// Pose the keeper will strike when diving (chosen in [_planDive]).
   String _plannedPose = 'right';

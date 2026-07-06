@@ -17,6 +17,8 @@ class GamePlaySound {
   static final _cheeringCrowd =
       AssetSource('sounds/game-play/cheering-crowd.wav');
   static final _goalSound = AssetSource('sounds/game-play/goal-sound.wav');
+  static final _missCrossbar =
+      AssetSource('sounds/game-play/miss-crossbar-sound.wav');
   static final _boo = AssetSource('sounds/boo-sound.wav');
   static final _startWhistle =
       AssetSource('sounds/game-play/whistle/start-whistle.wav');
@@ -28,6 +30,7 @@ class GamePlaySound {
   static final AudioPlayer _kickPlayer = _createPlayer('ball_kick');
   static final AudioPlayer _savePlayer = _createPlayer('save');
   static final AudioPlayer _goalPlayer = _createPlayer('goal');
+  static final AudioPlayer _crossbarPlayer = _createPlayer('crossbar');
   static final AudioPlayer _booPlayer = _createPlayer('boo');
   static final AudioPlayer _startWhistlePlayer = _createPlayer('start_whistle');
   static final AudioPlayer _fullTimeWhistlePlayer =
@@ -83,6 +86,7 @@ class GamePlaySound {
       _savePlayer.setSource(_save),
       _cheerPlayer.setSource(_cheeringCrowd),
       _goalPlayer.setSource(_goalSound),
+      _crossbarPlayer.setSource(_missCrossbar),
       _booPlayer.setSource(_boo),
       _startWhistlePlayer.setSource(_startWhistle),
       _fullTimeWhistlePlayer.setSource(_fullTimeWhistle),
@@ -92,13 +96,15 @@ class GamePlaySound {
 
   /// Restarts a one-shot clip. [resume] only works while paused — after a clip
   /// finishes the player is [PlayerState.stopped], so we stop + play instead.
-  static void _replay(AudioPlayer player, AssetSource source) {
-    unawaited(_restart(player, source));
+  static void _replay(AudioPlayer player, AssetSource source,
+      {double volume = 1.0}) {
+    unawaited(_restart(player, source, volume: volume));
   }
 
-  static Future<void> _restart(AudioPlayer player, AssetSource source) async {
+  static Future<void> _restart(AudioPlayer player, AssetSource source,
+      {double volume = 1.0}) async {
     await player.stop();
-    await player.play(source);
+    await player.play(source, volume: volume.clamp(0.0, 1.0).toDouble());
   }
 
   /// Looped stadium ambience during active gameplay.
@@ -241,13 +247,24 @@ class GamePlaySound {
     });
   }
 
-  /// Crowd jeer for a missed or saved shot (shooting mode only).
-  static void playBoo() {
+  /// Thud of the ball smacking the crossbar on an over-hit shot. Played at full
+  /// volume so it cuts clearly through the crowd.
+  static void playCrossbar() {
     if (!_ready) {
-      warmUp().then((_) => _replay(_booPlayer, _boo));
+      warmUp().then((_) => _replay(_crossbarPlayer, _missCrossbar));
       return;
     }
-    _replay(_booPlayer, _boo);
+    _replay(_crossbarPlayer, _missCrossbar);
+  }
+
+  /// Crowd jeer for a missed or saved shot (shooting mode only). [volume] lets
+  /// callers duck the boo (e.g. so the crossbar thud stands out).
+  static void playBoo({double volume = 1.0}) {
+    if (!_ready) {
+      warmUp().then((_) => _replay(_booPlayer, _boo, volume: volume));
+      return;
+    }
+    _replay(_booPlayer, _boo, volume: volume);
   }
 
   /// Short whistle when the shooter is cleared to take the penalty (GO!).
