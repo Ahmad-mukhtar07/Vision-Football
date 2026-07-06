@@ -551,6 +551,7 @@ class KickDetector {
       footPos: curr.positionNormalized,
       neutralPos: _neutralPosition ?? curr.positionNormalized,
       xyDelta: xyDelta,
+      swingDelta: windowDelta,
       xySpeed: xySpeed,
     );
 
@@ -670,6 +671,7 @@ class KickDetector {
     required Offset footPos,
     required Offset neutralPos,
     required Offset xyDelta,
+    required Offset swingDelta,
     required double xySpeed,
   }) {
     // Relative height above neutral: positive = foot is higher than rest position
@@ -684,10 +686,23 @@ class KickDetector {
       return KickType.chip;
     }
 
-    if (relativeRise > _config.aerialRelativeRise ||
-        (relativeRise > _config.aerialMinRise &&
-            verticalLift > _config.aerialMinLift)) {
+    // A clear, intentional lift always lofts — respect the player raising
+    // their foot regardless of any sideways sweep.
+    if (relativeRise > _config.aerialRelativeRise) {
       return KickType.aerial;
+    }
+
+    // Borderline lift (modest rise + upward velocity): normally this lofts,
+    // but if the swing is dominantly sideways (an inside-of-foot sweep) treat
+    // it as a low, driven ground shot so players can bury it in the bottom
+    // corners with pace instead of the ball floating up.
+    if (relativeRise > _config.aerialMinRise &&
+        verticalLift > _config.aerialMinLift) {
+      final horizontalSwing = swingDelta.dx.abs();
+      final verticalSwing = swingDelta.dy.abs();
+      final isSideFootDrive =
+          horizontalSwing > verticalSwing * _config.sideFootLateralRatio;
+      return isSideFootDrive ? KickType.ground : KickType.aerial;
     }
 
     return KickType.ground;

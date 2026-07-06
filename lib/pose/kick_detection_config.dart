@@ -23,6 +23,7 @@ class KickDetectionConfig {
     this.aerialMinRise = 0.03,
     this.aerialMinLift = 0.01,
     this.chipMaxSpeed = 0.04,
+    this.sideFootLateralRatio = 1.25,
 
     // Power
     this.maxXyVelocityNorm = 2.5,
@@ -82,6 +83,15 @@ class KickDetectionConfig {
 
   /// Max XY speed for chip classification (slower contact than a full strike).
   final double chipMaxSpeed;
+
+  /// A swing is treated as a low, driven "side-foot" strike (stays a ground
+  /// shot regardless of follow-through lift) when its horizontal travel
+  /// exceeds its vertical travel by at least this ratio. This lets players
+  /// hammer the ball into the bottom corners with pace instead of every fast
+  /// kick lofting into the air.
+  /// INCREASE → harder to keep it low (more kicks loft).
+  /// DECREASE → more kicks stay low along the ground.
+  final double sideFootLateralRatio;
 
   /// XY velocity (norm units / sec) that maps to power = 1.0.
   final double maxXyVelocityNorm;
