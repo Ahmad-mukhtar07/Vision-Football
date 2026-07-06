@@ -516,7 +516,9 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           ),
         if (playing && !matchOver && !_isPaused)
           HudOverlay(
+            initialMatchState: _matchController.state,
             matchStateStream: _matchController.stateStream,
+            kickingFootVisibleStream: _kickDetector.kickingFootVisible,
             onPausePressed: _pauseGame,
             userTeam: widget.userTeam,
             opponentTeam: widget.opponentTeam,

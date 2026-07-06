@@ -101,11 +101,18 @@ class KickDetector {
   /// for 4 consecutive frames (same pose frames as kick detection).
   Stream<bool> get playerIsStill => _playerIsStillController.stream;
 
+  final StreamController<bool> _kickingFootVisibleController =
+      StreamController<bool>.broadcast();
+
+  /// True when the locked kicking-foot ankle is detected with enough confidence.
+  Stream<bool> get kickingFootVisible => _kickingFootVisibleController.stream;
+
   static const int _stillFramesRequired = 4;
   Offset? _stillPrevLeft;
   Offset? _stillPrevRight;
   int _consecutiveBothStillFrames = 0;
   bool _lastEmittedStill = false;
+  bool _lastEmittedFootVisible = true;
 
   void updateImageSize(Size size) {
     _imageSize = size;
@@ -213,6 +220,7 @@ class KickDetector {
     // which is only updated inside the armed gate, so during run-up the
     // accumulated delta grows stale and silently blocks every frame.
     final kickingForMarker = _sampleKickingAnkle(landmarks, imageSize);
+    _emitKickingFootVisible(kickingForMarker != null);
     if (kickingForMarker != null) {
       final footScale = _sampleKickingFootScale(landmarks, imageSize);
       _gameFootMarker?.updateFromFoot(
@@ -898,6 +906,14 @@ class KickDetector {
     }
   }
 
+  void _emitKickingFootVisible(bool visible) {
+    if (visible == _lastEmittedFootVisible) return;
+    _lastEmittedFootVisible = visible;
+    if (!_kickingFootVisibleController.isClosed) {
+      _kickingFootVisibleController.add(visible);
+    }
+  }
+
   Offset? _ankleNorm(
     List<PoseLandmark> landmarks,
     Size imageSize, {
@@ -924,6 +940,7 @@ class KickDetector {
     _kickController.close();
     _cooldownUiController.close();
     _playerIsStillController.close();
+    _kickingFootVisibleController.close();
   }
 }
 

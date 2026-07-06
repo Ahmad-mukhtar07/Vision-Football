@@ -13,14 +13,19 @@ import 'penalty_score_bar.dart';
 class HudOverlay extends StatefulWidget {
   const HudOverlay({
     super.key,
+    required this.initialMatchState,
     required this.matchStateStream,
+    required this.kickingFootVisibleStream,
     required this.onPausePressed,
     this.userTeam,
     this.opponentTeam,
     this.opponentScore,
   });
 
+  /// Current match snapshot — the stream does not replay the last value.
+  final MatchState initialMatchState;
   final Stream<MatchState> matchStateStream;
+  final Stream<bool> kickingFootVisibleStream;
   final VoidCallback onPausePressed;
 
   /// Full Match teams; when both are set the dual-flag scoreboard is shown.
@@ -38,11 +43,11 @@ class _HudOverlayState extends State<HudOverlay>
     with TickerProviderStateMixin {
   MatchState _state = const MatchState();
   StreamSubscription<MatchState>? _subscription;
+  StreamSubscription<bool>? _footVisibleSub;
+  bool _kickingFootVisible = true;
 
   late final AnimationController _goController;
   late final Animation<double> _goScale;
-  late final AnimationController _arrowController;
-  late final Animation<double> _arrowOpacity;
   late final AnimationController _shakeController;
   late final Animation<double> _shakeOffset;
   late final AnimationController _missFadeController;
@@ -54,10 +59,23 @@ class _HudOverlayState extends State<HudOverlay>
   static const _gold = Color(0xFFFFD700);
   static const _orange = Color(0xFFFF6B00);
   static const _saveRed = Color(0xFFFF3333);
+  static const _waitCyan = Color(0xFF00E5FF);
+  static const _waitGreen = Color(0xFF1FE07A);
+
+  bool get _showWaitBanner =>
+      _state.phase == MatchPhase.runUp &&
+      _state.kicksTaken == 0 &&
+      !_showGo;
+
+  bool get _showFindingFootBanner =>
+      _state.phase == MatchPhase.runUp &&
+      _state.kicksTaken > 0 &&
+      !_kickingFootVisible;
 
   @override
   void initState() {
     super.initState();
+    _state = widget.initialMatchState;
     _goController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -74,14 +92,6 @@ class _HudOverlayState extends State<HudOverlay>
         weight: 35,
       ),
     ]).animate(_goController);
-
-    _arrowController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-    _arrowOpacity = Tween(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _arrowController, curve: Curves.easeInOut),
-    );
 
     _shakeController = AnimationController(
       vsync: this,
@@ -103,6 +113,10 @@ class _HudOverlayState extends State<HudOverlay>
     );
 
     _subscription = widget.matchStateStream.listen(_onMatchState);
+    _footVisibleSub = widget.kickingFootVisibleStream.listen((visible) {
+      if (!mounted) return;
+      setState(() => _kickingFootVisible = visible);
+    });
   }
 
   void _onMatchState(MatchState state) {
@@ -145,12 +159,43 @@ class _HudOverlayState extends State<HudOverlay>
     ).createShader(Rect.fromLTWH(0, 0, 200, fontSize * 1.2));
   }
 
+  Shader _cyanGradientShader(double fontSize, {double width = 320}) {
+    return const LinearGradient(
+      colors: [_waitCyan, _waitGreen],
+    ).createShader(Rect.fromLTWH(0, 0, width, fontSize * 1.2));
+  }
+
+  Widget _buildCyanGradientBanner(
+    String text, {
+    required double fontSize,
+    double letterSpacing = 1.2,
+    double shaderWidth = 320,
+  }) {
+    return Center(
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w900,
+          letterSpacing: letterSpacing,
+          foreground: Paint()
+            ..shader = _cyanGradientShader(fontSize, width: shaderWidth)
+            ..style = PaintingStyle.fill,
+          shadows: const [
+            Shadow(blurRadius: 14, color: Colors.black87, offset: Offset(2, 3)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _subscription?.cancel();
+    _footVisibleSub?.cancel();
     _goFadeTimer?.cancel();
     _goController.dispose();
-    _arrowController.dispose();
     _shakeController.dispose();
     _missFadeController.dispose();
     super.dispose();
@@ -201,7 +246,10 @@ class _HudOverlayState extends State<HudOverlay>
                         : PenaltyScoreBar.initialSpots(_state.totalKicks),
                   ),
           ),
-          if (_state.phase == MatchPhase.runUp) _buildRunUpHint(),
+          if (_showFindingFootBanner)
+            _buildFindingFootBanner()
+          else if (_showWaitBanner)
+            _buildWaitBanner(),
           if (_showGo) _buildGoBanner(),
           if (_state.phase == MatchPhase.resultPause) _buildResultBanner(),
           if (widget.userTeam != null && widget.opponentTeam != null)
@@ -225,51 +273,21 @@ class _HudOverlayState extends State<HudOverlay>
     );
   }
 
-  Widget _buildRunUpHint() {
-    final shotLabel = _state.shotType == ShotType.freeKick
-        ? 'FREE KICK'
-        : 'PENALTY';
-    final shotColor = _state.shotType == ShotType.freeKick
-        ? const Color(0xFF4FC3F7)
-        : _gold;
+  Widget _buildWaitBanner() {
+    return _buildCyanGradientBanner(
+      'WAIT',
+      fontSize: 80,
+      letterSpacing: 6,
+      shaderWidth: 260,
+    );
+  }
 
-    return Center(
-      child: FadeTransition(
-        opacity: _arrowOpacity,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: shotColor.withValues(alpha: 0.6)),
-              ),
-              child: Text(
-                shotLabel,
-                style: TextStyle(
-                  color: shotColor,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Step back and run up',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                shadows: [Shadow(blurRadius: 6, color: Colors.black)],
-              ),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildFindingFootBanner() {
+    return _buildCyanGradientBanner(
+      'Finding your foot',
+      fontSize: 48,
+      letterSpacing: 1.0,
+      shaderWidth: 420,
     );
   }
 
