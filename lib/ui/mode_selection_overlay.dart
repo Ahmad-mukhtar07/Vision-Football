@@ -544,21 +544,41 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
 
   static const _interval = Duration(milliseconds: 4200);
 
+  late final PageController _pageController;
   int _index = 0;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(_interval, (_) {
-      if (!mounted) return;
-      setState(() => _index = (_index + 1) % _slides.length);
-    });
+    _pageController = PageController();
+    _startAutoAdvanceTimer();
+  }
+
+  void _startAutoAdvanceTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(_interval, (_) => _advanceAutomatically());
+  }
+
+  void _advanceAutomatically() {
+    if (!mounted || !_pageController.hasClients) return;
+    final next = (_index + 1) % _slides.length;
+    _pageController.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _index = index);
+    _startAutoAdvanceTimer();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -567,7 +587,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     final slide = _slides[_index];
     const cardRadius = BorderRadius.all(Radius.circular(20));
 
-    final card = AnimatedContainer(
+    final carousel = AnimatedContainer(
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeOut,
       decoration: BoxDecoration(
@@ -589,74 +609,12 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset(
-              slide.backgroundAsset,
-              fit: BoxFit.cover,
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.15),
-                    Colors.black.withValues(alpha: 0.65),
-                  ],
-                ),
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF1A0B33).withValues(alpha: 0.35),
-                    slide.accent.withValues(alpha: 0.12),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              right: -20,
-              top: -20,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      slide.accent.withValues(alpha: 0.4),
-                      slide.accent.withValues(alpha: 0.0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 16, 14),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 450),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (child, animation) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0.06, 0),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  );
-                },
-                child: _SlideContent(
-                  key: ValueKey(_index),
-                  slide: slide,
-                ),
-              ),
+            PageView.builder(
+              controller: _pageController,
+              onPageChanged: _onPageChanged,
+              itemCount: _slides.length,
+              itemBuilder: (context, i) =>
+                  _SpotlightSlideView(slide: _slides[i]),
             ),
             Positioned(
               left: 18,
@@ -684,17 +642,82 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
       ),
     );
 
-    if (widget.onTap == null) return card;
+    if (widget.onTap == null) return carousel;
     return _TapScaleCard(
       onTap: widget.onTap!,
       borderRadius: BorderRadius.circular(20),
-      child: card,
+      child: carousel,
+    );
+  }
+}
+
+/// Single tips carousel slide (background + copy).
+class _SpotlightSlideView extends StatelessWidget {
+  const _SpotlightSlideView({required this.slide});
+
+  final _SpotlightSlide slide;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.asset(
+          slide.backgroundAsset,
+          fit: BoxFit.cover,
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.15),
+                Colors.black.withValues(alpha: 0.65),
+              ],
+            ),
+          ),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF1A0B33).withValues(alpha: 0.35),
+                slide.accent.withValues(alpha: 0.12),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          right: -20,
+          top: -20,
+          child: Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  slide.accent.withValues(alpha: 0.4),
+                  slide.accent.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 16, 14),
+          child: _SlideContent(slide: slide),
+        ),
+      ],
     );
   }
 }
 
 class _SlideContent extends StatelessWidget {
-  const _SlideContent({super.key, required this.slide});
+  const _SlideContent({required this.slide});
 
   final _SpotlightSlide slide;
 
