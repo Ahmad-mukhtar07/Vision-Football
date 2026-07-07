@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math';
 
+import '../data/game_settings.dart';
 import '../ui/penalty_score_bar.dart';
+import 'shot_type_schedule.dart';
 
 /// Whether the current kick is a penalty or a free kick.
 enum ShotType { penalty, freeKick }
@@ -119,6 +121,9 @@ class MatchController {
   Timer? _phaseTimer;
   Timer? _runUpTimeoutTimer;
 
+  /// Pre-generated kick sequence for the current match (index = kicksTaken).
+  List<ShotType> _shotSchedule = [];
+
   bool _isPaused = false;
   MatchPhase? _pausedPhase;
   bool get isPaused => _isPaused;
@@ -142,12 +147,19 @@ class MatchController {
     _runUpTimeoutTimer?.cancel();
     _introReadyAt =
         introHold > Duration.zero ? DateTime.now().add(introHold) : null;
+    const totalKicks = 5;
+    _shotSchedule = ShotTypeSchedule.forShooting(
+      mode: GameSettings.difficulty,
+      totalKicks: totalKicks,
+      random: _random,
+    );
     _state = MatchState(
+      totalKicks: totalKicks,
       phase: MatchPhase.runUp,
       kicksTaken: 0,
       goalsScored: 0,
       savesMade: 0,
-      penaltySpots: PenaltyScoreBar.initialSpots(5),
+      penaltySpots: PenaltyScoreBar.initialSpots(totalKicks),
     );
     _emit();
     _enterRunUp();
@@ -324,7 +336,10 @@ class MatchController {
 
   void _enterRunUp() {
     _phaseTimer?.cancel();
-    final nextShot = _random.nextBool() ? ShotType.penalty : ShotType.freeKick;
+    final idx = _state.kicksTaken.clamp(0, _shotSchedule.length - 1);
+    final nextShot = _shotSchedule.isNotEmpty
+        ? _shotSchedule[idx]
+        : ShotType.penalty;
     _state = _state.copyWith(
       phase: MatchPhase.runUp,
       clearLastResult: true,

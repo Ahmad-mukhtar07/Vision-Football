@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../data/game_settings.dart';
+import '../game/shot_type_schedule.dart';
 import '../ui/penalty_score_bar.dart';
 import 'keeper_layout_constants.dart';
 
@@ -80,10 +82,20 @@ class KeeperMatchController extends ChangeNotifier {
   KeeperMatchState get state => _state;
   final Random _random = Random();
 
+  /// Pre-generated spot sequence for the current match (index = shotsTaken).
+  List<KeeperSpotType> _spotSchedule = [];
+
   void startMatch() {
+    const totalShots = 5;
+    _spotSchedule = ShotTypeSchedule.forKeeping(
+      mode: GameSettings.difficulty,
+      totalKicks: totalShots,
+      random: _random,
+    );
     _state = KeeperMatchState(
+      totalShots: totalShots,
       phase: KeeperPhase.calibrating,
-      penaltySpots: PenaltyScoreBar.initialSpots(5),
+      penaltySpots: PenaltyScoreBar.initialSpots(totalShots),
     );
     notifyListeners();
   }
@@ -97,11 +109,13 @@ class KeeperMatchController extends ChangeNotifier {
 
   void restart() => startMatch();
 
-  /// Picks penalty or free kick for the upcoming round.
+  /// Assigns penalty or free kick for the upcoming round from the pre-built
+  /// schedule (first shot is always a penalty).
   void assignRandomSpot() {
-    final spot = _random.nextBool()
-        ? KeeperSpotType.penalty
-        : KeeperSpotType.freeKick;
+    final idx = _state.shotsTaken.clamp(0, _spotSchedule.length - 1);
+    final spot = _spotSchedule.isNotEmpty
+        ? _spotSchedule[idx]
+        : KeeperSpotType.penalty;
     _state = _state.copyWith(spotType: spot);
     notifyListeners();
   }

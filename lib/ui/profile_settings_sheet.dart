@@ -287,14 +287,14 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
               const SizedBox(height: 16),
               _modeInfoRow(
                 'Easy',
-                'Every shot is on target — you can never miss the goal. '
-                    'The keeper still saves as usual.',
+                'Your shot never goes wide or high of the goal.'
+                    'Keeping is easier, shots are easier to save',
               ),
               const SizedBox(height: 12),
               _modeInfoRow(
                 'Hard',
-                'Full accuracy — aim too wide and the ball misses the post, '
-                    'or balloon it and it clatters the crossbar.',
+                'Full accuracy: aim too wide and the ball misses the post, '
+                    'Keeping is harder, shots are harder to save',
               ),
               const SizedBox(height: 16),
               Align(

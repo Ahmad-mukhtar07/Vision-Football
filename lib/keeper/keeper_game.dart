@@ -5,6 +5,7 @@ import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart' hide Image;
 
+import '../data/game_settings.dart';
 import '../game/ball_sprite.dart';
 import '../models/team.dart';
 import '../ui/commentary_sound.dart';
@@ -172,8 +173,8 @@ class KeeperGame extends FlameGame {
     final mouth = _goal.mouthRect;
     final r = Random();
     final acc = incomingShooter?.accuracyNorm ?? 0.0;
-    final double tx;
     final double ty;
+    var tx = 0.0;
     final targets = tutorialTargets;
     if (tutorialMode && targets != null && targets.isNotEmpty) {
       final selector = targets[tutorialShotIndex.clamp(0, targets.length - 1)];
@@ -199,6 +200,9 @@ class KeeperGame extends FlameGame {
       // Neutral / standalone: original loose spread across the mouth.
       tx = mouth.left + mouth.width * (0.10 + r.nextDouble() * 0.80);
       ty = mouth.top + mouth.height * (0.10 + r.nextDouble() * 0.80);
+    }
+    if (!tutorialMode && GameSettings.difficulty == DifficultyMode.hard) {
+      tx = _hardModeScreenX(mouth, tx, r);
     }
     _pendingTarget = Offset(tx, ty);
     if (tutorialMode) tutorialMarker.value = _pendingTarget;
@@ -660,4 +664,19 @@ class _FlashComponent extends PositionComponent {
       Paint()..color = c.withValues(alpha: 0.35 * intensity),
     );
   }
+}
+
+/// Hard-mode keeping: never aim straight at the keeper. If [screenX] lands in
+/// the dead-centre band of the goal mouth, re-pick a spot on the left or right
+/// side (corners, mid-side, or just off-centre — but not down the middle).
+double _hardModeScreenX(Rect mouth, double screenX, Random r) {
+  const deadMin = 0.44;
+  const deadMax = 0.56;
+  var nx = ((screenX - mouth.left) / mouth.width).clamp(0.0, 1.0);
+  if (nx > deadMin && nx < deadMax) {
+    nx = r.nextBool()
+        ? 0.08 + r.nextDouble() * (deadMin - 0.08)
+        : deadMax + r.nextDouble() * (0.92 - deadMax);
+  }
+  return mouth.left + mouth.width * nx;
 }
