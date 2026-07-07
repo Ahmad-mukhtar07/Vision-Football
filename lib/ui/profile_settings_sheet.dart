@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/game_settings.dart';
 import '../data/user_profile_store.dart';
 import '../models/user_profile.dart';
 import 'glass_panel.dart';
@@ -25,6 +26,7 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _countryController;
   late String _position;
+  late DifficultyMode _difficulty;
 
   @override
   void initState() {
@@ -33,6 +35,7 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
     _countryController =
         TextEditingController(text: widget.initial.countryName);
     _position = widget.initial.position;
+    _difficulty = GameSettings.difficulty;
   }
 
   @override
@@ -53,6 +56,7 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
       position: _position,
     );
     await UserProfileStore.save(profile);
+    await GameSettings.setDifficulty(_difficulty);
     if (!mounted) return;
     MainPageSound.playButtonClick();
     Navigator.of(context).pop(profile);
@@ -157,6 +161,8 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
                       );
                     }).toList(),
                   ),
+                  const SizedBox(height: 18),
+                  _buildDifficultySection(),
                   const SizedBox(height: 22),
                   Material(
                     color: Colors.transparent,
@@ -199,6 +205,141 @@ class _ProfileSettingsSheetState extends State<ProfileSettingsSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildDifficultySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const _FieldLabel('Game mode'),
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: _showModeInfo,
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  Icons.info_outline_rounded,
+                  size: 16,
+                  color: _cyan.withValues(alpha: 0.9),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: DifficultyMode.values.map((mode) {
+            final selected = mode == _difficulty;
+            final label = mode == DifficultyMode.easy ? 'Easy' : 'Hard';
+            return ChoiceChip(
+              label: Text(label),
+              selected: selected,
+              onSelected: (_) => setState(() => _difficulty = mode),
+              labelStyle: const TextStyle(
+                color: _chipTextDark,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+              selectedColor: _lime,
+              backgroundColor: Colors.white.withValues(alpha: 0.88),
+              side: BorderSide(
+                color:
+                    selected ? _lime : Colors.white.withValues(alpha: 0.35),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  void _showModeInfo() {
+    MainPageSound.playButtonClick();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF15102A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: _cyan.withValues(alpha: 0.35)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'GAME MODES',
+                style: TextStyle(
+                  color: _cyan,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _modeInfoRow(
+                'Easy',
+                'Every shot is on target — you can never miss the goal. '
+                    'The keeper still saves as usual.',
+              ),
+              const SizedBox(height: 12),
+              _modeInfoRow(
+                'Hard',
+                'Full accuracy — aim too wide and the ball misses the post, '
+                    'or balloon it and it clatters the crossbar.',
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text(
+                    'GOT IT',
+                    style: TextStyle(
+                      color: _lime,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modeInfoRow(String title, String body) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          body,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 13,
+            height: 1.35,
+          ),
+        ),
+      ],
     );
   }
 

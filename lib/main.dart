@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'data/game_settings.dart';
 import 'data/user_profile_store.dart';
 import 'keeper/keeper_screen.dart';
 import 'ui/full_match_screen.dart';
@@ -17,6 +18,7 @@ import 'ui/vision_football_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await GameSettings.load();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);

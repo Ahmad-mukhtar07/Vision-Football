@@ -61,6 +61,10 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   /// Penalties are more forgiving — much harder to send wide or over the bar.
   bool isPenalty = true;
 
+  /// Easy mode: 100% accuracy — no shot can go wide or over the bar (the keeper
+  /// still saves as normal). Set from the player's difficulty setting.
+  bool easyMode = false;
+
   final Random _random = Random();
   // TODO: insert LOCKED state here for run-up flow (Step N)
 
@@ -190,7 +194,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     final wideThreshold = isPenalty
         ? _wideMissAimThresholdPenalty
         : _wideMissAimThresholdFreeKick;
-    final wentWide = event.lateralAim.abs() > wideThreshold;
+    final wentWide = !easyMode && event.lateralAim.abs() > wideThreshold;
     if (wentWide) {
       clampedX = event.lateralAim > 0
           ? goalRect.right + goalRect.width * _wideMissMargin
@@ -220,7 +224,8 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     final crossbarLoft = isPenalty
         ? _crossbarLoftThresholdPenalty
         : _crossbarLoftThresholdFreeKick;
-    if (event.type == KickType.aerial &&
+    if (!easyMode &&
+        event.type == KickType.aerial &&
         event.loft > crossbarLoft &&
         onFrameLaterally) {
       _hitCrossbar = true;

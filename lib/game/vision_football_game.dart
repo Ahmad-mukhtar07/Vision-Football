@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
+import '../data/game_settings.dart';
 import '../models/goal_event.dart';
 import '../models/kick_event.dart';
 import '../models/team.dart';
@@ -227,8 +228,11 @@ class VisionFootballGame extends FlameGame {
       spawnY,
     ));
     // Free kicks are tougher: rare chance the shot misses just outside the
-    // post / over the bar. Penalties always stay on target.
-    _ball.missProbability = isPenalty ? 0.0 : 0.15;
+    // post / over the bar. Penalties always stay on target. Easy mode keeps
+    // every shot on target regardless of type.
+    final easy = GameSettings.isEasyMode;
+    _ball.easyMode = easy;
+    _ball.missProbability = (isPenalty || easy) ? 0.0 : 0.15;
     _ball.isPenalty = isPenalty;
   }
 
