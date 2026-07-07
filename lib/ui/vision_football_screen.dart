@@ -78,6 +78,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   _SetupPhase? _setupPhase;
   bool _isPaused = false;
   bool _calibrationHelpVisible = false;
+  bool _recalibratingFromPause = false;
   StreamSubscription<MatchState>? _matchStateSub;
 
   StreamSubscription<List<PoseLandmark>>? _positioningPoseSub;
@@ -305,6 +306,17 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     );
     _gameFootMarker.beginGameMode(_calibration.neutralPosition!);
 
+    if (_recalibratingFromPause) {
+      _recalibratingFromPause = false;
+      setState(() => _setupPhase = _SetupPhase.playing);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _setupPhase != _SetupPhase.playing) return;
+        _syncMarkerBallCenter(_matchController.state.shotType);
+        _resumeGame();
+      });
+      return;
+    }
+
     setState(() => _setupPhase = _SetupPhase.playing);
     GamePlaySound.startStadiumCrowd();
     // Kick-off commentary; the first whistle is held until it finishes.
@@ -389,6 +401,24 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
   void _finishCalibrationHelp() {
     setState(() => _calibrationHelpVisible = false);
     _resumeGame();
+  }
+
+  void _startRecalibrateFromPause() {
+    final foot = _kickingFoot;
+    if (foot == null ||
+        _setupPhase != _SetupPhase.playing ||
+        !_isPaused ||
+        _matchController.state.phase == MatchPhase.matchOver) {
+      return;
+    }
+
+    _recalibratingFromPause = true;
+    _resetPositioningCountdown();
+    _calibrationMinTimer?.cancel();
+    _calibrationMinElapsed = false;
+    _calibration.beginPlacementPreview(foot);
+    setState(() => _setupPhase = _SetupPhase.positioning);
+    _startPositioningWatch();
   }
 
   void _quitGame() {
@@ -484,7 +514,8 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     // Camera + pose detection only run once a foot is chosen and while not
     // paused or finished. Foot-selection, pause and match-over don't consume
     // poses, so this changes nothing during active play (accuracy unchanged).
-    final cameraActive = _setupPhase != null && !_isPaused && !matchOver;
+    final cameraActive =
+        _setupPhase != null && (!_isPaused || _recalibratingFromPause) && !matchOver;
 
     return Stack(
       fit: StackFit.expand,
@@ -527,10 +558,13 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             opponentTeam: widget.opponentTeam,
             opponentScore: widget.opponentScore,
           ),
-        if (_isPaused && !_calibrationHelpVisible)
+        if (_isPaused && !_calibrationHelpVisible && !_recalibratingFromPause)
           PauseMenuOverlay(
             onResume: _resumeGame,
             onQuit: _quitGame,
+            onRecalibrate: playing && !matchOver
+                ? _startRecalibrateFromPause
+                : null,
             onHowToCalibrate:
                 _inSetupCalibration ? _openCalibrationHelp : null,
           ),
@@ -544,7 +578,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
           FootSelectionOverlay(onFootSelected: _onFootSelected)
         else if ((_setupPhase == _SetupPhase.positioning ||
                 _setupPhase == _SetupPhase.calibrating) &&
-            !_isPaused)
+            (!_isPaused || _recalibratingFromPause))
           ShootingCalibrationOverlay(
             kickingFoot: _kickingFoot!,
             isPositioning: _setupPhase == _SetupPhase.positioning,

@@ -120,6 +120,23 @@ class KeeperMatchController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Re-enter calibration mid-match without resetting score or shot count.
+  void beginRecalibration() {
+    if (_state.phase == KeeperPhase.calibrating ||
+        _state.phase == KeeperPhase.matchOver ||
+        _state.phase == KeeperPhase.notStarted) {
+      return;
+    }
+    _state = _state.copyWith(phase: KeeperPhase.calibrating);
+    notifyListeners();
+  }
+
+  /// Restore the phase that was active before a mid-match recalibration.
+  void restorePhase(KeeperPhase phase) {
+    _state = _state.copyWith(phase: phase);
+    notifyListeners();
+  }
+
   void onShotLaunched() {
     if (_state.phase != KeeperPhase.waitingForReady) return;
     _state = _state.copyWith(phase: KeeperPhase.shotIncoming);

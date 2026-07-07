@@ -11,11 +11,13 @@ class PauseMenuOverlay extends StatelessWidget {
     required this.onResume,
     required this.onQuit,
     this.onHowToCalibrate,
+    this.onRecalibrate,
   });
 
   final VoidCallback onResume;
   final VoidCallback onQuit;
   final VoidCallback? onHowToCalibrate;
+  final VoidCallback? onRecalibrate;
 
   void _resume() {
     GamePlaySound.playPauseMenuButton();
@@ -30,6 +32,11 @@ class PauseMenuOverlay extends StatelessWidget {
   void _howToCalibrate() {
     GamePlaySound.playPauseMenuButton();
     onHowToCalibrate?.call();
+  }
+
+  void _recalibrate() {
+    GamePlaySound.playPauseMenuButton();
+    onRecalibrate?.call();
   }
 
   static const _gold = Color(0xFFFFD700);
@@ -93,6 +100,33 @@ class PauseMenuOverlay extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onRecalibrate != null) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: 260,
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: _recalibrate,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _cyan,
+                          side: BorderSide(
+                            color: _cyan.withValues(alpha: 0.85),
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                        child: const Text(
+                          'Re-Calibrate',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   if (onHowToCalibrate != null) ...[
                     const SizedBox(height: 14),
                     SizedBox(

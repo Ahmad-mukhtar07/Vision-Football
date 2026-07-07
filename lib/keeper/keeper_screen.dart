@@ -67,6 +67,8 @@ class _KeeperScreenState extends State<KeeperScreen> {
   StreamSubscription<HandFrame>? _handSub;
   bool _isPaused = false;
   bool _calibrationHelpVisible = false;
+  bool _recalibratingFromPause = false;
+  KeeperPhase? _phaseBeforeRecalibrate;
   bool _calibrationCountdownActive = false;
   bool _bothHandsVisible = false;
   int _calibrationSecondsLeft = 0;
@@ -108,7 +110,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
 
   void _onHandFrame(HandFrame frame) {
     if (_controller.state.phase != KeeperPhase.calibrating) return;
-    if (_isPaused) return;
+    if (_isPaused && !_recalibratingFromPause) return;
 
     final bothVisible =
         frame.leftHand != null && frame.rightHand != null;
@@ -130,18 +132,27 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _calibrationTimer?.cancel();
     _calibrationTimer =
         Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted || _isPaused) return;
+      if (!mounted || (_isPaused && !_recalibratingFromPause)) return;
       setState(() => _calibrationSecondsLeft--);
       if (_calibrationSecondsLeft <= 0) {
         timer.cancel();
         _calibrationCountdownActive = false;
-        _controller.finishCalibration();
-        GamePlaySound.startStadiumCrowd();
-        // Kick-off commentary first; the first whistle waits until it ends.
-        final intro = CommentarySound.playStart();
-        _scheduleNextShot(
-          preShotDelayMs: intro.inMilliseconds + 400,
-        );
+        if (_recalibratingFromPause) {
+          final restore =
+              _phaseBeforeRecalibrate ?? KeeperPhase.waitingForReady;
+          _recalibratingFromPause = false;
+          _phaseBeforeRecalibrate = null;
+          _controller.restorePhase(restore);
+          _resumeGame();
+        } else {
+          _controller.finishCalibration();
+          GamePlaySound.startStadiumCrowd();
+          // Kick-off commentary first; the first whistle waits until it ends.
+          final intro = CommentarySound.playStart();
+          _scheduleNextShot(
+            preShotDelayMs: intro.inMilliseconds + 400,
+          );
+        }
       }
     });
     setState(() {});
@@ -281,6 +292,22 @@ class _KeeperScreenState extends State<KeeperScreen> {
     _resumeGame();
   }
 
+  void _startRecalibrateFromPause() {
+    final phase = _controller.state.phase;
+    if (!_isPaused ||
+        phase == KeeperPhase.calibrating ||
+        phase == KeeperPhase.matchOver ||
+        phase == KeeperPhase.notStarted) {
+      return;
+    }
+
+    _phaseBeforeRecalibrate = phase;
+    _recalibratingFromPause = true;
+    _resetCalibrationGate();
+    _controller.beginRecalibration();
+    setState(() {});
+  }
+
   void _quitToMenu() {
     if (_isPaused) {
       _game.resumeEngine();
@@ -326,7 +353,8 @@ class _KeeperScreenState extends State<KeeperScreen> {
     // Hand detection only matters during calibration and live shots. Stop the
     // camera + inference while paused or after the match ends; resuming is
     // cheap since the controller stays initialized. No change during play.
-    final cameraActive = !_isPaused && !matchOver;
+    final cameraActive =
+        (!_isPaused || _recalibratingFromPause) && !matchOver;
 
     return Stack(
       fit: StackFit.expand,
@@ -369,17 +397,20 @@ class _KeeperScreenState extends State<KeeperScreen> {
             opponentTeam: widget.opponentTeam,
             userScore: widget.userScore,
           ),
-        if (isCalibrating && !_isPaused)
+        if (isCalibrating && (!_isPaused || _recalibratingFromPause))
           KeeperCalibrationOverlay(
             onPausePressed: _pauseGame,
             waitingForHands: !_calibrationCountdownActive,
             secondsLeft: _calibrationSecondsLeft,
           ),
         // 6. Modal overlays.
-        if (_isPaused && !_calibrationHelpVisible)
+        if (_isPaused && !_calibrationHelpVisible && !_recalibratingFromPause)
           PauseMenuOverlay(
             onResume: _resumeGame,
             onQuit: _quitToMenu,
+            onRecalibrate: !matchOver && !isCalibrating
+                ? _startRecalibrateFromPause
+                : null,
             onHowToCalibrate: isCalibrating ? _openCalibrationHelp : null,
           ),
         if (_calibrationHelpVisible)
