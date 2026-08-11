@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../data/game_settings.dart';
 import 'hand_detector_service.dart';
 import 'keeper_glove_rotation.dart';
 import 'keeper_preview_layout.dart';
@@ -28,6 +30,7 @@ class GloveOverlay extends StatefulWidget {
     this.calibrationFullscreen = false,
     this.calibrationHandsReady = true,
     this.goalMouthRect,
+    this.cameraXOffset,
   });
 
   final ValueChanged<GlovePositions> onGlovesChanged;
@@ -45,6 +48,10 @@ class GloveOverlay extends StatefulWidget {
 
   /// Goal mouth in screen pixels — used for gameplay glove rotation.
   final Rect? goalMouthRect;
+
+  /// Hard-mode camera pan. Gloves render in world space (shifted with the
+  /// scene) while [onGlovesChanged] still receives unshifted world positions.
+  final ValueListenable<double>? cameraXOffset;
 
   @override
   State<GloveOverlay> createState() => _GloveOverlayState();
@@ -107,22 +114,32 @@ class _GloveOverlayState extends State<GloveOverlay> {
         final showGloves = !widget.calibrationMode ||
             (widget.calibrationMode && widget.calibrationHandsReady);
 
-        return IgnorePointer(
-          child: Stack(
+        final useWorldParallax = !widget.calibrationMode &&
+            GameSettings.isHardMode &&
+            widget.cameraXOffset != null;
+
+        Widget gloveStack({double panX = 0}) {
+          Offset? renderPos(Offset? world) =>
+              world == null ? null : Offset(world.dx + panX, world.dy);
+          final renderLeft = renderPos(left);
+          final renderRight = renderPos(right);
+          return Stack(
             fit: StackFit.expand,
             children: [
-              if (showGloves && left != null)
+              if (showGloves && renderLeft != null)
                 _GloveMarker(
-                  position: left,
+                  position: renderLeft,
+                  worldPosition: left!,
                   isLeft: true,
                   screenSize: size,
                   goalMouthRect: widget.goalMouthRect,
                   calibrationReference: previewRect,
                   mirror: usePreviewBox,
                 ),
-              if (showGloves && right != null)
+              if (showGloves && renderRight != null)
                 _GloveMarker(
-                  position: right,
+                  position: renderRight,
+                  worldPosition: right!,
                   isLeft: false,
                   screenSize: size,
                   goalMouthRect: widget.goalMouthRect,
@@ -130,8 +147,19 @@ class _GloveOverlayState extends State<GloveOverlay> {
                   mirror: usePreviewBox,
                 ),
             ],
-          ),
-        );
+          );
+        }
+
+        if (useWorldParallax) {
+          return IgnorePointer(
+            child: ValueListenableBuilder<double>(
+              valueListenable: widget.cameraXOffset!,
+              builder: (context, panX, _) => gloveStack(panX: panX),
+            ),
+          );
+        }
+
+        return IgnorePointer(child: gloveStack());
       },
     );
   }
@@ -156,6 +184,7 @@ class _GloveOverlayState extends State<GloveOverlay> {
 class _GloveMarker extends StatelessWidget {
   const _GloveMarker({
     required this.position,
+    required this.worldPosition,
     required this.isLeft,
     required this.screenSize,
     required this.goalMouthRect,
@@ -163,7 +192,11 @@ class _GloveMarker extends StatelessWidget {
     this.mirror = false,
   });
 
+  /// Screen position after camera pan (rendering).
   final Offset position;
+
+  /// World position for gameplay rotation (unaffected by camera pan).
+  final Offset worldPosition;
   final bool isLeft;
   final Size screenSize;
   final Rect? goalMouthRect;
@@ -179,7 +212,7 @@ class _GloveMarker extends StatelessWidget {
   double _rotationAngle() {
     if (goalMouthRect != null) {
       return KeeperGloveRotation.forGameplay(
-        position: position,
+        position: worldPosition,
         screen: screenSize,
         goalMouth: goalMouthRect!,
       );
@@ -187,7 +220,7 @@ class _GloveMarker extends StatelessWidget {
     final ref = calibrationReference ??
         Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
     return KeeperGloveRotation.forCalibration(
-      position: position,
+      position: worldPosition,
       referenceRect: ref,
     );
   }

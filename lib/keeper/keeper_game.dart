@@ -10,7 +10,6 @@ import '../game/ball_sprite.dart';
 import '../models/team.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
-import 'keeper_glove_rotation.dart';
 import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
 import 'shooter_component.dart';
@@ -80,8 +79,13 @@ class KeeperGame extends FlameGame {
   /// creating a camera-follow illusion), and vice versa.
   final ValueNotifier<double> cameraXOffset = ValueNotifier<double>(0);
 
-  /// How strongly the camera tracks the ball. Lower = subtler pan.
-  static const double _panSensitivity = 0.65;
+  /// Subtle follow in Moderate; strong but not centre-locking in Hard (wide
+  /// shots stay visibly toward the edges). Easy keeping has no camera pan.
+  static const double _panSensitivityModerate = 0.65;
+  static const double _panSensitivityHard = 0.68;
+
+  /// Hard mode: minimum inset from the screen edge when clamping pan.
+  static const double _hardPanScreenMargin = 40;
 
   /// Per-frame smoothing toward the target offset (0..1). Lower = smoother.
   static const double _panSmoothing = 0.22;
@@ -102,16 +106,32 @@ class KeeperGame extends FlameGame {
 
   void _updateCameraPan() {
     if (!isLoaded) return;
+
     final ballPos = _ball.currentScreenPos;
-    double target = 0;
-    if (ballPos != null) {
-      // Background pans opposite to ball horizontal travel from center.
+    var target = 0.0;
+    if (ballPos != null && tracksBallForCameraPan) {
+      final sensitivity = switch (GameSettings.difficulty) {
+        DifficultyMode.easy => 0.0,
+        DifficultyMode.moderate => _panSensitivityModerate,
+        DifficultyMode.hard => _panSensitivityHard,
+      };
       final deltaX = ballPos.dx - size.x * 0.5;
-      target = -deltaX * _panSensitivity;
+      target = -deltaX * sensitivity;
+
+      // Hard: keep the ball on screen but don't pull it to dead-centre — a
+      // shot aimed at the top-right corner should still read as a corner shot.
+      if (GameSettings.isHardMode) {
+        var projected = ballPos.dx + target;
+        if (projected < _hardPanScreenMargin) {
+          target = _hardPanScreenMargin - ballPos.dx;
+        } else if (projected > size.x - _hardPanScreenMargin) {
+          target = size.x - _hardPanScreenMargin - ballPos.dx;
+        }
+      }
     }
+
     final current = cameraXOffset.value;
     var next = current + (target - current) * _panSmoothing;
-    // Snap to target once we're within a sub-pixel of it so we stop notifying.
     if ((next - target).abs() < 0.1) next = target;
     if (next != current) {
       cameraXOffset.value = next;
@@ -158,9 +178,16 @@ class KeeperGame extends FlameGame {
   /// Penalty-spot position for the resting ball (centered in front of shooter).
   Offset get ballRestPosition => _shooter.ballEmitPoint;
 
-  /// True while the ball is visible and not waiting at the penalty spot.
-  bool get ballUsesCameraParallax =>
-      isLoaded && _ball.isVisibleAndNotAtPenaltySpot;
+  /// True while the ball is in flight (or showing a result) — camera may follow.
+  /// Disabled in Easy keeping.
+  bool get tracksBallForCameraPan =>
+      !GameSettings.isEasyMode &&
+      isLoaded &&
+      _ball.isVisibleAndNotAtPenaltySpot;
+
+  /// Hard mode only: ball + gloves render in world space and pan with the scene.
+  bool get usesHardWorldParallax =>
+      GameSettings.isHardMode && tracksBallForCameraPan;
 
   /// Pre-place the ball at the shooter's feet while the keeper gets ready.
   void prepareShot() {
@@ -195,15 +222,22 @@ class KeeperGame extends FlameGame {
           ? lerpDouble(sx, 0.10, pull)!
           : lerpDouble(sx, 0.90, pull)!;
       sy = lerpDouble(sy, sy < 0.5 ? 0.12 : 0.88, pull * 0.7)!;
-      tx = sx * size.x;
+      tx = GameSettings.isHardMode
+          ? mouth.left + mouth.width * sx
+          : sx * size.x;
       ty = mouth.top + mouth.height * sy;
     } else {
       // Neutral / standalone: original loose spread across the mouth.
-      tx = mouth.left + mouth.width * (0.10 + r.nextDouble() * 0.80);
+      final xSpread = GameSettings.isHardMode
+          ? 0.02 + r.nextDouble() * 0.96
+          : 0.10 + r.nextDouble() * 0.80;
+      tx = mouth.left + mouth.width * xSpread;
       ty = mouth.top + mouth.height * (0.10 + r.nextDouble() * 0.80);
     }
-    if (!tutorialMode && GameSettings.usesHardGameplay) {
+    if (!tutorialMode && GameSettings.difficulty == DifficultyMode.moderate) {
       tx = _hardModeScreenX(mouth, tx, r);
+    } else if (!tutorialMode && GameSettings.isHardMode) {
+      tx = _hardModeScreenX(mouth, tx, r, wide: true);
     }
     _pendingTarget = Offset(tx, ty);
     if (tutorialMode) tutorialMarker.value = _pendingTarget;
@@ -344,11 +378,18 @@ class _GoalFrameComponent extends PositionComponent {
   // Horizontal extension beyond screen edges so side shots can exit.
   static const double _sideOverflow = 0.28;
 
+  /// Hard keeping: wider run of play so extreme side shots need a full lateral
+  /// move, not just an arm stretch (stadium / goal art has room to pan).
+  static const double _sideOverflowHard = 0.50;
+
+  double get _effectiveSideOverflow =>
+      GameSettings.isHardMode ? _sideOverflowHard : _sideOverflow;
+
   /// Save / goal hitbox — extends slightly beyond screen edges for side shots.
   Rect get mouthRect => Rect.fromLTRB(
-        -area.x * _sideOverflow,
+        -area.x * _effectiveSideOverflow,
         area.y * _mouthTopYFraction,
-        area.x * (1 + _sideOverflow),
+        area.x * (1 + _effectiveSideOverflow),
         area.y * _mouthBottomYFraction,
       );
 
@@ -519,81 +560,14 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     return _currentPos();
   }
 
-  // Palm catch zone for moderate/hard — upper-middle of the 100px glove art
-  // (wrist pivot at bottom in glove_overlay.dart). Ball centre must sit on
-  // the palm, not merely near the glove bounds or between the hands.
-  static const double _palmAboveWrist = 58;
-  static const double _palmReachX = 20;
-  static const double _palmReachY = 14;
-
   Offset? _gloveTouchingBall(Offset pos, double ballRadius) {
     final keeper = game;
-    if (GameSettings.usesHardGameplay) {
-      final left = keeper.leftGloveScreen;
-      final right = keeper.rightGloveScreen;
-      if (left != null &&
-          right != null &&
-          _ballInGapBetweenPalms(pos, left, right)) {
-        return null;
-      }
-    }
-
-    bool overlaps(Offset? g) {
-      if (g == null) return false;
-      if (GameSettings.usesHardGameplay) {
-        return _palmCoversBallCenter(g, pos);
-      }
-      final touchDistance = keeper.gloveCatchRadius + ballRadius * 0.6;
-      return (g - pos).distance <= touchDistance;
-    }
-
+    final touchDistance = keeper.gloveCatchRadius + ballRadius * 0.6;
+    bool overlaps(Offset? g) =>
+        g != null && (g - pos).distance <= touchDistance;
     if (overlaps(keeper.leftGloveScreen)) return keeper.leftGloveScreen;
     if (overlaps(keeper.rightGloveScreen)) return keeper.rightGloveScreen;
     return null;
-  }
-
-  /// Palm centre in screen space, accounting for gameplay glove rotation.
-  Offset _palmCenter(Offset wrist) {
-    final mouth = game.goalMouthRect;
-    final angle = mouth == null
-        ? 0.0
-        : KeeperGloveRotation.forGameplay(
-            position: wrist,
-            screen: Size(game.size.x, game.size.y),
-            goalMouth: mouth,
-          );
-    final ox = _palmAboveWrist * sin(angle);
-    final oy = -_palmAboveWrist * cos(angle);
-    return Offset(wrist.dx + ox, wrist.dy + oy);
-  }
-
-  /// Ball centre must lie on the open palm — tight ellipse, no ball-radius padding.
-  bool _palmCoversBallCenter(Offset wrist, Offset ballCenter) {
-    final palm = _palmCenter(wrist);
-    final nx = (ballCenter.dx - palm.dx) / _palmReachX;
-    final ny = (ballCenter.dy - palm.dy) / _palmReachY;
-    return nx * nx + ny * ny <= 1.0;
-  }
-
-  /// Rejects saves when the ball travels through the space between both palms.
-  bool _ballInGapBetweenPalms(
-    Offset ball,
-    Offset leftWrist,
-    Offset rightWrist,
-  ) {
-    var left = _palmCenter(leftWrist);
-    var right = _palmCenter(rightWrist);
-    if (left.dx > right.dx) {
-      final tmp = left;
-      left = right;
-      right = tmp;
-    }
-    final gapLeft = left.dx + _palmReachX;
-    final gapRight = right.dx - _palmReachX;
-    if (gapRight <= gapLeft) return false;
-    final gapMidY = (left.dy + right.dy) / 2;
-    if ((ball.dy - gapMidY).abs() > _palmReachY + 6) return false;
-    return ball.dx >= gapLeft && ball.dx <= gapRight;
   }
 
   @override
@@ -685,9 +659,12 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     final right = _imgRight;
     if (left == null || right == null) return;
 
+    final panX = game.usesHardWorldParallax ? game.cameraXOffset.value : 0.0;
+    final screenCenter = Offset(pos.dx + panX, pos.dy);
+
     BallSprite.draw(
       canvas,
-      center: pos,
+      center: screenCenter,
       radius: radius,
       left: left,
       right: right,
@@ -734,17 +711,25 @@ class _FlashComponent extends PositionComponent {
   }
 }
 
-/// Hard-mode keeping: never aim straight at the keeper. If [screenX] lands in
-/// the dead-centre band of the goal mouth, re-pick a spot on the left or right
-/// side (corners, mid-side, or just off-centre — but not down the middle).
-double _hardModeScreenX(Rect mouth, double screenX, Random r) {
+/// Moderate / hard keeping: never aim straight at the keeper. If [screenX]
+/// lands in the dead-centre band of the goal mouth, re-pick a spot on the left
+/// or right side (corners, mid-side, or just off-centre — but not down the
+/// middle). [wide] uses the full hard-mode mouth width for side re-picks.
+double _hardModeScreenX(
+  Rect mouth,
+  double screenX,
+  Random r, {
+  bool wide = false,
+}) {
   const deadMin = 0.44;
   const deadMax = 0.56;
+  final edgeMin = wide ? 0.0 : 0.08;
+  final edgeMax = wide ? 1.0 : 0.92;
   var nx = ((screenX - mouth.left) / mouth.width).clamp(0.0, 1.0);
   if (nx > deadMin && nx < deadMax) {
     nx = r.nextBool()
-        ? 0.08 + r.nextDouble() * (deadMin - 0.08)
-        : deadMax + r.nextDouble() * (0.92 - deadMax);
+        ? edgeMin + r.nextDouble() * (deadMin - edgeMin)
+        : deadMax + r.nextDouble() * (edgeMax - deadMax);
   }
   return mouth.left + mouth.width * nx;
 }

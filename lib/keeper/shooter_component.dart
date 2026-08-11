@@ -142,7 +142,7 @@ class ShooterComponent extends PositionComponent
     final img = _frames[_frameIndex];
     if (img == null) return;
 
-    final panX = game.ballUsesCameraParallax ? game.cameraXOffset.value : 0.0;
+    final panX = game.tracksBallForCameraPan ? game.cameraXOffset.value : 0.0;
     final foot = Offset(_footAnchor.dx + panX, _footAnchor.dy);
     final scale = _visualScaleForFrame(_frameIndex);
     final height =

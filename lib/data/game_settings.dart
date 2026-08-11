@@ -25,6 +25,8 @@ class GameSettings {
 
   static bool get isEasyMode => difficulty == DifficultyMode.easy;
 
+  static bool get isHardMode => difficulty == DifficultyMode.hard;
+
   /// Moderate and Hard share identical gameplay mechanics.
   static bool get usesHardGameplay => !isEasyMode;
 

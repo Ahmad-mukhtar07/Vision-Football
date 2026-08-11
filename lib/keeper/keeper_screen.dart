@@ -375,7 +375,8 @@ class _KeeperScreenState extends State<KeeperScreen> {
             game: _game,
             backgroundBuilder: (context) => const SizedBox.shrink(),
           ),
-        // 4. Gloves — anchored to the screen (do not pan with the camera).
+        // 4. Gloves — world-anchored in Hard mode (pan with the scene);
+        //    screen-anchored in Easy / Moderate.
         GloveOverlay(
           onGlovesChanged: _onGlovesChanged,
           calibrationMode: isCalibrating,
@@ -384,6 +385,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
               isCalibrating && _calibrationCountdownActive,
           goalMouthRect:
               isCalibrating ? null : _game.goalMouthRect,
+          cameraXOffset: _game.cameraXOffset,
         ),
         // 5. Goal image — pans with the same camera offset as the stadium.
         if (!isCalibrating)
