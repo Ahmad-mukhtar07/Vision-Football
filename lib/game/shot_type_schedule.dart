@@ -18,6 +18,7 @@ class ShotTypeSchedule {
   }) {
     final (minFk, maxFk) = switch (mode) {
       DifficultyMode.easy => (1, 2),
+      DifficultyMode.moderate => (2, 3),
       DifficultyMode.hard => (2, 3),
     };
     return _build(minFk, maxFk, totalKicks, random ?? Random())
@@ -33,6 +34,7 @@ class ShotTypeSchedule {
   }) {
     final (minFk, maxFk) = switch (mode) {
       DifficultyMode.easy => (2, 3),
+      DifficultyMode.moderate => (1, 2),
       DifficultyMode.hard => (1, 2),
     };
     return _build(minFk, maxFk, totalKicks, random ?? Random())

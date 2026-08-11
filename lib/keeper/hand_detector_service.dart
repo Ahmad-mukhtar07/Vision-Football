@@ -117,7 +117,12 @@ class HandDetectorService {
 
     final meta = inputImage.metadata;
     if (meta != null) {
-      lastImageSize = _orientedImageSize(meta.size, meta.rotation);
+      // iOS reports landmark coords in the un-rotated buffer space (already
+      // portrait for our capture), so normalize against the buffer size. On
+      // Android the coords are rotation-corrected, so swap width/height.
+      lastImageSize = Platform.isIOS
+          ? meta.size
+          : _orientedImageSize(meta.size, meta.rotation);
     }
 
     _isProcessing = true;
@@ -128,9 +133,17 @@ class HandDetectorService {
         return;
       }
       final landmarks = poses.first.landmarks;
+      // iOS analyzes a selfie/mirror of the player, so ML Kit labels the
+      // player's physical left hand as "right" and vice-versa — swap them back
+      // so each glove tracks the correct hand (matches Android).
+      final swapSides = Platform.isIOS && isFrontCamera;
+      final leftLm = landmarks[
+          swapSides ? PoseLandmarkType.rightWrist : PoseLandmarkType.leftWrist];
+      final rightLm = landmarks[
+          swapSides ? PoseLandmarkType.leftWrist : PoseLandmarkType.rightWrist];
       _emit(
-        left: _wristToNormalized(landmarks[PoseLandmarkType.leftWrist]),
-        right: _wristToNormalized(landmarks[PoseLandmarkType.rightWrist]),
+        left: _wristToNormalized(leftLm),
+        right: _wristToNormalized(rightLm),
       );
     } catch (e) {
       debugPrint('[HAND] detection error: $e');
@@ -163,7 +176,10 @@ class HandDetectorService {
       nx = lm.x;
       ny = lm.y;
     }
-    if (isFrontCamera) nx = 1.0 - nx;
+    // Android's front-camera buffer is a selfie mirror, so flip to keep the
+    // glove on the tracked hand. iOS delivers a true (non-mirrored) view whose
+    // preview is drawn un-mirrored, so no flip is applied here.
+    if (isFrontCamera && !Platform.isIOS) nx = 1.0 - nx;
     return Offset(nx.clamp(0.0, 1.0), ny.clamp(0.0, 1.0));
   }
 

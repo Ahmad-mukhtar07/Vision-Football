@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -37,15 +39,34 @@ class PoseCoordinateMapper {
 
   /// Portrait screen pixels for overlay / foot marker.
   Offset toScreen(PoseLandmark landmark) {
-    final norm = normalizedToNormalized(landmark);
-    return Offset(norm.dx * screenSize.width, norm.dy * screenSize.height);
+    return normalizedOffsetToScreen(normalizedToNormalized(landmark));
   }
 
   /// Maps stored normalized coords to screen (same mirror already applied).
+  ///
+  /// The preview is drawn with [BoxFit.cover], which scales the camera image
+  /// to fill the screen and crops the overflow. Mapping `norm * screenSize`
+  /// ignores that crop, so the overlay drifts (most visibly a vertical offset)
+  /// whenever the image aspect ratio differs from the screen — which is the
+  /// case on iOS. Applying the same cover transform keeps the marker on the
+  /// body part it tracks on every device.
   Offset normalizedOffsetToScreen(Offset normalized) {
+    final imgW = imageSize.width;
+    final imgH = imageSize.height;
+    if (imgW <= 0 || imgH <= 0) {
+      return Offset(
+        normalized.dx * screenSize.width,
+        normalized.dy * screenSize.height,
+      );
+    }
+    final scale = math.max(screenSize.width / imgW, screenSize.height / imgH);
+    final displayedW = imgW * scale;
+    final displayedH = imgH * scale;
+    final offsetX = (screenSize.width - displayedW) / 2;
+    final offsetY = (screenSize.height - displayedH) / 2;
     return Offset(
-      normalized.dx * screenSize.width,
-      normalized.dy * screenSize.height,
+      offsetX + normalized.dx * displayedW,
+      offsetY + normalized.dy * displayedH,
     );
   }
 
@@ -59,7 +80,7 @@ class PoseCoordinateMapper {
       nx = landmark.x;
       ny = landmark.y;
     }
-    if (isFrontCamera) {
+    if (_shouldMirror(isFrontCamera)) {
       nx = 1.0 - nx;
     }
     return Offset(nx.clamp(0.0, 1.0), ny.clamp(0.0, 1.0));
@@ -80,9 +101,18 @@ class PoseCoordinateMapper {
       nx = landmark.x;
       ny = landmark.y;
     }
-    if (isFrontCamera) {
+    if (_shouldMirror(isFrontCamera)) {
       nx = 1.0 - nx;
     }
     return Offset(nx.clamp(0.0, 1.0), ny.clamp(0.0, 1.0));
   }
+
+  /// Whether to horizontally flip normalized coords for a selfie-style view.
+  ///
+  /// The Android front-camera pipeline hands us a mirrored (selfie) buffer, so
+  /// we flip to keep the marker on the tracked foot. iOS delivers a true,
+  /// non-mirrored view (and its preview is drawn un-mirrored), so no flip is
+  /// applied — otherwise the marker and aim land on the opposite side.
+  static bool _shouldMirror(bool isFrontCamera) =>
+      isFrontCamera && !Platform.isIOS;
 }

@@ -33,13 +33,21 @@ class CalibrationPreviewLayout {
   /// portrait layout makes [FittedBox] scale with the wrong aspect ratio,
   /// which looks zoomed-in and stretched. We size the child using
   /// [orientedPreviewSize] so the preview matches what the user sees.
-  static Widget coverFitPreview(CameraController controller) {
+  ///
+  /// [mirror] horizontally flips the feed. The `camera` plugin mirrors the
+  /// front preview on Android but not on iOS, so callers pass true on iOS with
+  /// the front camera to get the same selfie-style view on both platforms
+  /// (which also matches the mirrored landmark coordinates used for overlays).
+  static Widget coverFitPreview(
+    CameraController controller, {
+    bool mirror = false,
+  }) {
     final previewSize = controller.value.previewSize;
     if (previewSize == null) {
       return const SizedBox.shrink();
     }
     final oriented = orientedPreviewSize(previewSize);
-    return ClipRect(
+    Widget preview = ClipRect(
       child: FittedBox(
         fit: BoxFit.cover,
         alignment: Alignment.center,
@@ -51,6 +59,14 @@ class CalibrationPreviewLayout {
         ),
       ),
     );
+    if (mirror) {
+      preview = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()..scale(-1.0, 1.0, 1.0),
+        child: preview,
+      );
+    }
+    return preview;
   }
 
   /// Computes the on-screen rect for a portrait front-camera preview.

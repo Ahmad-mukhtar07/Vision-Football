@@ -277,12 +277,21 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
     final camera = widget.cameras[_selectedCameraIndex!];
     final sensor = _sensorRotationDegrees ?? camera.sensorOrientation;
 
+    // Android mirrors the front preview natively; iOS delivers a true
+    // (non-mirrored) view. We keep the iOS preview un-mirrored and likewise
+    // skip the horizontal coordinate flip on iOS (see PoseCoordinateMapper), so
+    // the preview, foot marker and aim all share a single orientation.
+    const mirrorPreview = false;
+
     if (widget.previewMode == CameraPreviewMode.hidden) {
       return const SizedBox.expand();
     }
 
     if (widget.previewMode == CameraPreviewMode.fullscreenCalibration) {
-      return FullscreenCameraPreview(controller: controller);
+      return FullscreenCameraPreview(
+        controller: controller,
+        mirror: mirrorPreview,
+      );
     }
 
     return ColoredBox(
@@ -290,7 +299,7 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          _PortraitCameraPreview(controller: controller),
+          _PortraitCameraPreview(controller: controller, mirror: mirrorPreview),
           if (imageSize != null)
             LayoutBuilder(
               builder: (context, constraints) {
@@ -323,14 +332,18 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
 
 /// Full-screen cover fit for portrait.
 class _PortraitCameraPreview extends StatelessWidget {
-  const _PortraitCameraPreview({required this.controller});
+  const _PortraitCameraPreview({
+    required this.controller,
+    this.mirror = false,
+  });
 
   final CameraController controller;
+  final bool mirror;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox.expand(
-      child: CalibrationPreviewLayout.coverFitPreview(controller),
+      child: CalibrationPreviewLayout.coverFitPreview(controller, mirror: mirror),
     );
   }
 }

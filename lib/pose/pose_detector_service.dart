@@ -58,6 +58,47 @@ class PoseDetectorService {
   Size? lastImageSize;
   InputImageRotation? lastRotation;
 
+  /// iOS front-camera correction: ML Kit analyzes a selfie/mirror of the
+  /// player, so it labels the player's physical left limbs as "right" and
+  /// vice-versa. Swap the left/right landmark types so the selected kicking
+  /// foot maps to the player's real foot — matching Android, which feeds ML
+  /// Kit a non-mirrored buffer. Coordinates are left untouched (the marker is
+  /// already positioned correctly); only the side label changes.
+  List<PoseLandmark> _correctLandmarkSides(List<PoseLandmark> landmarks) {
+    if (!Platform.isIOS || !isFrontCamera || landmarks.isEmpty) {
+      return landmarks;
+    }
+    return landmarks.map((l) {
+      final swapped = _sideSwap[l.type];
+      if (swapped == null) return l;
+      return PoseLandmark(
+        type: swapped,
+        x: l.x,
+        y: l.y,
+        z: l.z,
+        likelihood: l.likelihood,
+      );
+    }).toList(growable: false);
+  }
+
+  /// Maps every `left*` landmark type to its `right*` counterpart and back.
+  static final Map<PoseLandmarkType, PoseLandmarkType> _sideSwap = () {
+    final map = <PoseLandmarkType, PoseLandmarkType>{};
+    final byName = {for (final t in PoseLandmarkType.values) t.name: t};
+    for (final t in PoseLandmarkType.values) {
+      final name = t.name;
+      String? otherName;
+      if (name.startsWith('left')) {
+        otherName = 'right${name.substring(4)}';
+      } else if (name.startsWith('right')) {
+        otherName = 'left${name.substring(5)}';
+      }
+      final other = otherName == null ? null : byName[otherName];
+      if (other != null) map[t] = other;
+    }
+    return map;
+  }();
+
   /// Maps buffer dimensions to upright portrait/landscape space for landmarks.
   static Size orientedImageSize(Size bufferSize, InputImageRotation rotation) {
     switch (rotation) {
@@ -87,7 +128,7 @@ class PoseDetectorService {
   static const Duration _errorLogCooldown = Duration(seconds: 8);
 
   DateTime? _lastPoseLogTime;
-  static const Duration _poseLogInterval = Duration(seconds: 3);
+  static const Duration _poseLogInterval = Duration(milliseconds: 600);
 
   /// Set true to print ankle coordinates every processed frame (very noisy).
   static bool enablePoseDebugLogs = false;
@@ -139,7 +180,13 @@ class PoseDetectorService {
     if (meta != null) {
       lastBufferImageSize = meta.size;
       lastRotation = meta.rotation;
-      lastImageSize = orientedImageSize(meta.size, meta.rotation);
+      // On iOS, ML Kit returns landmark coordinates in the *un-rotated* buffer
+      // coordinate space (already upright for a portrait-locked capture), so we
+      // normalize against the buffer size directly. On Android the coordinates
+      // are in the rotation-corrected space, so we swap width/height to match.
+      lastImageSize = Platform.isIOS
+          ? meta.size
+          : orientedImageSize(meta.size, meta.rotation);
     }
 
     if (_frameCounter == 1 || _frameCounter % 120 == 0) {
@@ -161,9 +208,11 @@ class PoseDetectorService {
       final poses = await _ensureDetector().processImage(inputImage);
       if (_disposed) return;
 
-      final landmarks = poses.isNotEmpty
-          ? poses.first.landmarks.values.toList(growable: false)
-          : <PoseLandmark>[];
+      final landmarks = _correctLandmarkSides(
+        poses.isNotEmpty
+            ? poses.first.landmarks.values.toList(growable: false)
+            : <PoseLandmark>[],
+      );
 
       _landmarksController.add(landmarks);
       if (lastImageSize != null) {
@@ -208,12 +257,14 @@ class PoseDetectorService {
       final nx = (l.x > 2.0 ? l.x / imageSize.width : l.x).toStringAsFixed(3);
       final ny = (l.y > 2.0 ? l.y / imageSize.height : l.y).toStringAsFixed(3);
       final conf = l.likelihood.toStringAsFixed(2);
-      return '($nx, $ny, $conf)';
+      return 'raw(${l.x.toStringAsFixed(0)},${l.y.toStringAsFixed(0)}) '
+          'norm($nx,$ny) c$conf';
     }
 
     final fps = _rollingFps().toStringAsFixed(1);
     debugPrint(
-      '[POSE] L_ankle=${fmt(left)} R_ankle=${fmt(right)} fps=$fps',
+      '[POSE] img=${imageSize.width.toInt()}x${imageSize.height.toInt()} '
+      'L_ankle=${fmt(left)} R_ankle=${fmt(right)} fps=$fps',
     );
   }
 

@@ -1,7 +1,7 @@
 name: vision_football
 description: AR penalty kick football game using ML Kit pose detection and Flame.
 publish_to: 'none'
-version: 1.0.0+3
+version: 1.0.0+1
 
 environment:
   sdk: ^3.5.0
@@ -29,10 +29,14 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: true
-  ios: false
+  ios: true
   image_path: assets/images/VisionFootball-Logo.png
   adaptive_icon_background: "#000000"
   adaptive_icon_foreground: assets/images/VisionFootball-Logo.png
+  # iOS icons must be fully opaque (no alpha). Flatten any transparency onto
+  # black so the App Store accepts the icon.
+  remove_alpha_ios: true
+  background_color_ios: "#000000"
 
 flutter:
   uses-material-design: true

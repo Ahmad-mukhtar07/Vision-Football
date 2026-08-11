@@ -201,7 +201,7 @@ class KeeperGame extends FlameGame {
       tx = mouth.left + mouth.width * (0.10 + r.nextDouble() * 0.80);
       ty = mouth.top + mouth.height * (0.10 + r.nextDouble() * 0.80);
     }
-    if (!tutorialMode && GameSettings.difficulty == DifficultyMode.hard) {
+    if (!tutorialMode && GameSettings.usesHardGameplay) {
       tx = _hardModeScreenX(mouth, tx, r);
     }
     _pendingTarget = Offset(tx, ty);

@@ -5,9 +5,16 @@ import 'calibration_preview_layout.dart';
 
 /// Edge-to-edge camera feed using [BoxFit.cover] — no letterboxing.
 class FullscreenCameraPreview extends StatelessWidget {
-  const FullscreenCameraPreview({super.key, required this.controller});
+  const FullscreenCameraPreview({
+    super.key,
+    required this.controller,
+    this.mirror = false,
+  });
 
   final CameraController controller;
+
+  /// Horizontally flips the feed (see [CalibrationPreviewLayout.coverFitPreview]).
+  final bool mirror;
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +28,10 @@ class FullscreenCameraPreview extends StatelessWidget {
     return ColoredBox(
       color: Colors.black,
       child: SizedBox.expand(
-        child: CalibrationPreviewLayout.coverFitPreview(controller),
+        child: CalibrationPreviewLayout.coverFitPreview(
+          controller,
+          mirror: mirror,
+        ),
       ),
     );
   }

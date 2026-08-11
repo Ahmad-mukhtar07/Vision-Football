@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../data/teams_data.dart';
 import '../models/team.dart';
+import 'difficulty_mode_selector.dart';
 import 'main_page_sound.dart';
 
 /// Which selection slot a tapped team gets assigned to.
@@ -72,9 +73,11 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
     setState(() => _active = target);
   }
 
-  void _start() {
+  Future<void> _start() async {
     if (!_ready) return;
     _tap();
+    final confirmed = await showDifficultyModeDialog(context);
+    if (!confirmed || !mounted) return;
     widget.onStart(_userTeam!, _opponentTeam!);
   }
 
