@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'keeper_stadium.dart';
+
 /// Match difficulty chosen before a Full Match on the team selection screen.
 enum DifficultyMode {
   /// Every shot is on target — nothing can go wide or over the bar. The keeper
@@ -19,9 +21,13 @@ class GameSettings {
   GameSettings._();
 
   static const _keyDifficulty = 'difficulty_mode';
+  static const _keyKeeperStadium = 'keeper_stadium';
 
   /// Easy by default so newcomers can't miss the goal.
   static DifficultyMode difficulty = DifficultyMode.easy;
+
+  /// Stadium shown in goalkeeper mode (selected before each match).
+  static KeeperStadiumLocation keeperStadium = KeeperStadiumLocation.usa;
 
   static bool get isEasyMode => difficulty == DifficultyMode.easy;
 
@@ -38,6 +44,11 @@ class GameSettings {
       (mode) => mode.name == saved,
       orElse: () => DifficultyMode.easy,
     );
+    final savedStadium = prefs.getString(_keyKeeperStadium);
+    keeperStadium = KeeperStadiumLocation.values.firstWhere(
+      (location) => location.name == savedStadium,
+      orElse: () => KeeperStadiumLocation.usa,
+    );
   }
 
   /// Persists and applies the chosen difficulty immediately.
@@ -45,5 +56,12 @@ class GameSettings {
     difficulty = mode;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyDifficulty, mode.name);
+  }
+
+  /// Persists and applies the chosen keeper stadium immediately.
+  static Future<void> setKeeperStadium(KeeperStadiumLocation location) async {
+    keeperStadium = location;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyKeeperStadium, location.name);
   }
 }

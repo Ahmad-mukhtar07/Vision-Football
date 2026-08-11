@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../data/game_settings.dart';
+
 /// Stadium background for goalkeeper mode, rendered as a full-screen-height
 /// image with only the center vertical slice visible.
 ///
@@ -21,14 +23,12 @@ class KeeperStadiumImage extends StatelessWidget {
   final double horizontalShift;
   final ValueListenable<double>? shiftListenable;
 
-  static const String _asset =
-      'assets/images/stadium/stadium-keeper-view.png';
-
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.of(context).size;
+    final asset = GameSettings.keeperStadium.assetPath;
     final image = Image.asset(
-      _asset,
+      asset,
       height: screen.height,
       fit: BoxFit.fitHeight,
       filterQuality: FilterQuality.medium,

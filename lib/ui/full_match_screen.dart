@@ -10,12 +10,14 @@ import '../models/team.dart';
 import 'coin_toss_screen.dart';
 import 'game_play_sound.dart';
 import 'main_page_sound.dart';
+import 'match_setup_screen.dart';
 import 'team_selection_screen.dart';
 import 'vision_football_screen.dart';
 
 /// Stages of a Full Match.
 enum _FmPhase {
   teamSelect,
+  matchSetup,
   coinToss,
   playingHalf1,
   halfTime,
@@ -87,8 +89,12 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
     setState(() {
       _userTeam = user;
       _opponentTeam = opponent;
-      _phase = _FmPhase.coinToss;
+      _phase = _FmPhase.matchSetup;
     });
+  }
+
+  void _onMatchSetupComplete() {
+    setState(() => _phase = _FmPhase.coinToss);
   }
 
   void _onTossDecided(MatchRole firstHalfRole) {
@@ -174,12 +180,19 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           onStart: _onTeamsSelected,
           onBack: widget.onReturnToMenu,
         );
+      case _FmPhase.matchSetup:
+        return MatchSetupScreen(
+          userTeam: _userTeam!,
+          opponentTeam: _opponentTeam!,
+          onContinue: _onMatchSetupComplete,
+          onBack: () => setState(() => _phase = _FmPhase.teamSelect),
+        );
       case _FmPhase.coinToss:
         return CoinTossScreen(
           userTeam: _userTeam!,
           opponentTeam: _opponentTeam!,
           onDecided: _onTossDecided,
-          onBack: () => setState(() => _phase = _FmPhase.teamSelect),
+          onBack: () => setState(() => _phase = _FmPhase.matchSetup),
         );
       case _FmPhase.playingHalf1:
         return _buildHalf(1);

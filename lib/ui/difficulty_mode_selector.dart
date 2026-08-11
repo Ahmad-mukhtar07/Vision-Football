@@ -1,156 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../data/game_settings.dart';
+import '../data/keeper_stadium.dart';
 import 'main_page_sound.dart';
-
-/// Presents game-mode selection before a match starts. Returns `true` if the
-/// player confirmed, `false` if they dismissed the dialog.
-Future<bool> showDifficultyModeDialog(BuildContext context) async {
-  final result = await showDialog<bool>(
-    context: context,
-    barrierDismissible: true,
-    builder: (ctx) => const _DifficultyModeDialog(),
-  );
-  return result ?? false;
-}
-
-class _DifficultyModeDialog extends StatelessWidget {
-  const _DifficultyModeDialog();
-
-  static const _accent = Color(0xFF00E5FF);
-  static const _lime = Color(0xFFC2FF1F);
-  static const _green = Color(0xFF1FE07A);
-
-  void _close(BuildContext context) {
-    MainPageSound.playButtonClick();
-    Navigator.of(context).pop(false);
-  }
-
-  void _continue(BuildContext context) {
-    MainPageSound.playButtonClick();
-    Navigator.of(context).pop(true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: const Color(0xFF15102A),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
-        side: BorderSide(color: _accent.withValues(alpha: 0.35)),
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 28, 22, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'CHOOSE DIFFICULTY',
-                  style: TextStyle(
-                    color: _lime.withValues(alpha: 0.95),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2.2,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Game mode',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    DifficultyModeInfoButton(
-                      accent: _accent,
-                      selectedColor: _lime,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Pick a difficulty before the match begins.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.65),
-                    fontSize: 14,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const DifficultyModeSelector(
-                  accent: _accent,
-                  selectedColor: _lime,
-                  showHeading: false,
-                  compact: true,
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(27),
-                      gradient: const LinearGradient(
-                        colors: [_green, _accent],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _green.withValues(alpha: 0.45),
-                          blurRadius: 18,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(27),
-                        onTap: () => _continue(context),
-                        child: const Center(
-                          child: Text(
-                            'CONTINUE',
-                            style: TextStyle(
-                              color: Colors.black87,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 6,
-            right: 6,
-            child: IconButton(
-              onPressed: () => _close(context),
-              icon: Icon(
-                Icons.close_rounded,
-                color: Colors.white.withValues(alpha: 0.75),
-              ),
-              tooltip: 'Close',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class DifficultyModeSelector extends StatefulWidget {
   const DifficultyModeSelector({
@@ -248,6 +100,272 @@ class _DifficultyModeSelectorState extends State<DifficultyModeSelector> {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Swipeable stadium previews for the pre-match setup dialog.
+class KeeperStadiumSelector extends StatefulWidget {
+  const KeeperStadiumSelector({
+    super.key,
+    this.accent = const Color(0xFF00E5FF),
+    this.selectedColor = const Color(0xFFC2FF1F),
+    this.previewHeight = 118,
+    this.showHeading = true,
+    this.expandPreview = false,
+  });
+
+  final Color accent;
+  final Color selectedColor;
+  final double previewHeight;
+  final bool showHeading;
+  final bool expandPreview;
+
+  @override
+  State<KeeperStadiumSelector> createState() => _KeeperStadiumSelectorState();
+}
+
+class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
+  static const _locations = KeeperStadiumLocation.values;
+
+  late final PageController _pageController;
+  late KeeperStadiumLocation _selected;
+  bool _suppressPageSound = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = GameSettings.keeperStadium;
+    final initialPage = _locations.indexOf(_selected).clamp(0, _locations.length - 1);
+    _pageController = PageController(
+      initialPage: initialPage,
+      viewportFraction: 0.86,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _suppressPageSound = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectPage(int index) async {
+    final location = _locations[index];
+    if (location == _selected) return;
+    setState(() => _selected = location);
+    await GameSettings.setKeeperStadium(location);
+  }
+
+  void _jumpToPage(int index) {
+    if (_pageController.page?.round() == index) return;
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pageView = PageView.builder(
+      controller: _pageController,
+      itemCount: _locations.length,
+      physics: const BouncingScrollPhysics(),
+      onPageChanged: (index) {
+        if (!_suppressPageSound) MainPageSound.playButtonClick();
+        _selectPage(index);
+      },
+      itemBuilder: (context, index) {
+        final location = _locations[index];
+        return AnimatedBuilder(
+          animation: _pageController,
+          builder: (context, child) {
+            final page = _pageController.hasClients
+                ? (_pageController.page ?? index.toDouble())
+                : index.toDouble();
+            final delta = (page - index).abs().clamp(0.0, 1.0);
+            final scale = 1.0 - delta * 0.08;
+            final opacity = 1.0 - delta * 0.35;
+            return Transform.scale(
+              scale: scale,
+              child: Opacity(opacity: opacity, child: child),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: _StadiumPreviewCard(
+              location: location,
+              selected: location == _selected,
+              accent: widget.accent,
+              selectedColor: widget.selectedColor,
+              onTap: () => _jumpToPage(index),
+            ),
+          ),
+        );
+      },
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.showHeading) ...[
+          Text(
+            'STADIUM',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.6,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (widget.expandPreview)
+          Expanded(child: pageView)
+        else
+          SizedBox(height: widget.previewHeight, child: pageView),
+        const SizedBox(height: 10),
+        Text(
+          _selected.label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: widget.selectedColor,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < _locations.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              _StadiumPageDot(
+                active: _locations[i] == _selected,
+                selectedColor: widget.selectedColor,
+                onTap: () => _jumpToPage(i),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Swipe for more stadiums',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.42),
+            fontSize: 11.5,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StadiumPreviewCard extends StatelessWidget {
+  const _StadiumPreviewCard({
+    required this.location,
+    required this.selected,
+    required this.accent,
+    required this.selectedColor,
+    required this.onTap,
+  });
+
+  final KeeperStadiumLocation location;
+  final bool selected;
+  final Color accent;
+  final Color selectedColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? selectedColor.withValues(alpha: 0.9)
+                  : Colors.white.withValues(alpha: 0.18),
+              width: selected ? 2 : 1,
+            ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: selectedColor.withValues(alpha: 0.25),
+                      blurRadius: 14,
+                      spreadRadius: 0.5,
+                    ),
+                  ]
+                : null,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(13),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  location.assetPath,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.35),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StadiumPageDot extends StatelessWidget {
+  const _StadiumPageDot({
+    required this.active,
+    required this.selectedColor,
+    required this.onTap,
+  });
+
+  final bool active;
+  final Color selectedColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        width: active ? 18 : 7,
+        height: 7,
+        decoration: BoxDecoration(
+          color: active
+              ? selectedColor
+              : Colors.white.withValues(alpha: 0.28),
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
     );
   }
 }
@@ -373,8 +491,8 @@ void showDifficultyModeInfoDialog(
             const SizedBox(height: 12),
             const _DifficultyModeInfoRow(
               'Moderate',
-              'Same rules as Hard — full accuracy, tougher keeper, '
-                  'and harder saves.',
+              'Shots may go wide or high. '
+                  'Need to extend your reach for keeping.',
             ),
             const SizedBox(height: 12),
             const _DifficultyModeInfoRow(

@@ -70,7 +70,9 @@ flutter:
     - assets/images/shooter/Player-Recovery.png
     - assets/images/outlines/upperbody-outline.png
     - assets/images/outlines/lowerbody-outline.png
-    - assets/images/stadium/stadium-keeper-view.png
+    - assets/images/stadium/stadium-keeper-view-us.png
+    - assets/images/stadium/stadium-keeper-view-italy.png
+    - assets/images/stadium/stadium-keeper-view-spain.png
     - assets/images/VisionFootball-Logo.png
     - assets/images/VisionFootball-Logo-NoBG.png
     - assets/images/main_page/stadium_bg.jpeg
