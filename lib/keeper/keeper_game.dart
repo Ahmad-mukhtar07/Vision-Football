@@ -10,6 +10,7 @@ import '../game/ball_sprite.dart';
 import '../models/team.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
+import 'keeper_glove_rotation.dart';
 import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
 import 'shooter_component.dart';
@@ -518,14 +519,81 @@ class _BallComponent extends PositionComponent with HasGameReference<KeeperGame>
     return _currentPos();
   }
 
+  // Palm catch zone for moderate/hard — upper-middle of the 100px glove art
+  // (wrist pivot at bottom in glove_overlay.dart). Ball centre must sit on
+  // the palm, not merely near the glove bounds or between the hands.
+  static const double _palmAboveWrist = 58;
+  static const double _palmReachX = 20;
+  static const double _palmReachY = 14;
+
   Offset? _gloveTouchingBall(Offset pos, double ballRadius) {
     final keeper = game;
-    final touchDistance = keeper.gloveCatchRadius + ballRadius * 0.6;
-    bool overlaps(Offset? g) =>
-        g != null && (g - pos).distance <= touchDistance;
+    if (GameSettings.usesHardGameplay) {
+      final left = keeper.leftGloveScreen;
+      final right = keeper.rightGloveScreen;
+      if (left != null &&
+          right != null &&
+          _ballInGapBetweenPalms(pos, left, right)) {
+        return null;
+      }
+    }
+
+    bool overlaps(Offset? g) {
+      if (g == null) return false;
+      if (GameSettings.usesHardGameplay) {
+        return _palmCoversBallCenter(g, pos);
+      }
+      final touchDistance = keeper.gloveCatchRadius + ballRadius * 0.6;
+      return (g - pos).distance <= touchDistance;
+    }
+
     if (overlaps(keeper.leftGloveScreen)) return keeper.leftGloveScreen;
     if (overlaps(keeper.rightGloveScreen)) return keeper.rightGloveScreen;
     return null;
+  }
+
+  /// Palm centre in screen space, accounting for gameplay glove rotation.
+  Offset _palmCenter(Offset wrist) {
+    final mouth = game.goalMouthRect;
+    final angle = mouth == null
+        ? 0.0
+        : KeeperGloveRotation.forGameplay(
+            position: wrist,
+            screen: Size(game.size.x, game.size.y),
+            goalMouth: mouth,
+          );
+    final ox = _palmAboveWrist * sin(angle);
+    final oy = -_palmAboveWrist * cos(angle);
+    return Offset(wrist.dx + ox, wrist.dy + oy);
+  }
+
+  /// Ball centre must lie on the open palm — tight ellipse, no ball-radius padding.
+  bool _palmCoversBallCenter(Offset wrist, Offset ballCenter) {
+    final palm = _palmCenter(wrist);
+    final nx = (ballCenter.dx - palm.dx) / _palmReachX;
+    final ny = (ballCenter.dy - palm.dy) / _palmReachY;
+    return nx * nx + ny * ny <= 1.0;
+  }
+
+  /// Rejects saves when the ball travels through the space between both palms.
+  bool _ballInGapBetweenPalms(
+    Offset ball,
+    Offset leftWrist,
+    Offset rightWrist,
+  ) {
+    var left = _palmCenter(leftWrist);
+    var right = _palmCenter(rightWrist);
+    if (left.dx > right.dx) {
+      final tmp = left;
+      left = right;
+      right = tmp;
+    }
+    final gapLeft = left.dx + _palmReachX;
+    final gapRight = right.dx - _palmReachX;
+    if (gapRight <= gapLeft) return false;
+    final gapMidY = (left.dy + right.dy) / 2;
+    if ((ball.dy - gapMidY).abs() > _palmReachY + 6) return false;
+    return ball.dx >= gapLeft && ball.dx <= gapRight;
   }
 
   @override
