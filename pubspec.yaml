@@ -43,7 +43,6 @@ flutter:
   assets:
     - assets/images/goal_post.png
     - assets/images/stadium_crowd.png
-    - assets/images/Football-fans.gif
     - assets/images/football_boot_right.png
     - assets/images/shoe/top-right-shoe.png
     - assets/images/keeper/Keeper-front.png
@@ -70,9 +69,12 @@ flutter:
     - assets/images/shooter/Player-Recovery.png
     - assets/images/outlines/upperbody-outline.png
     - assets/images/outlines/lowerbody-outline.png
-    - assets/images/stadium/stadium-keeper-view-us.png
-    - assets/images/stadium/stadium-keeper-view-italy.png
-    - assets/images/stadium/stadium-keeper-view-spain.png
+    - assets/images/stadium/keeping/stadium-keeper-view-us.png
+    - assets/images/stadium/keeping/stadium-keeper-view-italy.png
+    - assets/images/stadium/keeping/stadium-keeper-view-spain.png
+    - assets/images/stadium/shooting/Stadium-shooter-view-Italy.gif
+    - assets/images/stadium/shooting/Stadium-shooter-view-Spain.gif
+    - assets/images/stadium/shooting/Stadium-shooter-view-US.gif
     - assets/images/VisionFootball-Logo.png
     - assets/images/VisionFootball-Logo-NoBG.png
     - assets/images/main_page/stadium_bg.jpeg

@@ -4,6 +4,7 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../data/game_settings.dart';
 import '../layout_constants.dart';
 import '../match_state.dart';
 import '../painters/stadium_painter.dart';
@@ -29,7 +30,14 @@ class SkyBackgroundComponent extends PositionComponent {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    await _loadGifFrames('assets/images/Football-fans.gif');
+    await _loadGifFrames(GameSettings.keeperStadium.shootingAssetPath);
+  }
+
+  static const double _minFrameSeconds = 0.1; // GIF delay 0 → 100 ms per spec.
+
+  double _frameDurationSeconds(int index) {
+    final seconds = _frameDurations[index].inMilliseconds / 1000.0;
+    return seconds > 0 ? seconds : _minFrameSeconds;
   }
 
   Future<void> _loadGifFrames(String assetPath) async {
@@ -46,14 +54,14 @@ class SkyBackgroundComponent extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
-    if (_frames.isEmpty) return;
+    if (_frames.length <= 1) return;
 
     _frameTimer += dt;
-    final currentDuration = _frameDurations[_currentFrame].inMilliseconds / 1000.0;
-
-    if (_frameTimer >= currentDuration) {
-      _frameTimer = 0;
+    var duration = _frameDurationSeconds(_currentFrame);
+    while (_frameTimer >= duration) {
+      _frameTimer -= duration;
       _currentFrame = (_currentFrame + 1) % _frames.length;
+      duration = _frameDurationSeconds(_currentFrame);
     }
   }
 

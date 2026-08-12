@@ -1,8 +1,8 @@
 /// Keeper-mode stadium backgrounds selectable before a match.
 enum KeeperStadiumLocation {
-  usa,
   italy,
-  spain;
+  spain,
+  usa;
 
   String get label => switch (this) {
         KeeperStadiumLocation.usa => 'USA',
@@ -12,10 +12,20 @@ enum KeeperStadiumLocation {
 
   String get assetPath => switch (this) {
         KeeperStadiumLocation.usa =>
-          'assets/images/stadium/stadium-keeper-view-us.png',
+          'assets/images/stadium/keeping/stadium-keeper-view-us.png',
         KeeperStadiumLocation.italy =>
-          'assets/images/stadium/stadium-keeper-view-italy.png',
+          'assets/images/stadium/keeping/stadium-keeper-view-italy.png',
         KeeperStadiumLocation.spain =>
-          'assets/images/stadium/stadium-keeper-view-spain.png',
+          'assets/images/stadium/keeping/stadium-keeper-view-spain.png',
+      };
+
+  /// Animated crowd background for shooting mode.
+  String get shootingAssetPath => switch (this) {
+        KeeperStadiumLocation.italy =>
+          'assets/images/stadium/shooting/Stadium-shooter-view-Italy.gif',
+        KeeperStadiumLocation.spain =>
+          'assets/images/stadium/shooting/Stadium-shooter-view-Spain.gif',
+        KeeperStadiumLocation.usa =>
+          'assets/images/stadium/shooting/Stadium-shooter-view-US.gif',
       };
 }
