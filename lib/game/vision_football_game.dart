@@ -142,10 +142,11 @@ class VisionFootballGame extends FlameGame {
         // Lead with the woodwork thud and duck the crowd's groan so it's clear.
         GamePlaySound.playCrossbar();
         GamePlaySound.playBoo(volume: 0.35);
+        commentary = CommentarySound.playMissCrossbar();
       } else {
         GamePlaySound.playBoo();
+        commentary = CommentarySound.playMiss();
       }
-      commentary = CommentarySound.playMiss();
     }
 
     // Small tail so the ball/banner doesn't vanish the instant audio ends.

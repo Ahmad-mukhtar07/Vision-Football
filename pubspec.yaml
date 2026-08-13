@@ -105,14 +105,35 @@ flutter:
     - assets/sounds/boo-sound.wav
     - assets/sounds/commentary/general/comm-start1.wav
     - assets/sounds/commentary/general/comm-start2.wav
+    - assets/sounds/commentary/general/comm-start3.wav
+    - assets/sounds/commentary/general/comm-start4.wav
+    - assets/sounds/commentary/general/comm-start5.wav
     - assets/sounds/commentary/goal/comm-goal-bottomCorner.wav
+    - assets/sounds/commentary/goal/comm-goal-bottomCorner2.wav
     - assets/sounds/commentary/goal/comm-goal-bottomCorner3.wav
+    - assets/sounds/commentary/goal/comm-goal-bottomCorner4.wav
     - assets/sounds/commentary/goal/comm-goal-slow.wav
+    - assets/sounds/commentary/goal/comm-goal-slow2.wav
     - assets/sounds/commentary/goal/comm-goal-straightGoal.wav
+    - assets/sounds/commentary/goal/comm-goal-straightGoal2.wav
+    - assets/sounds/commentary/goal/comm-goal-straightGoal3.wav
     - assets/sounds/commentary/goal/comm-goal-topCorner1.wav
     - assets/sounds/commentary/goal/comm-goal-topCorner2.wav
+    - assets/sounds/commentary/goal/comm-goal-topCorner3.wav
+    - assets/sounds/commentary/goal/comm-goal-topCorner4.wav
+    - assets/sounds/commentary/goal/comm-goal-topCorner5.wav
     - assets/sounds/commentary/miss/comm-missed.wav
+    - assets/sounds/commentary/miss/comm-missed2.wav
+    - assets/sounds/commentary/miss/comm-missed3.wav
+    - assets/sounds/commentary/miss/comm-miss-crossbar1.wav
+    - assets/sounds/commentary/miss/comm-miss-crossbar2.wav
     - assets/sounds/commentary/save/comm-save-diving1.wav
     - assets/sounds/commentary/save/comm-save-diving2.wav
+    - assets/sounds/commentary/save/comm-save-diving3.wav
+    - assets/sounds/commentary/save/comm-save-diving4.wav
     - assets/sounds/commentary/save/comm-save-fingerTip.wav
+    - assets/sounds/commentary/save/comm-save-fingerTip2.wav
+    - assets/sounds/commentary/save/comm-save-fingerTip3.wav
     - assets/sounds/commentary/save/comm-save-straight.wav
+    - assets/sounds/commentary/save/comm-save-straight2.wav
+    - assets/sounds/commentary/save/comm-save-straight3.wav

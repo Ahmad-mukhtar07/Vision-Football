@@ -24,36 +24,85 @@ enum SaveKind { diving, fingerTip, straight }
 class CommentarySound {
   CommentarySound._();
 
-  static const _goalBottomCorner =
-      'sounds/commentary/goal/comm-goal-bottomCorner.wav';
-  static const _goalBottomCorner3 =
-      'sounds/commentary/goal/comm-goal-bottomCorner3.wav';
-  static const _goalSlow = 'sounds/commentary/goal/comm-goal-slow.wav';
-  static const _goalStraight = 'sounds/commentary/goal/comm-goal-straightGoal.wav';
-  static const _goalTopCorner1 = 'sounds/commentary/goal/comm-goal-topCorner1.wav';
-  static const _goalTopCorner2 = 'sounds/commentary/goal/comm-goal-topCorner2.wav';
-  static const _missed = 'sounds/commentary/miss/comm-missed.wav';
-  static const _saveDiving1 = 'sounds/commentary/save/comm-save-diving1.wav';
-  static const _saveDiving2 = 'sounds/commentary/save/comm-save-diving2.wav';
-  static const _saveFingerTip = 'sounds/commentary/save/comm-save-fingerTip.wav';
-  static const _saveStraight = 'sounds/commentary/save/comm-save-straight.wav';
-  static const _start1 = 'sounds/commentary/general/comm-start1.wav';
-  static const _start2 = 'sounds/commentary/general/comm-start2.wav';
+  // ── Start ──
+  static const _startPool = [
+    'sounds/commentary/general/comm-start1.wav',
+    'sounds/commentary/general/comm-start2.wav',
+    'sounds/commentary/general/comm-start3.wav',
+    'sounds/commentary/general/comm-start4.wav',
+    'sounds/commentary/general/comm-start5.wav',
+  ];
 
-  static const List<String> _allAssets = [
-    _goalBottomCorner,
-    _goalBottomCorner3,
-    _goalSlow,
-    _goalStraight,
-    _goalTopCorner1,
-    _goalTopCorner2,
-    _missed,
-    _saveDiving1,
-    _saveDiving2,
-    _saveFingerTip,
-    _saveStraight,
-    _start1,
-    _start2,
+  // ── Goals ──
+  static const _goalBottomCornerPool = [
+    'sounds/commentary/goal/comm-goal-bottomCorner.wav',
+    'sounds/commentary/goal/comm-goal-bottomCorner2.wav',
+    'sounds/commentary/goal/comm-goal-bottomCorner3.wav',
+    'sounds/commentary/goal/comm-goal-bottomCorner4.wav',
+    'sounds/commentary/goal/comm-goal-topCorner4.wav',
+    'sounds/commentary/goal/comm-goal-topCorner5.wav',
+  ];
+
+  static const _goalTopCornerPool = [
+    'sounds/commentary/goal/comm-goal-topCorner1.wav',
+    'sounds/commentary/goal/comm-goal-topCorner2.wav',
+    'sounds/commentary/goal/comm-goal-topCorner3.wav',
+  ];
+
+  static const _goalStraightPool = [
+    'sounds/commentary/goal/comm-goal-straightGoal.wav',
+    'sounds/commentary/goal/comm-goal-straightGoal2.wav',
+    'sounds/commentary/goal/comm-goal-straightGoal3.wav',
+  ];
+
+  static const _goalSlowPool = [
+    'sounds/commentary/goal/comm-goal-slow.wav',
+    'sounds/commentary/goal/comm-goal-slow2.wav',
+  ];
+
+  // ── Miss ──
+  static const _missPool = [
+    'sounds/commentary/miss/comm-missed.wav',
+    'sounds/commentary/miss/comm-missed2.wav',
+    'sounds/commentary/miss/comm-missed3.wav',
+  ];
+
+  static const _missCrossbarPool = [
+    'sounds/commentary/miss/comm-miss-crossbar1.wav',
+    'sounds/commentary/miss/comm-miss-crossbar2.wav',
+  ];
+
+  // ── Save ──
+  static const _saveDivingPool = [
+    'sounds/commentary/save/comm-save-diving1.wav',
+    'sounds/commentary/save/comm-save-diving2.wav',
+    'sounds/commentary/save/comm-save-diving3.wav',
+    'sounds/commentary/save/comm-save-diving4.wav',
+  ];
+
+  static const _saveFingerTipPool = [
+    'sounds/commentary/save/comm-save-fingerTip.wav',
+    'sounds/commentary/save/comm-save-fingerTip2.wav',
+    'sounds/commentary/save/comm-save-fingerTip3.wav',
+  ];
+
+  static const _saveStraightPool = [
+    'sounds/commentary/save/comm-save-straight.wav',
+    'sounds/commentary/save/comm-save-straight2.wav',
+    'sounds/commentary/save/comm-save-straight3.wav',
+  ];
+
+  static const List<List<String>> _allPools = [
+    _startPool,
+    _goalBottomCornerPool,
+    _goalTopCornerPool,
+    _goalStraightPool,
+    _goalSlowPool,
+    _missPool,
+    _missCrossbarPool,
+    _saveDivingPool,
+    _saveFingerTipPool,
+    _saveStraightPool,
   ];
 
   /// Clip lengths measured from WAV headers during [warmUp].
@@ -75,16 +124,20 @@ class CommentarySound {
   static Future<void> warmUp() async {
     if (_warmed) return;
     _warmed = true;
-    for (final asset in _allAssets) {
-      try {
-        final data = await rootBundle.load('assets/$asset');
-        final dur = _wavDuration(data.buffer.asUint8List());
-        if (dur != null) _durations[asset] = dur;
-      } catch (_) {
-        // Leave unmeasured; _play falls back to a sane default.
+    for (final pool in _allPools) {
+      for (final asset in pool) {
+        try {
+          final data = await rootBundle.load('assets/$asset');
+          final dur = _wavDuration(data.buffer.asUint8List());
+          if (dur != null) _durations[asset] = dur;
+        } catch (_) {
+          // Leave unmeasured; _play falls back to a sane default.
+        }
       }
     }
   }
+
+  static String _pick(List<String> pool) => pool[_rng.nextInt(pool.length)];
 
   /// Goal commentary. A slow goal always gets the low-pace line; corner
   /// finishes get the dramatic corner calls (with an occasional generic
@@ -93,35 +146,36 @@ class CommentarySound {
     required GoalPlacement placement,
     required bool isSlow,
   }) {
-    if (isSlow) return _play(_goalSlow);
+    if (isSlow) return _play(_pick(_goalSlowPool));
     switch (placement) {
       case GoalPlacement.topCorner:
-        if (_rng.nextDouble() < 0.15) return _play(_goalStraight);
-        return _play(_rng.nextBool() ? _goalTopCorner1 : _goalTopCorner2);
+        if (_rng.nextDouble() < 0.15) return _play(_pick(_goalStraightPool));
+        return _play(_pick(_goalTopCornerPool));
       case GoalPlacement.bottomCorner:
-        if (_rng.nextDouble() < 0.15) return _play(_goalStraight);
-        return _play(_rng.nextBool() ? _goalBottomCorner : _goalBottomCorner3);
+        if (_rng.nextDouble() < 0.15) return _play(_pick(_goalStraightPool));
+        return _play(_pick(_goalBottomCornerPool));
       case GoalPlacement.straight:
-        return _play(_goalStraight);
+        return _play(_pick(_goalStraightPool));
     }
   }
 
   static Duration playSave(SaveKind kind) {
     switch (kind) {
       case SaveKind.diving:
-        return _play(_rng.nextBool() ? _saveDiving1 : _saveDiving2);
+        return _play(_pick(_saveDivingPool));
       case SaveKind.fingerTip:
-        return _play(_saveFingerTip);
+        return _play(_pick(_saveFingerTipPool));
       case SaveKind.straight:
-        return _play(_saveStraight);
+        return _play(_pick(_saveStraightPool));
     }
   }
 
-  static Duration playMiss() => _play(_missed);
+  static Duration playMiss() => _play(_pick(_missPool));
+
+  static Duration playMissCrossbar() => _play(_pick(_missCrossbarPool));
 
   /// Kick-off line played before the starting whistle (randomized).
-  static Duration playStart() =>
-      _play(_rng.nextBool() ? _start1 : _start2);
+  static Duration playStart() => _play(_pick(_startPool));
 
   static Duration _play(String asset) {
     unawaited(_restart(asset));
