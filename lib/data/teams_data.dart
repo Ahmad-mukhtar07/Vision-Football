@@ -82,7 +82,7 @@ const Team france = Team(
 
 const Team england = Team(
   name: 'England',
-  countryCode: 'GB',
+  countryCode: 'GB-ENG',
   overall: 84,
   shooters: [
     Player(name: 'Harry Kaine', overall: 87, power: 91, accuracy: 94, curve: 75),
@@ -252,6 +252,44 @@ const Team usa = Team(
   ),
 );
 
+const Team croatia = Team(
+  name: 'Croatia',
+  countryCode: 'HR',
+  overall: 82,
+  shooters: [
+    Player(name: 'Luka Modrik', overall: 83, power: 79, accuracy: 86, curve: 85),
+    Player(name: 'Mateo Kovasich', overall: 83, power: 72, accuracy: 76, curve: 78),
+    Player(name: 'Antte Budimyr', overall: 82, power: 82, accuracy: 80, curve: 64),
+    Player(name: 'Andrej Kramarich', overall: 81, power: 80, accuracy: 82, curve: 77),
+    Player(name: 'Yvan Perisich', overall: 79, power: 81, accuracy: 78, curve: 82),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Dominik Livakovich',
+    overall: 80,
+    reflex: 83,
+    prediction: 80,
+  ),
+);
+
+const Team india = Team(
+  name: 'India',
+  countryCode: 'IN',
+  overall: 98,
+  shooters: [
+    Player(name: 'Sunil Chetry', overall: 98, power: 98, accuracy: 84, curve: 91),
+    Player(name: 'Virrat Kholi', overall: 92, power: 91, accuracy: 84, curve: 82),
+    Player(name: 'Rohit Sharma', overall: 88, power: 87, accuracy: 91, curve: 76),
+    Player(name: 'MS Dhoni', overall: 92, power: 79, accuracy: 83, curve: 99),
+    Player(name: 'Ranveer Singh', overall: 81, power: 76, accuracy: 62, curve: 99),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Gurpret Sing Sandhu',
+    overall: 95,
+    reflex: 83,
+    prediction: 80,
+  ),
+);
+
 const Team pakistan = Team(
   name: 'Pakistan',
   countryCode: 'PK',
@@ -272,10 +310,8 @@ const Team pakistan = Team(
 );
 
 
-/// All teams shown in the team picker and available for Full Match.
-///
-/// When adding a new [Team] above, append it here so it appears in-game.
-const List<Team> kAllTeams = [
+/// Standard international teams shown first in the team picker.
+const List<Team> kStandardTeams = [
   brazil,
   argentina,
   portugal,
@@ -287,9 +323,24 @@ const List<Team> kAllTeams = [
   belgium,
   netherlands,
   morocco,
+  croatia,
   norway,
   usa,
+];
+
+/// Extra teams shown under a separate "Special Teams" section.
+const List<Team> kSpecialTeams = [
+  india,
   pakistan,
+];
+
+/// All teams shown in the team picker and available for Full Match.
+///
+/// When adding a new [Team] above, append it to [kStandardTeams] or
+/// [kSpecialTeams] so it appears in-game.
+const List<Team> kAllTeams = [
+  ...kStandardTeams,
+  ...kSpecialTeams,
 ];
 
 /// Whether two [Team] values refer to the same selectable nation.

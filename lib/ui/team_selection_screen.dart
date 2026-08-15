@@ -136,30 +136,29 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
                 ),
                 _PickPrompt(active: _active),
                 Expanded(
-                  child: GridView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  child: CustomScrollView(
                     physics: const BouncingScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      mainAxisSpacing: 14,
-                      crossAxisSpacing: 14,
-                      childAspectRatio: 0.82,
-                    ),
-                    itemCount: kAllTeams.length,
-                    itemBuilder: (context, i) {
-                      final team = kAllTeams[i];
-                      final isUser =
-                          _userTeam != null && teamsMatch(team, _userTeam!);
-                      final isOpp = _opponentTeam != null &&
-                          teamsMatch(team, _opponentTeam!);
-                      return _TeamTile(
-                        team: team,
-                        selectedAsUser: isUser,
-                        selectedAsOpponent: isOpp,
-                        onTap: () => _assignToActiveSlot(team),
-                        onInfo: () => _showSquad(team),
-                      );
-                    },
+                    slivers: [
+                      _teamGridSliver(
+                        teams: kStandardTeams,
+                        crossAxisCount: crossAxisCount,
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        userTeam: _userTeam,
+                        opponentTeam: _opponentTeam,
+                        onTap: _assignToActiveSlot,
+                        onInfo: _showSquad,
+                      ),
+                      const SliverToBoxAdapter(child: _SpecialTeamsDivider()),
+                      _teamGridSliver(
+                        teams: kSpecialTeams,
+                        crossAxisCount: crossAxisCount,
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        userTeam: _userTeam,
+                        opponentTeam: _opponentTeam,
+                        onTap: _assignToActiveSlot,
+                        onInfo: _showSquad,
+                      ),
+                    ],
                   ),
                 ),
                 _StartBar(ready: _ready, onStart: _start),
@@ -167,6 +166,83 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+SliverPadding _teamGridSliver({
+  required List<Team> teams,
+  required int crossAxisCount,
+  required EdgeInsets padding,
+  required Team? userTeam,
+  required Team? opponentTeam,
+  required void Function(Team team) onTap,
+  required void Function(Team team) onInfo,
+}) {
+  return SliverPadding(
+    padding: padding,
+    sliver: SliverGrid(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 14,
+        childAspectRatio: 0.82,
+      ),
+      delegate: SliverChildBuilderDelegate(
+        (context, i) {
+          final team = teams[i];
+          final isUser = userTeam != null && teamsMatch(team, userTeam);
+          final isOpp =
+              opponentTeam != null && teamsMatch(team, opponentTeam);
+          return _TeamTile(
+            team: team,
+            selectedAsUser: isUser,
+            selectedAsOpponent: isOpp,
+            onTap: () => onTap(team),
+            onInfo: () => onInfo(team),
+          );
+        },
+        childCount: teams.length,
+      ),
+    ),
+  );
+}
+
+class _SpecialTeamsDivider extends StatelessWidget {
+  const _SpecialTeamsDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Divider(
+              color: Colors.white.withValues(alpha: 0.18),
+              thickness: 1,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'SPECIAL TEAMS',
+              style: TextStyle(
+                color: _Pal.lime.withValues(alpha: 0.9),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.8,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Divider(
+              color: Colors.white.withValues(alpha: 0.18),
+              thickness: 1,
+            ),
+          ),
+        ],
       ),
     );
   }
