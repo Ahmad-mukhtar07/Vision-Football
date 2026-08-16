@@ -32,6 +32,12 @@ enum _SetupPhase {
   playing,
 }
 
+/// Rolling-balls mode reads the leg's motion instead of a marker pass, so the
+/// marker isn't needed to play. While tuning, keep it on screen (tracking the
+/// same knee-down point the shot is read from) as visual feedback; set false to
+/// play without it.
+const bool _kShowRollingLegMarker = false;
+
 /// Full game stack: camera → Flame → HUD (landscape).
 class VisionFootballScreen extends StatefulWidget {
   const VisionFootballScreen({
@@ -42,6 +48,7 @@ class VisionFootballScreen extends StatefulWidget {
     this.opponentTeam,
     this.opponentScore,
     this.onMatchComplete,
+    this.rollingBallsMode = false,
   });
 
   final List<CameraDescription> cameras;
@@ -62,6 +69,9 @@ class VisionFootballScreen extends StatefulWidget {
   /// own match-over overlay (and full-time whistle), it reports the final
   /// [MatchState] so the orchestrator can drive half-time / full-time UI.
   final void Function(MatchState state)? onMatchComplete;
+
+  /// Rolls the ball in from the keeper before each kick with a circle pass marker.
+  final bool rollingBallsMode;
 
   @override
   State<VisionFootballScreen> createState() => _VisionFootballScreenState();
@@ -111,7 +121,8 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     // Aim is mirrored in PoseCoordinateMapper; do not flip again for ball/GK.
     _kickDetector = KickDetector(poseStream: poseStream)
       ..setMirrorPreviewAim(false)
-      ..bindGameFootMarker(_gameFootMarker);
+      ..bindGameFootMarker(_gameFootMarker)
+      ..instantCaptureMode = widget.rollingBallsMode;
     _calibration = PlayerCalibration(poseStream: poseStream);
     _calibration.addListener(_onCalibrationChanged);
 
@@ -128,13 +139,18 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       onBallBecameIdle: _gameFootMarker.snapToAnchored,
       userTeam: widget.userTeam,
       opponentKeeper: widget.opponentTeam?.keeper,
+      rollingBallsMode: widget.rollingBallsMode,
+      captureRollingKick:
+          widget.rollingBallsMode ? _kickDetector.captureLegSwingKick : null,
     );
     _kickDetector.setGameCanAcceptKick(false);
     _kickDetector.disarm();
 
     _matchStateSub = _matchController.stateStream.listen((state) {
-      if (state.phase == MatchPhase.runUp) {
+      if (state.phase == MatchPhase.runUp ||
+          state.phase == MatchPhase.readyToKick) {
         _syncMarkerBallCenter(state.shotType);
+        setState(() {});
       }
       _syncFootMarkerToMatchPhase(state.phase);
       if (!mounted) return;
@@ -547,6 +563,11 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             gameFootMarker: _gameFootMarker,
             gameAligned: playing,
             setupFullscreen: !playing,
+            useCirclePassMarker: widget.rollingBallsMode,
+            showPenaltySpot: widget.rollingBallsMode &&
+                _matchController.state.shotType == ShotType.penalty,
+            hideBootMarkerInGame:
+                widget.rollingBallsMode && !_kShowRollingLegMarker,
           ),
         if (playing && !matchOver && !_isPaused)
           HudOverlay(

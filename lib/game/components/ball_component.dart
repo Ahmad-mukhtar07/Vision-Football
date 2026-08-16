@@ -16,11 +16,17 @@ import 'goal_component.dart';
 
 enum BallState {
   idle,
+  /// Rolling from the keeper toward the kick marker (rolling-balls mode).
+  rolling,
+  /// Parked at the keeper after a shot until the next roll begins.
+  atKeeper,
   inFlight,
   scored,
   missed,
   resetting,
 }
+
+enum _RollPhase { approach, exit }
 
 /// Penalty ball — flies on kick, scores or misses, then resets.
 class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
@@ -30,6 +36,8 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     required this.layout,
     required this.onFlightEnd,
     this.onBecameIdle,
+    this.onRollingTimedOut,
+    this.onReachedPassCircle,
   }) : super(
          anchor: Anchor.center,
          size: Vector2.all(48),
@@ -49,8 +57,40 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
 
   final VoidCallback? onBecameIdle;
 
+  /// Fired when a rolling ball exits the pass circle without being struck.
+  final VoidCallback? onRollingTimedOut;
+
+  /// Called when a rolling ball's centre reaches the pass circle, then on each
+  /// frame for [_rollingStrikeGraceSeconds] after. The handler decides whether
+  /// the player's leg is swinging and strikes the ball; if it never does, the
+  /// ball rolls on past the circle and fades.
+  final VoidCallback? onReachedPassCircle;
+
   BallState _state = BallState.idle;
+
   bool get isReadyForKick => _state == BallState.idle;
+
+  /// When true, each run-up rolls the ball in from the keeper instead of
+  /// spawning it on the kick marker.
+  bool rollingBallsMode = false;
+
+  static const double _rollingApproachDurationSeconds = 3.0;
+  static const double _rollingExitDurationSeconds = 1.8;
+  static const double _rollingMinScale = 0.36;
+
+  /// A swing that lands slightly after the ball touched the circle still
+  /// counts — pose frames lag the render loop, and human timing isn't exact.
+  static const double _rollingStrikeGraceSeconds = 0.45;
+  double _rollStrikeGrace = 0;
+
+  _RollPhase _rollPhase = _RollPhase.approach;
+  Vector2? _rollStart;
+  Vector2? _rollExitStart;
+  Vector2? _rollExitEnd;
+  Vector2? _keeperRollOrigin;
+  double _rollT = 0;
+  double _rollExitT = 0;
+  double _rollOpacity = 1.0;
 
   /// Probability (0..1) that an otherwise on-target shot is nudged slightly
   /// outside the goal — used to introduce rare misses for free kicks.
@@ -148,12 +188,41 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     }
   }
 
+  /// Parks the ball at the keeper until [beginRollFromKeeper] is called.
+  void prepareRollingAtKeeper(Vector2 spawn, Vector2 fromKeeper) {
+    _spawnPosition = spawn.clone();
+    _keeperRollOrigin = fromKeeper.clone();
+    position = fromKeeper.clone();
+    _baseScale = _rollingMinScale;
+    _rollOpacity = 1.0;
+    _ballTint = null;
+    _spinAngle = 0;
+    _state = BallState.atKeeper;
+  }
+
+  /// Starts the roll toward the pass circle (call when GO appears).
+  void beginRollFromKeeper() {
+    if (!rollingBallsMode || _keeperRollOrigin == null) return;
+    if (_state != BallState.atKeeper && _state != BallState.idle) return;
+
+    _rollStart = _keeperRollOrigin!.clone();
+    _rollPhase = _RollPhase.approach;
+    _rollT = 0;
+    _rollExitT = 0;
+    _rollOpacity = 1.0;
+    position = _rollStart!.clone();
+    _baseScale = _rollingMinScale;
+    _ballTint = null;
+    _spinAngle = 0;
+    _state = BallState.rolling;
+  }
+
   /// The most recently resolved shot target (screen px), or null if the ball
   /// hasn't been struck yet. Used by the keeper to dive toward the real shot.
   Offset? get resolvedTargetScreen => _trajectory?.targetPosition;
 
   void strike(KickEvent event, {Player? shooter}) {
-    if (_state != BallState.idle) return;
+    if (_state != BallState.idle && _state != BallState.rolling) return;
 
     _activeKick = event;
     _hitCrossbar = false;
@@ -367,6 +436,8 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     switch (_state) {
       case BallState.inFlight:
         _updateInFlight(dt);
+      case BallState.rolling:
+        _updateRolling(dt);
       case BallState.scored:
       case BallState.missed:
         _postResultTimer += dt;
@@ -376,8 +447,67 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       case BallState.resetting:
         _updateResetting(dt);
       case BallState.idle:
+      case BallState.atKeeper:
         break;
     }
+  }
+
+  void _updateRolling(double dt) {
+    final start = _rollStart;
+    if (start == null) return;
+
+    if (_rollPhase == _RollPhase.approach) {
+      _rollT = (_rollT + dt / _rollingApproachDurationSeconds).clamp(0.0, 1.0);
+      final t = Curves.easeOut.transform(_rollT);
+      position = start + (_spawnPosition - start) * t;
+      _baseScale = _rollingMinScale + (1.0 - _rollingMinScale) * t;
+      _movingRight = _spawnPosition.x >= start.x;
+
+      if (_rollT >= 1.0) {
+        _rollPhase = _RollPhase.exit;
+        _rollExitT = 0;
+        _rollStrikeGrace = 0;
+        _rollExitStart = _spawnPosition.clone();
+        _rollExitEnd = Vector2(
+          _spawnPosition.x,
+          _spawnPosition.y + layout.height * 0.14,
+        );
+        // May strike the ball synchronously (state becomes inFlight), which
+        // ends the roll before the exit phase ever runs.
+        onReachedPassCircle?.call();
+      }
+      return;
+    }
+
+    if (_rollStrikeGrace < _rollingStrikeGraceSeconds) {
+      _rollStrikeGrace += dt;
+      onReachedPassCircle?.call();
+      if (_state != BallState.rolling) return;
+    }
+
+    _rollExitT =
+        (_rollExitT + dt / _rollingExitDurationSeconds).clamp(0.0, 1.0);
+    final exitT = Curves.easeIn.transform(_rollExitT);
+    final exitStart = _rollExitStart ?? _spawnPosition;
+    final exitEnd = _rollExitEnd ??
+        Vector2(_spawnPosition.x, _spawnPosition.y + layout.height * 0.14);
+    position = exitStart + (exitEnd - exitStart) * exitT;
+    _baseScale = 1.0 + 0.06 * exitT;
+    _rollOpacity = 1.0 - exitT;
+
+    if (_rollExitT >= 1.0) {
+      _finishRollingTimedOut();
+    }
+  }
+
+  void _finishRollingTimedOut() {
+    if (_keeperRollOrigin != null) {
+      position = _keeperRollOrigin!.clone();
+    }
+    _baseScale = _rollingMinScale;
+    _rollOpacity = 1.0;
+    _state = BallState.atKeeper;
+    onRollingTimedOut?.call();
   }
 
   void _updateInFlight(double dt) {
@@ -521,6 +651,15 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   }
 
   void _beginReset() {
+    if (rollingBallsMode && _keeperRollOrigin != null) {
+      position = _keeperRollOrigin!.clone();
+      _baseScale = _rollingMinScale;
+      _ballTint = null;
+      _spinAngle = 0;
+      _state = BallState.atKeeper;
+      return;
+    }
+
     _state = BallState.resetting;
     _resetFrom = position.clone();
     _resetStartScale = _baseScale;
@@ -602,6 +741,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       right: right,
       spinAngle: _spinAngle,
       movingRight: _movingRight,
+      opacity: _rollOpacity,
       tintColor: _ballTint,
     );
   }

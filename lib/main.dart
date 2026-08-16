@@ -184,6 +184,12 @@ class _AppBootstrapState extends State<AppBootstrap> {
         cameras: _cameras!,
         onReturnToMenu: _returnToMainMenu,
       );
+    } else if (_selectedMode == GameMode.rollingBalls) {
+      body = VisionFootballScreen(
+        cameras: _cameras!,
+        onReturnToMenu: _returnToMainMenu,
+        rollingBallsMode: true,
+      );
     } else if (_selectedMode == GameMode.kickingTutorial) {
       body = KickingTutorialScreen(
         cameras: _cameras!,

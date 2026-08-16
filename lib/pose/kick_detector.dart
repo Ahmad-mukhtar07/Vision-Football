@@ -77,8 +77,50 @@ class KickDetector {
   double? _neutralZ;
   Size? _imageSize;
 
+  /// Rest position of the knee-down leg point, captured alongside the ankle
+  /// neutral. The leg centre sits above the ankle, so lift/loft in a captured
+  /// swing must be measured against this baseline, not the ankle's.
+  Offset? _legNeutralPosition;
+
   final Queue<_FootFrame> _buffer = Queue<_FootFrame>();
   static const int _bufferSize = 6; // Fix 8: was 3, now ~200ms at 30fps
+
+  /// Rolling-balls mode: no strike is ever emitted from the pose stream.
+  /// The game asks for the leg's motion at the moment the ball reaches the
+  /// pass circle instead (see [captureLegSwingKick]), which removes the
+  /// Z-thrust and planted-foot gates from the equation entirely.
+  bool instantCaptureMode = false;
+
+  /// Knee-down (knee/ankle/heel/toe) samples of the kicking leg, tracked on
+  /// every pose frame regardless of arming so a capture can be taken at any
+  /// instant. The whole lower leg is used instead of the ankle alone because
+  /// the ankle drops in and out of confidence at foot-level camera angles,
+  /// while the knee stays visible through the entire swing.
+  final Queue<_FootFrame> _legBuffer = Queue<_FootFrame>();
+  static const int _legBufferSize = 14;
+
+  /// Leg samples this fresh count toward a capture. Generous, because pose
+  /// frames arrive well below render rate and the swing that struck the ball
+  /// may have peaked a few frames before the ball reached the circle.
+  static const Duration _legCaptureWindow = Duration(milliseconds: 500);
+
+  /// If the window holds fewer than two samples (pose stream hiccup), fall
+  /// back to the last two samples as long as the newest is at least this
+  /// recent — better than scoring a miss the player didn't make.
+  static const Duration _legCaptureMaxStaleness = Duration(milliseconds: 420);
+
+  /// Per-frame leg travel (normalized) that reads as a swing.
+  static const double _legCaptureMinSpeed = 0.006;
+
+  /// Total leg travel across the window that reads as a swing even when no
+  /// single frame was fast (slow pose delivery smears a kick over frames).
+  static const double _legCaptureMinTravel = 0.035;
+
+  /// Floor for captured power so a slow-but-real contact still travels.
+  static const double _legCaptureMinPower = 0.28;
+
+  DateTime? _lastRollCaptureLog;
+  static const Duration _rollCaptureLogCooldown = Duration(milliseconds: 400);
 
   Offset? _lastAcceptedPosition;
   DateTime? _cooldownEndsAt;
@@ -126,6 +168,7 @@ class KickDetector {
 
   void setKickingFoot(KickingFoot foot) {
     _lockedIsLeft = foot.isLeft;
+    _legBuffer.clear();
     _resetTrackingState();
     disableKicks();
   }
@@ -140,6 +183,7 @@ class KickDetector {
 
   void clearKickingFoot() {
     _lockedIsLeft = null;
+    _legBuffer.clear();
     _resetTrackingState();
     disableKicks();
   }
@@ -147,6 +191,8 @@ class KickDetector {
   void applyCalibration(Offset neutralPosition, {double? neutralZ}) {
     _neutralPosition = neutralPosition;
     _neutralZ = neutralZ;
+    // The player is standing in their rest stance right now.
+    _legNeutralPosition = _averageLegPosition();
     _detectionArmed = false;
     _resetTrackingState();
     _phase = KickPhase.idle;
@@ -184,6 +230,7 @@ class KickDetector {
     _detectionArmed = false;
     _neutralPosition = null;
     _neutralZ = null;
+    _legNeutralPosition = null;
     _gameFootMarker?.endGameMode();
     _resetTrackingState();
     _phase = KickPhase.idle;
@@ -226,15 +273,26 @@ class KickDetector {
     // which is only updated inside the armed gate, so during run-up the
     // accumulated delta grows stale and silently blocks every frame.
     final kickingForMarker = _sampleKickingAnkle(landmarks, imageSize);
-    _emitKickingFootVisible(kickingForMarker != null);
-    if (kickingForMarker != null) {
+    final leg = _trackKneeDownLeg(landmarks, imageSize);
+    _emitKickingFootVisible(
+      kickingForMarker != null || (instantCaptureMode && leg != null),
+    );
+
+    // Instant-capture mode drives the marker off the same knee-down point the
+    // capture reads, so what's on screen is what the shot will be taken from.
+    final markerPoint = instantCaptureMode
+        ? (_markerPointForLeg(leg?.position) ?? kickingForMarker?.position)
+        : kickingForMarker?.position;
+    if (markerPoint != null) {
       final footScale = _sampleKickingFootScale(landmarks, imageSize);
       _gameFootMarker?.updateFromFoot(
-        kickingForMarker.position,
+        markerPoint,
         footScale: footScale,
-        ankleZ: kickingForMarker.z,
+        ankleZ: kickingForMarker?.z,
       );
     }
+
+    if (instantCaptureMode) return;
 
     if (!_detectionArmed) return;
 
@@ -418,6 +476,248 @@ class KickDetector {
       ),
       confidence: ankle.likelihood,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Knee-down leg tracking (rolling-balls instant capture)
+  // ---------------------------------------------------------------------------
+
+  ({Offset position, double confidence})? _trackKneeDownLeg(
+    List<PoseLandmark> landmarks,
+    Size imageSize,
+  ) {
+    final leg = _sampleKneeDownLeg(landmarks, imageSize);
+    if (leg == null) return null;
+    _legBuffer.addLast(
+      _FootFrame(
+        positionNormalized: leg.position,
+        z: 0,
+        confidence: leg.confidence,
+        timestamp: DateTime.now(),
+      ),
+    );
+    while (_legBuffer.length > _legBufferSize) {
+      _legBuffer.removeFirst();
+    }
+    return leg;
+  }
+
+  /// The tracked leg point shifted into the ankle's frame of reference, so the
+  /// on-screen marker still rests on its anchor below the ball while moving
+  /// with the whole lower leg.
+  Offset? _markerPointForLeg(Offset? legPosition) {
+    if (legPosition == null) return null;
+    final legNeutral = _legNeutralPosition;
+    final ankleNeutral = _neutralPosition;
+    if (legNeutral == null || ankleNeutral == null) return legPosition;
+    return legPosition - (legNeutral - ankleNeutral);
+  }
+
+  /// Weighted centre of the kicking leg from the knee down. Weights lean
+  /// toward the foot (that's what strikes the ball) while the knee keeps the
+  /// point stable when the toe/heel flicker out of view.
+  ({Offset position, double confidence})? _sampleKneeDownLeg(
+    List<PoseLandmark> landmarks,
+    Size imageSize,
+  ) {
+    final locked = _lockedIsLeft;
+    if (locked == null) return null;
+
+    final byType = {for (final l in landmarks) l.type: l};
+    final weights = <PoseLandmarkType, double>{
+      locked ? PoseLandmarkType.leftKnee : PoseLandmarkType.rightKnee: 0.25,
+      locked ? PoseLandmarkType.leftAnkle : PoseLandmarkType.rightAnkle: 0.4,
+      locked ? PoseLandmarkType.leftHeel : PoseLandmarkType.rightHeel: 0.15,
+      locked
+          ? PoseLandmarkType.leftFootIndex
+          : PoseLandmarkType.rightFootIndex: 0.2,
+    };
+
+    // Lower-leg points sit at the edge of the frame at foot-level angles and
+    // blur during the swing itself, so accept them far below the strike
+    // confidence used for the ankle-only model — losing the swing frames is
+    // what makes a real kick read as a miss.
+    const minLikelihood = 0.25;
+    final isFront = PoseDetectorService.instance.isFrontCamera;
+
+    var weightSum = 0.0;
+    var confidenceSum = 0.0;
+    var x = 0.0;
+    var y = 0.0;
+    weights.forEach((type, weight) {
+      final landmark = byType[type];
+      if (landmark == null || landmark.likelihood < minLikelihood) return;
+      final norm = PoseCoordinateMapper.landmarkToNormalized(
+        landmark: landmark,
+        imageSize: imageSize,
+        isFrontCamera: isFront,
+      );
+      x += norm.dx * weight;
+      y += norm.dy * weight;
+      confidenceSum += landmark.likelihood * weight;
+      weightSum += weight;
+    });
+
+    // A single visible joint (usually the knee) is enough to keep tracking.
+    if (weightSum < 0.15) return null;
+    return (
+      position: Offset(x / weightSum, y / weightSum),
+      confidence: confidenceSum / weightSum,
+    );
+  }
+
+  Offset? _averageLegPosition() {
+    if (_legBuffer.isEmpty) return null;
+    var sum = Offset.zero;
+    for (final frame in _legBuffer) {
+      sum += frame.positionNormalized;
+    }
+    return sum / _legBuffer.length.toDouble();
+  }
+
+  /// Snapshot of the kicking leg's motion right now, mapped into a
+  /// [KickEvent] — used by rolling-balls mode, where the ball is struck at the
+  /// instant it reaches the pass circle rather than when a Z-thrust is seen.
+  /// Returns null when the leg is missing or effectively still, meaning the
+  /// player didn't make contact and the ball should roll on.
+  KickEvent? captureLegSwingKick() {
+    if (_lockedIsLeft == null) return null;
+
+    final now = DateTime.now();
+    var frames = _legBuffer
+        .where((f) => now.difference(f.timestamp) <= _legCaptureWindow)
+        .toList();
+    if (frames.length < 2 && _legBuffer.length >= 2) {
+      final all = _legBuffer.toList();
+      if (now.difference(all.last.timestamp) <= _legCaptureMaxStaleness) {
+        frames = all.sublist(all.length - 2);
+      }
+    }
+    if (frames.length < 2) {
+      _logRollCapture('[KD] roll capture — leg not tracked at ball arrival');
+      return null;
+    }
+
+    // Fastest frame in the window is where contact happened — the leg may have
+    // already begun decelerating by the time the ball reached the circle.
+    var peakIdx = frames.length - 1;
+    var xySpeed = 0.0;
+    for (var i = 1; i < frames.length; i++) {
+      final d = (frames[i].positionNormalized - frames[i - 1].positionNormalized)
+          .distance;
+      if (d > xySpeed) {
+        xySpeed = d;
+        peakIdx = i;
+      }
+    }
+
+    final contact = frames[peakIdx];
+    final swingDelta =
+        contact.positionNormalized - frames.first.positionNormalized;
+    final windowTravel = swingDelta.distance;
+
+    if (xySpeed < _legCaptureMinSpeed && windowTravel < _legCaptureMinTravel) {
+      _logRollCapture(
+        '[KD] roll capture — leg still (speed=${xySpeed.toStringAsFixed(3)} '
+        'travel=${windowTravel.toStringAsFixed(3)})',
+      );
+      return null;
+    }
+
+    final contactDelta =
+        contact.positionNormalized - frames[peakIdx - 1].positionNormalized;
+
+    // Take whichever reads faster: the single quickest frame, or the whole
+    // window's travel. A kick smeared across slow pose frames still hits hard.
+    final peakVelocity = _velocityOf(
+      xySpeed,
+      frames[peakIdx - 1].timestamp,
+      contact.timestamp,
+    );
+    final windowVelocity = _velocityOf(
+      windowTravel,
+      frames.first.timestamp,
+      contact.timestamp,
+    );
+    final velocity =
+        peakVelocity > windowVelocity ? peakVelocity : windowVelocity;
+    final power = (velocity / _config.maxXyVelocityNorm)
+        .clamp(_legCaptureMinPower, 1.0);
+
+    final sensorDegrees =
+        PoseDetectorService.instance.cameraSensorOrientation ??
+        PoseDetectorService.instance.sensorRotationDegrees ??
+        0;
+
+    final neutral = _legNeutralPosition ?? contact.positionNormalized;
+
+    Offset neutralAimBoost = Offset.zero;
+    if (_legNeutralPosition != null && swingDelta.distance < 0.02) {
+      neutralAimBoost = (contact.positionNormalized - neutral) * 0.5;
+    }
+
+    final aimDelta = _lateralAimDelta(
+      swingDelta + neutralAimBoost,
+      contactDelta,
+      sensorDegrees,
+    );
+    final normalizedAim = Offset(
+      (aimDelta.dx / _config.aimReferenceDelta).clamp(-1.0, 1.0),
+      aimDelta.dy,
+    );
+    final lateralAimWide =
+        (aimDelta.dx / _config.aimReferenceDelta).clamp(-1.6, 1.6);
+
+    final kickType = _classifyType(
+      footPos: contact.positionNormalized,
+      neutralPos: neutral,
+      xyDelta: contactDelta,
+      swingDelta: swingDelta,
+      xySpeed: xySpeed,
+    );
+    final loft =
+        ((neutral.dy - contact.positionNormalized.dy) / _loftReferenceRise)
+            .clamp(0.0, 1.0);
+
+    final event = KickEvent(
+      footPositionNormalized: contact.positionNormalized,
+      strikeDeltaNormalized: normalizedAim,
+      strikeSpeed: xySpeed,
+      kickPower: power,
+      type: kickType,
+      timestamp: now,
+      spinX: _computeSpinX(frames, peakIdx),
+      loft: loft,
+      lateralAim: lateralAimWide,
+    );
+
+    _gameFootMarker?.onShotFired();
+    debugPrint(
+      '[KD] ══ ROLL CAPTURE ══ frames=${frames.length} '
+      'speed=${xySpeed.toStringAsFixed(3)} '
+      'travel=${windowTravel.toStringAsFixed(3)} '
+      'power=${power.toStringAsFixed(2)} '
+      'aim=(${normalizedAim.dx.toStringAsFixed(2)}, '
+      '${normalizedAim.dy.toStringAsFixed(3)}) type=${kickType.name}',
+    );
+    return event;
+  }
+
+  /// Normalized units per second between two samples. The gap is clamped so a
+  /// stalled pose stream can't read as an impossibly slow (or fast) swing.
+  double _velocityOf(double distance, DateTime from, DateTime to) {
+    final ms = to.difference(from).inMicroseconds / 1000.0;
+    return distance / (ms.clamp(16.0, 220.0) / 1000.0);
+  }
+
+  void _logRollCapture(String message) {
+    final now = DateTime.now();
+    if (_lastRollCaptureLog != null &&
+        now.difference(_lastRollCaptureLog!) < _rollCaptureLogCooldown) {
+      return;
+    }
+    _lastRollCaptureLog = now;
+    debugPrint(message);
   }
 
   // ---------------------------------------------------------------------------

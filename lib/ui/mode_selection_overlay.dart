@@ -14,6 +14,7 @@ import 'profile_settings_sheet.dart';
 enum GameMode {
   fullMatch,
   takeShots,
+  rollingBalls,
   beTheKeeper,
   kickingTutorial,
   keepingTutorial,
@@ -21,7 +22,7 @@ enum GameMode {
 
 /// When false, standalone practice modes are hidden from the Full Match picker
 /// (Take Shots / Be the Keeper). Routing in [main.dart] is unchanged.
-const _kShowStandalonePracticeModes = false;
+const _kShowStandalonePracticeModes = true;
 
 /// When false, the Tutorials card and kicking/keeping tutorial picker are
 /// hidden from the home screen. Routing in [main.dart] is unchanged.
@@ -1555,6 +1556,14 @@ class _FullMatchRoleSheet extends StatelessWidget {
                 accent: _Arcade.green,
                 icon: Icons.sports_soccer_rounded,
                 onTap: () => onModeSelected(GameMode.takeShots),
+              ),
+              const SizedBox(height: 12),
+              _RoleButton(
+                title: 'Rolling Balls',
+                subtitle: 'Strike the ball as it rolls in',
+                accent: _Arcade.lime,
+                icon: Icons.track_changes_rounded,
+                onTap: () => onModeSelected(GameMode.rollingBalls),
               ),
               const SizedBox(height: 12),
               _RoleButton(

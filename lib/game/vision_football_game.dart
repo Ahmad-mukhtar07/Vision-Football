@@ -24,6 +24,8 @@ class VisionFootballGame extends FlameGame {
     this.onBallBecameIdle,
     this.userTeam,
     this.opponentKeeper,
+    this.rollingBallsMode = false,
+    this.captureRollingKick,
   }) : _kickStream = kickStream;
 
   final Stream<KickEvent> _kickStream;
@@ -36,6 +38,14 @@ class VisionFootballGame extends FlameGame {
 
   /// Opposing keeper whose reflex/prediction stats drive the AI keeper.
   final GoalkeeperRating? opponentKeeper;
+
+  /// Rolls the ball in from the keeper before each kick instead of placing it
+  /// on the marker.
+  final bool rollingBallsMode;
+
+  /// Reads the player's leg motion at the instant the rolling ball reaches the
+  /// pass circle. Null means the leg wasn't moving — no shot is taken.
+  final KickEvent? Function()? captureRollingKick;
 
   final StreamController<GoalEvent> _goalController =
       StreamController<GoalEvent>.broadcast();
@@ -72,6 +82,9 @@ class VisionFootballGame extends FlameGame {
       layout: _layout,
       onFlightEnd: _onFlightEnd,
       onBecameIdle: onBallBecameIdle,
+      onRollingTimedOut: rollingBallsMode ? _onRollingTimedOut : null,
+      onReachedPassCircle:
+          rollingBallsMode ? _onRollingBallReachedCircle : null,
     );
 
     await add(_sky);
@@ -87,11 +100,30 @@ class VisionFootballGame extends FlameGame {
   }
 
   void _onKick(KickEvent event) {
+    // Rolling balls are struck only from the leg snapshot taken when the ball
+    // reaches the circle, never from a detected thrust.
+    if (rollingBallsMode) return;
     if (!_ball.isReadyForKick) {
       debugPrint('[KD] strike ignored (ball busy)');
       return;
     }
     debugPrint('[KD] >>> BALL SHOT <<<');
+    _launchShot(event);
+  }
+
+  /// The rolling ball's centre is on the circle right now: whatever the leg is
+  /// doing at this instant becomes the shot.
+  void _onRollingBallReachedCircle() {
+    final event = captureRollingKick?.call();
+    if (event == null) {
+      debugPrint('[KD] rolling ball passed the circle untouched');
+      return;
+    }
+    debugPrint('[KD] >>> ROLLING BALL SHOT <<<');
+    _launchShot(event);
+  }
+
+  void _launchShot(KickEvent event) {
     GamePlaySound.playBallKick();
     matchController.onBallInFlight();
     _ball.strike(event, shooter: _currentShooter());
@@ -205,6 +237,8 @@ class VisionFootballGame extends FlameGame {
   void _onMatchState(MatchState state) {
     if (state.phase == MatchPhase.runUp) {
       _applyShotType(state.shotType);
+    } else if (rollingBallsMode && state.phase == MatchPhase.readyToKick) {
+      _ball.beginRollFromKeeper();
     }
   }
 
@@ -224,10 +258,16 @@ class VisionFootballGame extends FlameGame {
     _pitch.ballSpawnY = spawnY;
     _pitch.goalBottomY = _goal.visualBottomY;
     _pitch.visualScale = scale;
-    _ball.resetToSpawn(Vector2(
+    _ball.rollingBallsMode = rollingBallsMode;
+    final spawn = Vector2(
       _layout.width * LayoutConstants.ballSpawnXFraction,
       spawnY,
-    ));
+    );
+    if (rollingBallsMode) {
+      _ball.prepareRollingAtKeeper(spawn, _keeperRollOrigin());
+    } else {
+      _ball.resetToSpawn(spawn);
+    }
     // Free kicks are tougher: rare chance the shot misses just outside the
     // post / over the bar. Penalties always stay on target. Easy mode keeps
     // every shot on target regardless of type.
@@ -235,6 +275,22 @@ class VisionFootballGame extends FlameGame {
     _ball.easyMode = easy;
     _ball.missProbability = (isPenalty || easy) ? 0.0 : 0.15;
     _ball.isPenalty = isPenalty;
+  }
+
+  Vector2 _keeperRollOrigin() {
+    final goal = _goal.effectiveGoalRect;
+    return Vector2(
+      goal.center.dx,
+      goal.bottom + _layout.height * 0.025,
+    );
+  }
+
+  void _onRollingTimedOut() {
+    GamePlaySound.playBoo();
+    final commentary = CommentarySound.playMiss();
+    final hold = commentary + const Duration(milliseconds: 500);
+    matchController.onBallInFlight();
+    matchController.kickTaken(KickResult.miss, holdFor: hold);
   }
 
   @override
