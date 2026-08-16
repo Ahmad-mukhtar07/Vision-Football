@@ -97,6 +97,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
       controller: _controller,
       onShotResolved: _onShotResolved,
       userKeeper: widget.userTeam?.keeper,
+      opponentTeam: widget.opponentTeam,
     );
     _handSub = HandDetectorService.instance.handFrames.listen(_onHandFrame);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -106,6 +107,12 @@ class _KeeperScreenState extends State<KeeperScreen> {
     unawaited(_game.ready().then((_) {
       if (mounted) setState(() {});
     }));
+  }
+
+  @override
+  void didUpdateWidget(KeeperScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _game.opponentTeam = widget.opponentTeam;
   }
 
   void _onHandFrame(HandFrame frame) {

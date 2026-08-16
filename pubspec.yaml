@@ -67,6 +67,13 @@ flutter:
     - assets/images/shooter/Player-Impact.png
     - assets/images/shooter/Player-FollowThrough.png
     - assets/images/shooter/Player-Recovery.png
+    - assets/images/shooter/kits-only/Kit-Player-IdlePosition.png
+    - assets/images/shooter/kits-only/Kit-Player-Right-RunUp.png
+    - assets/images/shooter/kits-only/Kit-Player-Left-RunUp.png
+    - assets/images/shooter/kits-only/Kit-Player-Backswing.png
+    - assets/images/shooter/kits-only/Kit-Player-Impact.png
+    - assets/images/shooter/kits-only/Kit-Player-FollowThrough.png
+    - assets/images/shooter/kits-only/Kit-Player-Recovery.png
     - assets/images/outlines/upperbody-outline.png
     - assets/images/outlines/lowerbody-outline.png
     - assets/images/stadium/keeping/stadium-keeper-view-us.png

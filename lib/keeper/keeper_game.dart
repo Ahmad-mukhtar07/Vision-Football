@@ -28,6 +28,7 @@ class KeeperGame extends FlameGame {
     required this.controller,
     required this.onShotResolved,
     this.userKeeper,
+    this.opponentTeam,
   });
 
   final KeeperMatchController controller;
@@ -36,6 +37,10 @@ class KeeperGame extends FlameGame {
   /// The user's keeper. Reflex widens the catch radius (reach) and prediction
   /// lets saves register a touch earlier in flight. Null = neutral defaults.
   final GoalkeeperRating? userKeeper;
+
+  /// Opponent nation whose [Team.kitPrimaryColor] tints the shooter kit.
+  /// Updated when the selected opponent changes.
+  Team? opponentTeam;
 
   /// The opponent shooter taking the upcoming shot. Set by the screen before
   /// each [prepareShot] so power/accuracy/curve shape the shot. Null = neutral.

@@ -5,6 +5,8 @@
 /// tuning of how a rating maps to ball physics lives in one place.
 library;
 
+import 'dart:ui' show Color;
+
 /// A single outfield shooter and their shot attributes.
 class Player {
   const Player({
@@ -69,6 +71,7 @@ class Team {
   const Team({
     required this.name,
     required this.countryCode,
+    required this.kitPrimaryColor,
     required this.overall,
     required this.shooters,
     required this.keeper,
@@ -78,6 +81,9 @@ class Team {
 
   /// ISO-3166 alpha-2 country code (e.g. 'BR'), used to render the flag.
   final String countryCode;
+
+  /// Primary shirt color tinted onto the keeper-mode shooter kit overlay.
+  final Color kitPrimaryColor;
 
   /// Display overall rating (authored independently of squad averages). 0–100.
   final int overall;

@@ -24,6 +24,17 @@ class ShooterComponent extends PositionComponent
     'shooter/Player-Recovery.png',
   ];
 
+  /// Kit-only overlays, mapped 1:1 to [_frameAssets] by pose filename.
+  static const List<String> _kitAssets = [
+    'shooter/kits-only/Kit-Player-IdlePosition.png',
+    'shooter/kits-only/Kit-Player-Right-RunUp.png',
+    'shooter/kits-only/Kit-Player-Left-RunUp.png',
+    'shooter/kits-only/Kit-Player-Backswing.png',
+    'shooter/kits-only/Kit-Player-Impact.png',
+    'shooter/kits-only/Kit-Player-FollowThrough.png',
+    'shooter/kits-only/Kit-Player-Recovery.png',
+  ];
+
   /// Durations for kick frames 1–5 (right run-up through follow-through).
   static const List<double> _segmentDurations = [
     0.10, // 1 — right run-up
@@ -38,6 +49,7 @@ class ShooterComponent extends PositionComponent
   static const double _approachScaleEnd = 1.0;
 
   final List<Image?> _frames = List.filled(7, null);
+  final List<Image?> _kitFrames = List.filled(7, null);
 
   KeeperSpotType _spotType = KeeperSpotType.penalty;
   _ShooterPhase _phase = _ShooterPhase.idle;
@@ -78,6 +90,7 @@ class ShooterComponent extends PositionComponent
     await super.onLoad();
     for (var i = 0; i < _frameAssets.length; i++) {
       _frames[i] = await game.images.load(_frameAssets[i]);
+      _kitFrames[i] = await game.images.load(_kitAssets[i]);
     }
   }
 
@@ -165,6 +178,38 @@ class ShooterComponent extends PositionComponent
 
     _drawGroundShadow(canvas, foot, scale);
     canvas.drawImageRect(img, src, dst, Paint());
+
+    final kit = _kitFrames[_frameIndex];
+    final kitColor = game.opponentTeam?.kitPrimaryColor;
+    if (kit != null && kitColor != null) {
+      final kitSrc = Rect.fromLTWH(
+        0,
+        0,
+        kit.width.toDouble(),
+        kit.height.toDouble(),
+      );
+      canvas.drawImageRect(
+        kit,
+        kitSrc,
+        dst,
+        _kitTintPaint(kitColor),
+      );
+    }
+  }
+
+  /// Tints the shaded kit overlay while preserving its highlights/shadows and
+  /// leaving fully transparent pixels untouched (unlike [BlendMode.multiply]).
+  static Paint _kitTintPaint(Color color) {
+    final r = color.r;
+    final g = color.g;
+    final b = color.b;
+    return Paint()
+      ..colorFilter = ColorFilter.matrix(<double>[
+        r, 0, 0, 0, 0,
+        0, g, 0, 0, 0,
+        0, 0, b, 0, 0,
+        0, 0, 0, 1, 0,
+      ]);
   }
 
   void _drawGroundShadow(Canvas canvas, Offset foot, double scale) {

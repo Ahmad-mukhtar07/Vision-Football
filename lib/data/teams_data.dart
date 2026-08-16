@@ -1,3 +1,5 @@
+import 'dart:ui' show Color;
+
 import '../models/team.dart';
 
 /// Static roster of selectable international teams for Quick Match.
@@ -7,6 +9,7 @@ import '../models/team.dart';
 const Team brazil = Team(
   name: 'Brazil',
   countryCode: 'BR',
+  kitPrimaryColor: Color(0xFFFFDC02),
   overall: 88,
   shooters: [
     Player(name: 'Vinny Junior', overall: 89, power: 80, accuracy: 75, curve: 82),
@@ -26,6 +29,7 @@ const Team brazil = Team(
 const Team argentina = Team(
   name: 'Argentina',
   countryCode: 'AR',
+  kitPrimaryColor: Color(0xFF75AADB),
   overall: 84,
   shooters: [
     Player(name: 'Leon Mesi', overall: 85, power: 82, accuracy: 96, curve: 95),
@@ -45,6 +49,7 @@ const Team argentina = Team(
 const Team portugal = Team(
   name: 'Portugal',
   countryCode: 'PT',
+  kitPrimaryColor: Color(0xFFE11B22),
   overall: 87,
   shooters: [
     Player(name: 'Cristian Rinaldi', overall: 86, power: 91, accuracy: 89, curve: 76),
@@ -64,6 +69,7 @@ const Team portugal = Team(
 const Team france = Team(
   name: 'France',
   countryCode: 'FR',
+  kitPrimaryColor: Color(0xFF051A44),
   overall: 89,
   shooters: [
     Player(name: 'Killian M\'Bape', overall: 91, power: 89, accuracy: 90, curve: 79),
@@ -83,6 +89,7 @@ const Team france = Team(
 const Team england = Team(
   name: 'England',
   countryCode: 'GB-ENG',
+  kitPrimaryColor: Color(0xFFFFFFFF),
   overall: 84,
   shooters: [
     Player(name: 'Harry Kaine', overall: 87, power: 91, accuracy: 94, curve: 75),
@@ -102,6 +109,7 @@ const Team england = Team(
 const Team spain = Team(
   name: 'Spain',
   countryCode: 'ES',
+  kitPrimaryColor: Color(0xFFDC143C),
   overall: 88,
   shooters: [
     Player(name: 'Lamine Jamal', overall: 88, power: 74, accuracy: 85, curve: 90),
@@ -121,6 +129,7 @@ const Team spain = Team(
 const Team germany = Team(
   name: 'Germany',
   countryCode: 'DE',
+  kitPrimaryColor: Color(0xFFFFFFFF),
   overall: 85,
   shooters: [
     Player(name: 'Florian Virts', overall: 82, power: 76, accuracy: 88, curve: 85),
@@ -141,6 +150,7 @@ const Team germany = Team(
 const Team italy = Team(
   name: 'Italy',
   countryCode: 'IT',
+  kitPrimaryColor: Color(0xFF004BB3),
   overall: 83,
   shooters: [
     Player(name: 'Federigo Chieza', overall: 83, power: 82, accuracy: 78, curve: 81),
@@ -160,6 +170,7 @@ const Team italy = Team(
 const Team belgium = Team(
   name: 'Belgium',
   countryCode: 'BE',
+  kitPrimaryColor: Color(0xFFC8102E),
   overall: 82,
   shooters: [
     Player(name: 'Kevin De Broyna', overall: 90, power: 85, accuracy: 88, curve: 92),
@@ -179,6 +190,7 @@ const Team belgium = Team(
 const Team netherlands = Team(
   name: 'Netherlands',
   countryCode: 'NL',
+  kitPrimaryColor: Color(0xFFF36C21),
   overall: 84,
   shooters: [
     Player(name: 'Kodi Jakpo', overall: 83, power: 81, accuracy: 82, curve: 83),
@@ -198,6 +210,7 @@ const Team netherlands = Team(
 const Team morocco = Team(
   name: 'Morocco',
   countryCode: 'MA',
+  kitPrimaryColor: Color(0xFFE50011),
   overall: 80,
   shooters: [
     Player(name: 'Brahim Dyaz', overall: 82, power: 75, accuracy: 79, curve: 80),
@@ -217,6 +230,7 @@ const Team morocco = Team(
 const Team norway = Team(
   name: 'Norway',
   countryCode: 'NO',
+  kitPrimaryColor: Color(0xFFBA0C2F),
   overall: 78,
   shooters: [
     Player(name: 'Erlin Hailand', overall: 91, power: 93, accuracy: 91, curve: 77),
@@ -236,6 +250,7 @@ const Team norway = Team(
 const Team usa = Team(
   name: 'United States',
   countryCode: 'US',
+  kitPrimaryColor: Color(0xFFFFFFFF),
   overall: 77,
   shooters: [
     Player(name: 'Kristian Pulisik', overall: 82, power: 76, accuracy: 79, curve: 78),
@@ -255,6 +270,7 @@ const Team usa = Team(
 const Team croatia = Team(
   name: 'Croatia',
   countryCode: 'HR',
+  kitPrimaryColor: Color(0xFFFF0000),
   overall: 82,
   shooters: [
     Player(name: 'Luka Modrik', overall: 83, power: 79, accuracy: 86, curve: 85),
@@ -274,6 +290,7 @@ const Team croatia = Team(
 const Team india = Team(
   name: 'India',
   countryCode: 'IN',
+  kitPrimaryColor: Color(0xFF00A3E0),
   overall: 98,
   shooters: [
     Player(name: 'Sunil Chetry', overall: 98, power: 98, accuracy: 84, curve: 91),
@@ -293,6 +310,7 @@ const Team india = Team(
 const Team pakistan = Team(
   name: 'Pakistan',
   countryCode: 'PK',
+  kitPrimaryColor: Color(0xFF00401A),
   overall: 98,
   shooters: [
     Player(name: 'Otis Khan', overall: 98, power: 98, accuracy: 85, curve: 98),
