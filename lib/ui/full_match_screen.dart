@@ -3,6 +3,7 @@ import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../game/full_match_shootout.dart';
 import '../game/match_state.dart';
 import '../keeper/keeper_match_state.dart';
 import '../keeper/keeper_screen.dart';
@@ -150,6 +151,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
 
   Widget _buildHalf(int half) {
     final role = _roleForHalf(half);
+    final isSecondHalf = half == 2;
     if (role == MatchRole.shooter) {
       return VisionFootballScreen(
         key: ValueKey('fm-shooter-$half'),
@@ -159,6 +161,11 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
         opponentTeam: _opponentTeam,
         opponentScore: _opponentGoals,
         onMatchComplete: _onShootingHalfDone,
+        fullMatchHalfConfig: isSecondHalf
+            ? FullMatchHalfConfig.secondHalfShooting(
+                opponentScore: _opponentGoals ?? 0,
+              )
+            : null,
       );
     }
     return KeeperScreen(
@@ -169,6 +176,11 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       opponentTeam: _opponentTeam,
       userScore: _userGoals,
       onMatchComplete: _onKeeperHalfDone,
+      fullMatchHalfConfig: isSecondHalf
+          ? FullMatchHalfConfig.secondHalfKeeping(
+              userScore: _userGoals ?? 0,
+            )
+          : null,
     );
   }
 

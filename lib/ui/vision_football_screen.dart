@@ -8,6 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../game/game_foot_marker_controller.dart';
 import '../game/layout_constants.dart';
+import '../game/full_match_shootout.dart';
 import '../game/match_state.dart';
 import '../game/vision_football_game.dart';
 import '../models/kicking_foot.dart';
@@ -42,6 +43,7 @@ class VisionFootballScreen extends StatefulWidget {
     this.opponentTeam,
     this.opponentScore,
     this.onMatchComplete,
+    this.fullMatchHalfConfig,
   });
 
   final List<CameraDescription> cameras;
@@ -62,6 +64,10 @@ class VisionFootballScreen extends StatefulWidget {
   /// own match-over overlay (and full-time whistle), it reports the final
   /// [MatchState] so the orchestrator can drive half-time / full-time UI.
   final void Function(MatchState state)? onMatchComplete;
+
+  /// Full Match half settings (early end in half 2 only). Standalone play
+  /// leaves this null.
+  final FullMatchHalfConfig? fullMatchHalfConfig;
 
   @override
   State<VisionFootballScreen> createState() => _VisionFootballScreenState();
@@ -322,7 +328,10 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     // Kick-off commentary; the first whistle is held until it finishes.
     final intro = CommentarySound.playStart();
     _matchController.introHold = intro + const Duration(milliseconds: 300);
-    _matchController.startMatch();
+    _matchController.startMatch(
+      fullMatchConfig:
+          widget.fullMatchHalfConfig ?? FullMatchHalfConfig.standalone,
+    );
     // Ensure foot-marker ring aligns with Flame ball after first layout.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _setupPhase != _SetupPhase.playing) return;

@@ -3,6 +3,7 @@ import 'dart:math';
 
 import '../data/game_settings.dart';
 import '../ui/penalty_score_bar.dart';
+import 'full_match_shootout.dart';
 import 'shot_type_schedule.dart';
 
 /// Whether the current kick is a penalty or a free kick.
@@ -124,6 +125,10 @@ class MatchController {
   /// Pre-generated kick sequence for the current match (index = kicksTaken).
   List<ShotType> _shotSchedule = [];
 
+  /// When set for a Full Match second-half shooting segment, the half can end
+  /// before all 5 kicks once the aggregate score is decided.
+  FullMatchHalfConfig _fullMatchConfig = FullMatchHalfConfig.standalone;
+
   bool _isPaused = false;
   MatchPhase? _pausedPhase;
   bool get isPaused => _isPaused;
@@ -140,7 +145,8 @@ class MatchController {
     _stateController.close();
   }
 
-  void startMatch() {
+  void startMatch({FullMatchHalfConfig? fullMatchConfig}) {
+    _fullMatchConfig = fullMatchConfig ?? FullMatchHalfConfig.standalone;
     _isPaused = false;
     _pausedPhase = null;
     _phaseTimer?.cancel();
@@ -318,13 +324,30 @@ class MatchController {
   }
 
   void _advanceAfterResultPause(int kicksTaken) {
+    if (_fullMatchConfig.isSecondHalf) {
+      final remaining = _state.totalKicks - kicksTaken;
+      final decided = fullMatchShootoutDecided(
+        userScore: _state.goalsScored,
+        opponentScore: _fullMatchConfig.opponentScoreFromOtherHalf ?? 0,
+        userRemainingKicks: remaining,
+        opponentRemainingKicks: 0,
+      );
+      if (decided != null) {
+        _endMatch();
+        return;
+      }
+    }
     if (kicksTaken >= _state.totalKicks) {
-      _state = _state.copyWith(phase: MatchPhase.matchOver);
-      _emit();
-      onDisarmKickDetection?.call();
+      _endMatch();
       return;
     }
     _enterRunUp();
+  }
+
+  void _endMatch() {
+    _state = _state.copyWith(phase: MatchPhase.matchOver);
+    _emit();
+    onDisarmKickDetection?.call();
   }
 
   void _onPlayerStill(bool still) {

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../data/game_settings.dart';
+import '../game/full_match_shootout.dart';
 import '../game/shot_type_schedule.dart';
 import '../ui/penalty_score_bar.dart';
 import 'keeper_layout_constants.dart';
@@ -85,7 +86,10 @@ class KeeperMatchController extends ChangeNotifier {
   /// Pre-generated spot sequence for the current match (index = shotsTaken).
   List<KeeperSpotType> _spotSchedule = [];
 
-  void startMatch() {
+  FullMatchHalfConfig _fullMatchConfig = FullMatchHalfConfig.standalone;
+
+  void startMatch({FullMatchHalfConfig? fullMatchConfig}) {
+    _fullMatchConfig = fullMatchConfig ?? FullMatchHalfConfig.standalone;
     const totalShots = 5;
     _spotSchedule = ShotTypeSchedule.forKeeping(
       mode: GameSettings.difficulty,
@@ -175,6 +179,20 @@ class KeeperMatchController extends ChangeNotifier {
   /// After the result pause, advance to the next round or full time.
   void readyForNextShot() {
     if (_state.phase != KeeperPhase.resultPause) return;
+    if (_fullMatchConfig.isSecondHalf) {
+      final remaining = _state.totalShots - _state.shotsTaken;
+      final decided = fullMatchShootoutDecided(
+        userScore: _fullMatchConfig.userScoreFromOtherHalf ?? 0,
+        opponentScore: _state.goalsConceded,
+        userRemainingKicks: 0,
+        opponentRemainingKicks: remaining,
+      );
+      if (decided != null) {
+        _state = _state.copyWith(phase: KeeperPhase.matchOver);
+        notifyListeners();
+        return;
+      }
+    }
     if (_state.shotsTaken >= _state.totalShots) {
       _state = _state.copyWith(phase: KeeperPhase.matchOver);
     } else {

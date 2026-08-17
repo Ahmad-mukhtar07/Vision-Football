@@ -10,6 +10,7 @@ import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import '../ui/pause_menu_overlay.dart';
 import '../ui/tutorial/tutorial_common.dart';
+import '../game/full_match_shootout.dart';
 import 'glove_overlay.dart';
 import 'hand_detector_service.dart';
 import 'keeper_calibration_overlay.dart';
@@ -35,6 +36,7 @@ class KeeperScreen extends StatefulWidget {
     this.opponentTeam,
     this.userScore,
     this.onMatchComplete,
+    this.fullMatchHalfConfig,
   });
 
   final List<CameraDescription> cameras;
@@ -54,6 +56,9 @@ class KeeperScreen extends StatefulWidget {
   /// match-over overlay (and full-time whistle) and reports the final
   /// [KeeperMatchState] so the orchestrator can drive the end-of-half UI.
   final void Function(KeeperMatchState state)? onMatchComplete;
+
+  /// Full Match half settings (early end in half 2 only).
+  final FullMatchHalfConfig? fullMatchHalfConfig;
 
   @override
   State<KeeperScreen> createState() => _KeeperScreenState();
@@ -101,7 +106,10 @@ class _KeeperScreenState extends State<KeeperScreen> {
     );
     _handSub = HandDetectorService.instance.handFrames.listen(_onHandFrame);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _controller.startMatch();
+      _controller.startMatch(
+        fullMatchConfig:
+            widget.fullMatchHalfConfig ?? FullMatchHalfConfig.standalone,
+      );
     });
     // Rebuild once Flame has loaded scene components (goal mouth rect, etc.).
     unawaited(_game.ready().then((_) {
