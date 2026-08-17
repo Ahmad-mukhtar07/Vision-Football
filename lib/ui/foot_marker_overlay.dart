@@ -22,8 +22,7 @@ class FootMarkerOverlay extends StatefulWidget {
     this.gameFootMarker,
     this.gameAligned = false,
     this.setupFullscreen = false,
-    this.useCirclePassMarker = false,
-    this.showPenaltySpot = false,
+    this.hideStrikeGuide = false,
     this.hideBootMarkerInGame = false,
   });
 
@@ -36,14 +35,13 @@ class FootMarkerOverlay extends StatefulWidget {
   /// Full-screen setup camera — use mirrored screen coords for the boot marker.
   final bool setupFullscreen;
 
-  /// Rolling-balls mode: circle pass-through guide instead of the strike line.
-  final bool useCirclePassMarker;
-
-  /// Penalty spot painted at the centre of the pass circle (penalties only).
-  final bool showPenaltySpot;
+  /// Rolling-balls mode: no strike line, because the shot isn't taken by
+  /// sweeping the marker through the ball. The timing ring drawn in the game
+  /// layer replaces it.
+  final bool hideStrikeGuide;
 
   /// Rolling-balls mode: the boot marker and swing trail are hidden during
-  /// play, since the shot is read from the leg's motion when the ball arrives
+  /// play, since the shot is read from the leg's motion when the ring closes
   /// rather than from the marker sweeping across the ball. Setup still shows
   /// the marker so the player can position and calibrate.
   final bool hideBootMarkerInGame;
@@ -252,61 +250,12 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
     return ListenableBuilder(
       listenable: marker,
       builder: (context, _) {
-        if (widget.hideBootMarkerInGame) {
-          return _passCircleOnlyStack(marker);
-        }
+        // Rolling balls: the game layer owns the whole guide (timing ring).
+        if (widget.hideBootMarkerInGame) return const SizedBox.shrink();
         final pt = marker.screenPosition;
         if (pt == null) return const SizedBox.shrink();
         return _gameAlignedStack(screen, foot, marker, pt);
       },
-    );
-  }
-
-  Widget _passCircleOnlyStack(GameFootMarkerController marker) {
-    final ballCenter = marker.ballCenterScreen;
-    if (ballCenter == null) return const SizedBox.shrink();
-    return Stack(
-      fit: StackFit.expand,
-      children: [_passCircle(ballCenter)],
-    );
-  }
-
-  Widget _passCircle(Offset ballCenter) {
-    const radius = GameFootMarkerController.ballHitRadiusPx;
-    return Positioned(
-      left: ballCenter.dx - radius,
-      top: ballCenter.dy - radius,
-      child: IgnorePointer(
-        child: Container(
-          width: radius * 2,
-          height: radius * 2,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Colors.cyanAccent.withValues(alpha: 0.9),
-              width: 2.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.cyanAccent.withValues(alpha: 0.35),
-                blurRadius: 12,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: widget.showPenaltySpot
-              ? Container(
-                  width: radius * 0.34,
-                  height: radius * 0.34,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.95),
-                  ),
-                )
-              : null,
-        ),
-      ),
     );
   }
 
@@ -341,9 +290,7 @@ class _FootMarkerOverlayState extends State<FootMarkerOverlay>
             ),
           ),
         ),
-        if (ballCenter != null && widget.useCirclePassMarker)
-          _passCircle(ballCenter)
-        else if (ballCenter != null)
+        if (ballCenter != null && !widget.hideStrikeGuide)
           Positioned(
             left: ballCenter.dx - bandHalfWidth,
             top: ballCenter.dy - _strikeLineHeight / 2,

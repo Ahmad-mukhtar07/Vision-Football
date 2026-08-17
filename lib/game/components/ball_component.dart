@@ -16,17 +16,45 @@ import 'goal_component.dart';
 
 enum BallState {
   idle,
-  /// Rolling from the keeper toward the kick marker (rolling-balls mode).
-  rolling,
-  /// Parked at the keeper after a shot until the next roll begins.
-  atKeeper,
+
+  /// Rolling-balls mode: ball is on the spot with the strike-timing ring
+  /// closing in on it, waiting to be struck.
+  awaitingStrike,
+
+  /// Rolling-balls mode: ball is on the spot with no cue running (between
+  /// shots, and during the run-up before GO).
+  parked,
   inFlight,
   scored,
   missed,
   resetting,
 }
 
-enum _RollPhase { approach, exit }
+enum _CuePhase { shrinking, expiring }
+
+/// Strike-timing ring state for rolling-balls mode, read by the ring renderer.
+class StrikeCueState {
+  const StrikeCueState({
+    required this.center,
+    required this.running,
+    required this.progress,
+    required this.opacity,
+  });
+
+  /// Ball centre in game coordinates — the ring closes in on this point.
+  final Vector2 center;
+
+  /// True while the ring is shrinking (or fading out after going unstruck).
+  /// False when the ball is simply sitting on the spot between shots.
+  final bool running;
+
+  /// 0 at the ring's widest, 1 when it has shrunk onto the strike circle —
+  /// the moment the player's leg motion is read.
+  final double progress;
+
+  /// Ring alpha multiplier; falls to 0 as an unstruck cue expires.
+  final double opacity;
+}
 
 /// Penalty ball — flies on kick, scores or misses, then resets.
 class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
@@ -36,8 +64,10 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     required this.layout,
     required this.onFlightEnd,
     this.onBecameIdle,
-    this.onRollingTimedOut,
-    this.onReachedPassCircle,
+    this.onStrikeCueMissed,
+    this.onStrikeMoment,
+    this.onStrikeCueCycleStart,
+    this.onStrikeCueProgress,
   }) : super(
          anchor: Anchor.center,
          size: Vector2.all(48),
@@ -57,40 +87,67 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
 
   final VoidCallback? onBecameIdle;
 
-  /// Fired when a rolling ball exits the pass circle without being struck.
-  final VoidCallback? onRollingTimedOut;
+  /// Fired when the ring finished closing in and faded out unstruck.
+  final VoidCallback? onStrikeCueMissed;
 
-  /// Called when a rolling ball's centre reaches the pass circle, then on each
-  /// frame for [_rollingStrikeGraceSeconds] after. The handler decides whether
-  /// the player's leg is swinging and strikes the ball; if it never does, the
-  /// ball rolls on past the circle and fades.
-  final VoidCallback? onReachedPassCircle;
+  /// Called the frame the ring reaches the strike circle, then on each frame
+  /// for [_strikeGraceSeconds] after. The handler decides whether the player's
+  /// leg is swinging and strikes the ball; if it never does, the ring fades and
+  /// the shot is a miss.
+  final VoidCallback? onStrikeMoment;
+
+  /// Fired when a new shrinking ring cycle begins (before the ring animates).
+  final VoidCallback? onStrikeCueCycleStart;
+
+  /// Ring shrink progress 0→1 each frame while awaiting strike; 1.0 during
+  /// the post-close grace window so approach-peak sampling stays active.
+  final void Function(double progress)? onStrikeCueProgress;
 
   BallState _state = BallState.idle;
 
   bool get isReadyForKick => _state == BallState.idle;
 
-  /// When true, each run-up rolls the ball in from the keeper instead of
-  /// spawning it on the kick marker.
+  /// When true, the ball waits on the spot with a shrinking ring cueing when
+  /// to swing, instead of simply sitting there ready to be kicked.
   bool rollingBallsMode = false;
 
-  static const double _rollingApproachDurationSeconds = 3.0;
-  static const double _rollingExitDurationSeconds = 1.8;
-  static const double _rollingMinScale = 0.36;
+  /// How long the ring takes to shrink onto the strike circle.
+  static const double _cueShrinkSeconds = 3.0;
 
-  /// A swing that lands slightly after the ball touched the circle still
-  /// counts — pose frames lag the render loop, and human timing isn't exact.
-  static const double _rollingStrikeGraceSeconds = 0.45;
-  double _rollStrikeGrace = 0;
+  /// How long the ring lingers, fading, once it went unstruck.
+  static const double _cueExpirySeconds = 0.5;
 
-  _RollPhase _rollPhase = _RollPhase.approach;
-  Vector2? _rollStart;
-  Vector2? _rollExitStart;
-  Vector2? _rollExitEnd;
-  Vector2? _keeperRollOrigin;
-  double _rollT = 0;
-  double _rollExitT = 0;
-  double _rollOpacity = 1.0;
+  /// A swing that lands slightly after the ring closed still counts — pose
+  /// frames lag the render loop, and human timing isn't exact.
+  static const double _strikeGraceSeconds = 0.45;
+
+  _CuePhase _cuePhase = _CuePhase.shrinking;
+  double _cueT = 0;
+  double _cueExpiryT = 0;
+  double _strikeGrace = 0;
+
+  /// Ring state for the strike-timing cue, or null when no ring should draw.
+  StrikeCueState? get strikeCue {
+    if (!rollingBallsMode) return null;
+    switch (_state) {
+      case BallState.parked:
+        return StrikeCueState(
+          center: _spawnPosition,
+          running: false,
+          progress: 0,
+          opacity: 1,
+        );
+      case BallState.awaitingStrike:
+        return StrikeCueState(
+          center: _spawnPosition,
+          running: true,
+          progress: _cueT,
+          opacity: 1 - _cueExpiryT,
+        );
+      default:
+        return null;
+    }
+  }
 
   /// Probability (0..1) that an otherwise on-target shot is nudged slightly
   /// outside the goal — used to introduce rare misses for free kicks.
@@ -188,33 +245,36 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     }
   }
 
-  /// Parks the ball at the keeper until [beginRollFromKeeper] is called.
-  void prepareRollingAtKeeper(Vector2 spawn, Vector2 fromKeeper) {
+  /// Places the ball on the spot with no ring running, until
+  /// [beginStrikeCue] starts one.
+  void prepareStrikeCue(Vector2 spawn) {
     _spawnPosition = spawn.clone();
-    _keeperRollOrigin = fromKeeper.clone();
-    position = fromKeeper.clone();
-    _baseScale = _rollingMinScale;
-    _rollOpacity = 1.0;
+    position = _spawnPosition.clone();
+    _baseScale = 1;
     _ballTint = null;
     _spinAngle = 0;
-    _state = BallState.atKeeper;
+    _cuePhase = _CuePhase.shrinking;
+    _cueT = 0;
+    _cueExpiryT = 0;
+    _strikeGrace = 0;
+    _state = BallState.parked;
   }
 
-  /// Starts the roll toward the pass circle (call when GO appears).
-  void beginRollFromKeeper() {
-    if (!rollingBallsMode || _keeperRollOrigin == null) return;
-    if (_state != BallState.atKeeper && _state != BallState.idle) return;
+  /// Starts the ring shrinking onto the ball (call when GO appears).
+  void beginStrikeCue() {
+    if (!rollingBallsMode) return;
+    if (_state != BallState.parked && _state != BallState.idle) return;
 
-    _rollStart = _keeperRollOrigin!.clone();
-    _rollPhase = _RollPhase.approach;
-    _rollT = 0;
-    _rollExitT = 0;
-    _rollOpacity = 1.0;
-    position = _rollStart!.clone();
-    _baseScale = _rollingMinScale;
+    position = _spawnPosition.clone();
+    _baseScale = 1;
     _ballTint = null;
     _spinAngle = 0;
-    _state = BallState.rolling;
+    _cuePhase = _CuePhase.shrinking;
+    _cueT = 0;
+    _cueExpiryT = 0;
+    _strikeGrace = 0;
+    _state = BallState.awaitingStrike;
+    onStrikeCueCycleStart?.call();
   }
 
   /// The most recently resolved shot target (screen px), or null if the ball
@@ -222,7 +282,7 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   Offset? get resolvedTargetScreen => _trajectory?.targetPosition;
 
   void strike(KickEvent event, {Player? shooter}) {
-    if (_state != BallState.idle && _state != BallState.rolling) return;
+    if (_state != BallState.idle && _state != BallState.awaitingStrike) return;
 
     _activeKick = event;
     _hitCrossbar = false;
@@ -436,8 +496,8 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
     switch (_state) {
       case BallState.inFlight:
         _updateInFlight(dt);
-      case BallState.rolling:
-        _updateRolling(dt);
+      case BallState.awaitingStrike:
+        _updateStrikeCue(dt);
       case BallState.scored:
       case BallState.missed:
         _postResultTimer += dt;
@@ -447,67 +507,46 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       case BallState.resetting:
         _updateResetting(dt);
       case BallState.idle:
-      case BallState.atKeeper:
+      case BallState.parked:
         break;
     }
   }
 
-  void _updateRolling(double dt) {
-    final start = _rollStart;
-    if (start == null) return;
-
-    if (_rollPhase == _RollPhase.approach) {
-      _rollT = (_rollT + dt / _rollingApproachDurationSeconds).clamp(0.0, 1.0);
-      final t = Curves.easeOut.transform(_rollT);
-      position = start + (_spawnPosition - start) * t;
-      _baseScale = _rollingMinScale + (1.0 - _rollingMinScale) * t;
-      _movingRight = _spawnPosition.x >= start.x;
-
-      if (_rollT >= 1.0) {
-        _rollPhase = _RollPhase.exit;
-        _rollExitT = 0;
-        _rollStrikeGrace = 0;
-        _rollExitStart = _spawnPosition.clone();
-        _rollExitEnd = Vector2(
-          _spawnPosition.x,
-          _spawnPosition.y + layout.height * 0.14,
-        );
+  /// The ball never moves here — only the ring closes in. Its arrival at the
+  /// strike circle is the moment the swing is read.
+  void _updateStrikeCue(double dt) {
+    if (_cuePhase == _CuePhase.shrinking) {
+      _cueT = (_cueT + dt / _cueShrinkSeconds).clamp(0.0, 1.0);
+      onStrikeCueProgress?.call(_cueT);
+      if (_cueT >= 1.0) {
+        _cuePhase = _CuePhase.expiring;
+        _cueExpiryT = 0;
+        _strikeGrace = 0;
         // May strike the ball synchronously (state becomes inFlight), which
-        // ends the roll before the exit phase ever runs.
-        onReachedPassCircle?.call();
+        // ends the cue before it ever starts fading.
+        onStrikeMoment?.call();
       }
       return;
     }
 
-    if (_rollStrikeGrace < _rollingStrikeGraceSeconds) {
-      _rollStrikeGrace += dt;
-      onReachedPassCircle?.call();
-      if (_state != BallState.rolling) return;
+    if (_strikeGrace < _strikeGraceSeconds) {
+      _strikeGrace += dt;
+      onStrikeCueProgress?.call(1.0);
+      onStrikeMoment?.call();
+      if (_state != BallState.awaitingStrike) return;
     }
 
-    _rollExitT =
-        (_rollExitT + dt / _rollingExitDurationSeconds).clamp(0.0, 1.0);
-    final exitT = Curves.easeIn.transform(_rollExitT);
-    final exitStart = _rollExitStart ?? _spawnPosition;
-    final exitEnd = _rollExitEnd ??
-        Vector2(_spawnPosition.x, _spawnPosition.y + layout.height * 0.14);
-    position = exitStart + (exitEnd - exitStart) * exitT;
-    _baseScale = 1.0 + 0.06 * exitT;
-    _rollOpacity = 1.0 - exitT;
-
-    if (_rollExitT >= 1.0) {
-      _finishRollingTimedOut();
+    _cueExpiryT = (_cueExpiryT + dt / _cueExpirySeconds).clamp(0.0, 1.0);
+    if (_cueExpiryT >= 1.0) {
+      _finishStrikeCueMissed();
     }
   }
 
-  void _finishRollingTimedOut() {
-    if (_keeperRollOrigin != null) {
-      position = _keeperRollOrigin!.clone();
-    }
-    _baseScale = _rollingMinScale;
-    _rollOpacity = 1.0;
-    _state = BallState.atKeeper;
-    onRollingTimedOut?.call();
+  void _finishStrikeCueMissed() {
+    position = _spawnPosition.clone();
+    _baseScale = 1;
+    _state = BallState.parked;
+    onStrikeCueMissed?.call();
   }
 
   void _updateInFlight(double dt) {
@@ -651,12 +690,12 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
   }
 
   void _beginReset() {
-    if (rollingBallsMode && _keeperRollOrigin != null) {
-      position = _keeperRollOrigin!.clone();
-      _baseScale = _rollingMinScale;
+    if (rollingBallsMode) {
+      position = _spawnPosition.clone();
+      _baseScale = 1;
       _ballTint = null;
       _spinAngle = 0;
-      _state = BallState.atKeeper;
+      _state = BallState.parked;
       return;
     }
 
@@ -741,7 +780,6 @@ class BallComponent extends PositionComponent with HasGameReference<FlameGame> {
       right: right,
       spinAngle: _spinAngle,
       movingRight: _movingRight,
-      opacity: _rollOpacity,
       tintColor: _ballTint,
     );
   }

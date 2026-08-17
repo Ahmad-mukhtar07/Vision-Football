@@ -1559,10 +1559,10 @@ class _FullMatchRoleSheet extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _RoleButton(
-                title: 'Rolling Balls',
-                subtitle: 'Strike the ball as it rolls in',
+                title: 'Timing Strike',
+                subtitle: 'Kick when the ring turns green',
                 accent: _Arcade.lime,
-                icon: Icons.track_changes_rounded,
+                icon: Icons.timelapse_rounded,
                 onTap: () => onModeSelected(GameMode.rollingBalls),
               ),
               const SizedBox(height: 12),

@@ -12,6 +12,7 @@ import '../ui/game_play_sound.dart';
 import 'components/ball_component.dart';
 import 'components/goal_component.dart';
 import 'components/scene_background_component.dart';
+import 'components/strike_ring_component.dart';
 import 'goalkeeper_component.dart';
 import 'layout_constants.dart';
 import 'match_state.dart';
@@ -26,6 +27,8 @@ class VisionFootballGame extends FlameGame {
     this.opponentKeeper,
     this.rollingBallsMode = false,
     this.captureRollingKick,
+    this.onStrikeCueCycleStart,
+    this.onStrikeCueProgress,
   }) : _kickStream = kickStream;
 
   final Stream<KickEvent> _kickStream;
@@ -39,13 +42,19 @@ class VisionFootballGame extends FlameGame {
   /// Opposing keeper whose reflex/prediction stats drive the AI keeper.
   final GoalkeeperRating? opponentKeeper;
 
-  /// Rolls the ball in from the keeper before each kick instead of placing it
-  /// on the marker.
+  /// Cues each kick with a ring shrinking onto the ball instead of leaving the
+  /// ball simply sitting there ready to be struck.
   final bool rollingBallsMode;
 
-  /// Reads the player's leg motion at the instant the rolling ball reaches the
-  /// pass circle. Null means the leg wasn't moving — no shot is taken.
+  /// Reads the player's leg motion at the instant the ring closes onto the
+  /// strike circle. Null means the leg wasn't moving — no shot is taken.
   final KickEvent? Function()? captureRollingKick;
+
+  /// Resets approach-peak sampling at the start of each ring cycle.
+  final VoidCallback? onStrikeCueCycleStart;
+
+  /// Feeds ring progress into leg capture so peak speed is sampled early.
+  final void Function(double progress)? onStrikeCueProgress;
 
   final StreamController<GoalEvent> _goalController =
       StreamController<GoalEvent>.broadcast();
@@ -82,9 +91,10 @@ class VisionFootballGame extends FlameGame {
       layout: _layout,
       onFlightEnd: _onFlightEnd,
       onBecameIdle: onBallBecameIdle,
-      onRollingTimedOut: rollingBallsMode ? _onRollingTimedOut : null,
-      onReachedPassCircle:
-          rollingBallsMode ? _onRollingBallReachedCircle : null,
+      onStrikeCueMissed: rollingBallsMode ? _onStrikeCueMissed : null,
+      onStrikeMoment: rollingBallsMode ? _onStrikeMoment : null,
+      onStrikeCueCycleStart: onStrikeCueCycleStart,
+      onStrikeCueProgress: onStrikeCueProgress,
     );
 
     await add(_sky);
@@ -92,6 +102,13 @@ class VisionFootballGame extends FlameGame {
     await add(_goal);
     await add(_goalkeeper);
     await add(_ball);
+    if (rollingBallsMode) {
+      // Added after the ball so the ring draws over it; the ring is always
+      // wider than the ball, so nothing is covered.
+      await add(
+        StrikeRingComponent(cue: () => _ball.strikeCue, layout: _layout),
+      );
+    }
 
     _kickSubscription = _kickStream.listen(_onKick);
     _matchSubscription = matchController.stateStream.listen(_onMatchState);
@@ -100,8 +117,8 @@ class VisionFootballGame extends FlameGame {
   }
 
   void _onKick(KickEvent event) {
-    // Rolling balls are struck only from the leg snapshot taken when the ball
-    // reaches the circle, never from a detected thrust.
+    // Rolling balls are struck only from the leg snapshot taken when the ring
+    // closes on the ball, never from a detected thrust.
     if (rollingBallsMode) return;
     if (!_ball.isReadyForKick) {
       debugPrint('[KD] strike ignored (ball busy)');
@@ -111,12 +128,12 @@ class VisionFootballGame extends FlameGame {
     _launchShot(event);
   }
 
-  /// The rolling ball's centre is on the circle right now: whatever the leg is
-  /// doing at this instant becomes the shot.
-  void _onRollingBallReachedCircle() {
+  /// The ring is on the strike circle right now: whatever the leg is doing at
+  /// this instant becomes the shot.
+  void _onStrikeMoment() {
     final event = captureRollingKick?.call();
     if (event == null) {
-      debugPrint('[KD] rolling ball passed the circle untouched');
+      debugPrint('[KD] strike cue closed untouched');
       return;
     }
     debugPrint('[KD] >>> ROLLING BALL SHOT <<<');
@@ -238,7 +255,7 @@ class VisionFootballGame extends FlameGame {
     if (state.phase == MatchPhase.runUp) {
       _applyShotType(state.shotType);
     } else if (rollingBallsMode && state.phase == MatchPhase.readyToKick) {
-      _ball.beginRollFromKeeper();
+      _ball.beginStrikeCue();
     }
   }
 
@@ -264,7 +281,7 @@ class VisionFootballGame extends FlameGame {
       spawnY,
     );
     if (rollingBallsMode) {
-      _ball.prepareRollingAtKeeper(spawn, _keeperRollOrigin());
+      _ball.prepareStrikeCue(spawn);
     } else {
       _ball.resetToSpawn(spawn);
     }
@@ -277,15 +294,7 @@ class VisionFootballGame extends FlameGame {
     _ball.isPenalty = isPenalty;
   }
 
-  Vector2 _keeperRollOrigin() {
-    final goal = _goal.effectiveGoalRect;
-    return Vector2(
-      goal.center.dx,
-      goal.bottom + _layout.height * 0.025,
-    );
-  }
-
-  void _onRollingTimedOut() {
+  void _onStrikeCueMissed() {
     GamePlaySound.playBoo();
     final commentary = CommentarySound.playMiss();
     final hold = commentary + const Duration(milliseconds: 500);

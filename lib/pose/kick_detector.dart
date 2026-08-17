@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math' show max;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -99,10 +100,48 @@ class KickDetector {
   final Queue<_FootFrame> _legBuffer = Queue<_FootFrame>();
   static const int _legBufferSize = 14;
 
+  /// Ring mode keeps a longer leg history so the 700ms lookback is usable.
+  static const int _legBufferSizeRing = 22;
+
+  /// Ring-mode lookback only — regular shooting does not use [captureLegSwingKick].
+  static const Duration _legCaptureWindowRing = Duration(milliseconds: 700);
+
   /// Leg samples this fresh count toward a capture. Generous, because pose
   /// frames arrive well below render rate and the swing that struck the ball
   /// may have peaked a few frames before the ball reached the circle.
   static const Duration _legCaptureWindow = Duration(milliseconds: 500);
+
+  /// Ring progress (0→1) at which the approach peak sampler opens — 1.2s before
+  /// the 3s ring finishes ≈ 0.6 elapsed → progress 0.4; spec uses ~0.45.
+  static const double _approachSamplingStartProgress = 0.45;
+
+  /// Highest per-frame leg speed seen during the current ring's approach window.
+  double _approachPeakSpeed = 0;
+
+  /// Direction vector at the instant [_approachPeakSpeed] was recorded.
+  Offset _approachPeakDelta = Offset.zero;
+
+  /// Leg position and frame times at the approach peak (for power/aim inputs).
+  Offset? _approachPeakPosition;
+  DateTime? _approachPeakFromTime;
+  DateTime? _approachPeakAtTime;
+  double? _approachPeakPrevZ;
+  double? _approachPeakZ;
+
+  /// Strongest camera-ward Z thrust seen during the approach window (same gate
+  /// as regular shooting mode). Used for power and as a swing signal when XY
+  /// alone would miss an inward kick.
+  bool _approachHadZThrust = false;
+  double _approachPeakZThrust = 0;
+  Offset _approachZPeakDelta = Offset.zero;
+  Offset? _approachZPeakPosition;
+  double _approachZPeakZDelta = 0;
+  DateTime? _approachZPeakFromTime;
+  DateTime? _approachZPeakAtTime;
+
+  /// True once ring progress crosses [_approachSamplingStartProgress]; stays
+  /// on through the grace window until [resetApproachPeak].
+  bool _approachSamplingActive = false;
 
   /// If the window holds fewer than two samples (pose stream hiccup), fall
   /// back to the last two samples as long as the newest is at least this
@@ -243,6 +282,35 @@ class KickDetector {
   void setGameCanAcceptKick(bool value) {
     if (value && _phase == KickPhase.cooldown) return;
     _gameCanAcceptKick = value;
+  }
+
+  /// Called when a new shrinking ring cycle begins (GO / [beginStrikeCue]).
+  void resetApproachPeak() {
+    _approachPeakSpeed = 0;
+    _approachPeakDelta = Offset.zero;
+    _approachPeakPosition = null;
+    _approachPeakFromTime = null;
+    _approachPeakAtTime = null;
+    _approachPeakPrevZ = null;
+    _approachPeakZ = null;
+    _approachHadZThrust = false;
+    _approachPeakZThrust = 0;
+    _approachZPeakDelta = Offset.zero;
+    _approachZPeakPosition = null;
+    _approachZPeakZDelta = 0;
+    _approachZPeakFromTime = null;
+    _approachZPeakAtTime = null;
+    _approachSamplingActive = false;
+  }
+
+  /// Feeds ring shrink progress (0→1) so leg velocity is peak-sampled during
+  /// the approach window. Sampling stays active through the grace window until
+  /// [resetApproachPeak] on the next cycle.
+  void notifyStrikeCueProgress(double progress) {
+    if (!instantCaptureMode) return;
+    if (progress >= _approachSamplingStartProgress) {
+      _approachSamplingActive = true;
+    }
   }
 
   void _resetTrackingState() {
@@ -488,19 +556,76 @@ class KickDetector {
   ) {
     final leg = _sampleKneeDownLeg(landmarks, imageSize);
     if (leg == null) return null;
+
+    // Ankle Z drives the same depth thrust model as regular shooting mode.
+    final ankle = _sampleKickingAnkle(landmarks, imageSize);
+    final z = ankle?.z ??
+        (_legBuffer.isNotEmpty
+            ? _legBuffer.last.z
+            : (_neutralZ ?? 0.0));
+
     _legBuffer.addLast(
       _FootFrame(
         positionNormalized: leg.position,
-        z: 0,
+        z: z,
         confidence: leg.confidence,
         timestamp: DateTime.now(),
       ),
     );
-    while (_legBuffer.length > _legBufferSize) {
+    while (_legBuffer.length >
+        (instantCaptureMode ? _legBufferSizeRing : _legBufferSize)) {
       _legBuffer.removeFirst();
     }
+    _updateApproachPeakFromLegBuffer();
     return leg;
   }
+
+  /// While the ring approach window is open, track the fastest leg frame so an
+  /// early swing is not lost to deceleration at ring completion.
+  void _updateApproachPeakFromLegBuffer() {
+    if (!_approachSamplingActive || _legBuffer.length < 2) return;
+
+    final frames = _legBuffer.toList();
+    final prev = frames[frames.length - 2];
+    final curr = frames.last;
+    final delta = curr.positionNormalized - prev.positionNormalized;
+    final speed = delta.distance;
+    if (speed > _approachPeakSpeed) {
+      _approachPeakSpeed = speed;
+      _approachPeakDelta = delta;
+      _approachPeakPosition = curr.positionNormalized;
+      _approachPeakFromTime = prev.timestamp;
+      _approachPeakAtTime = curr.timestamp;
+      _approachPeakPrevZ = prev.z;
+      _approachPeakZ = curr.z;
+    }
+
+    final zDelta = curr.z - prev.z;
+    final zScale = _zScale(prev.z, curr.z);
+    if (_isZThrust(zDelta, zScale)) {
+      _approachHadZThrust = true;
+      final thrust = -zDelta;
+      if (thrust > _approachPeakZThrust) {
+        _approachPeakZThrust = thrust;
+        _approachZPeakDelta = delta;
+        _approachZPeakPosition = curr.positionNormalized;
+        _approachZPeakZDelta = zDelta;
+        _approachZPeakFromTime = prev.timestamp;
+        _approachZPeakAtTime = curr.timestamp;
+      }
+    }
+  }
+
+  /// Same 65% XY + 35% Z blend as [_evaluateKick], with the ring-mode floor.
+  double _combinedRingCapturePower({
+    required double xyVelocity,
+    required double zSpeed,
+  }) {
+    return ((xyVelocity / _config.maxXyVelocityNorm) * 0.65 + zSpeed * 0.35)
+        .clamp(_legCaptureMinPower, 1.0);
+  }
+
+  double _zSpeedNorm(double zDelta) => (-zDelta).clamp(0.0, 200.0) / 200.0;
 
   /// The tracked leg point shifted into the ankle's frame of reference, so the
   /// on-screen marker still rests on its anchor below the ball while moving
@@ -584,8 +709,10 @@ class KickDetector {
     if (_lockedIsLeft == null) return null;
 
     final now = DateTime.now();
+    final captureWindow =
+        instantCaptureMode ? _legCaptureWindowRing : _legCaptureWindow;
     var frames = _legBuffer
-        .where((f) => now.difference(f.timestamp) <= _legCaptureWindow)
+        .where((f) => now.difference(f.timestamp) <= captureWindow)
         .toList();
     if (frames.length < 2 && _legBuffer.length >= 2) {
       final all = _legBuffer.toList();
@@ -598,62 +725,124 @@ class KickDetector {
       return null;
     }
 
-    // Fastest frame in the window is where contact happened — the leg may have
-    // already begun decelerating by the time the ball reached the circle.
-    var peakIdx = frames.length - 1;
-    var xySpeed = 0.0;
+    // Fallback peak from the lookback window (used only when no approach peak).
+    var fallbackPeakIdx = frames.length - 1;
+    var fallbackXySpeed = 0.0;
     for (var i = 1; i < frames.length; i++) {
       final d = (frames[i].positionNormalized - frames[i - 1].positionNormalized)
           .distance;
-      if (d > xySpeed) {
-        xySpeed = d;
-        peakIdx = i;
+      if (d > fallbackXySpeed) {
+        fallbackXySpeed = d;
+        fallbackPeakIdx = i;
       }
     }
 
-    final contact = frames[peakIdx];
+    final fallbackContact = frames[fallbackPeakIdx];
     final swingDelta =
-        contact.positionNormalized - frames.first.positionNormalized;
+        fallbackContact.positionNormalized - frames.first.positionNormalized;
     final windowTravel = swingDelta.distance;
 
-    if (xySpeed < _legCaptureMinSpeed && windowTravel < _legCaptureMinTravel) {
-      _logRollCapture(
-        '[KD] roll capture — leg still (speed=${xySpeed.toStringAsFixed(3)} '
-        'travel=${windowTravel.toStringAsFixed(3)})',
-      );
-      return null;
+    final useApproachPeak = _approachPeakSpeed > 0;
+    final useApproachZ = _approachHadZThrust;
+    final fallbackZDelta =
+        fallbackContact.z - frames[fallbackPeakIdx - 1].z;
+    final fallbackZScale =
+        _zScale(frames[fallbackPeakIdx - 1].z, fallbackContact.z);
+    final hasFallbackZ = _isZThrust(fallbackZDelta, fallbackZScale);
+
+    if (!useApproachPeak && !useApproachZ) {
+      if (fallbackXySpeed < _legCaptureMinSpeed && !hasFallbackZ) {
+        _logRollCapture(
+          '[KD] roll capture — leg still (speed=${fallbackXySpeed.toStringAsFixed(3)} '
+          'travel=${windowTravel.toStringAsFixed(3)} '
+          'minTravel=${_legCaptureMinTravel.toStringAsFixed(3)})',
+        );
+        return null;
+      }
     }
 
-    final contactDelta =
-        contact.positionNormalized - frames[peakIdx - 1].positionNormalized;
+    // Aim + XY speed: prefer the lateral peak; fall back to the strongest Z
+    // thrust frame when the kick was mostly toward the camera.
+    final Offset contactDelta;
+    final Offset contactPosition;
+    final double xySpeed;
+    if (useApproachPeak) {
+      contactDelta = _approachPeakDelta;
+      contactPosition = _approachPeakPosition!;
+      xySpeed = _approachPeakSpeed;
+    } else if (useApproachZ) {
+      contactDelta = _approachZPeakDelta;
+      contactPosition =
+          _approachZPeakPosition ?? fallbackContact.positionNormalized;
+      xySpeed = _approachZPeakDelta.distance;
+    } else {
+      contactDelta = fallbackContact.positionNormalized -
+          frames[fallbackPeakIdx - 1].positionNormalized;
+      contactPosition = fallbackContact.positionNormalized;
+      xySpeed = fallbackXySpeed;
+    }
+    final peakIdx = fallbackPeakIdx;
 
-    // Take whichever reads faster: the single quickest frame, or the whole
-    // window's travel. A kick smeared across slow pose frames still hits hard.
-    final peakVelocity = _velocityOf(
-      xySpeed,
-      frames[peakIdx - 1].timestamp,
-      contact.timestamp,
-    );
-    final windowVelocity = _velocityOf(
-      windowTravel,
-      frames.first.timestamp,
-      contact.timestamp,
-    );
-    final velocity =
-        peakVelocity > windowVelocity ? peakVelocity : windowVelocity;
-    final power = (velocity / _config.maxXyVelocityNorm)
-        .clamp(_legCaptureMinPower, 1.0);
+    double xyVelocity;
+    if (useApproachPeak &&
+        _approachPeakFromTime != null &&
+        _approachPeakAtTime != null) {
+      xyVelocity = _velocityOf(
+        _approachPeakSpeed,
+        _approachPeakFromTime!,
+        _approachPeakAtTime!,
+      );
+    } else if (useApproachZ &&
+        _approachZPeakFromTime != null &&
+        _approachZPeakAtTime != null) {
+      xyVelocity = _velocityOf(
+        _approachZPeakDelta.distance,
+        _approachZPeakFromTime!,
+        _approachZPeakAtTime!,
+      );
+    } else {
+      final peakVelocity = _velocityOf(
+        fallbackXySpeed,
+        frames[fallbackPeakIdx - 1].timestamp,
+        fallbackContact.timestamp,
+      );
+      final windowVelocity = _velocityOf(
+        windowTravel,
+        frames.first.timestamp,
+        fallbackContact.timestamp,
+      );
+      xyVelocity =
+          peakVelocity > windowVelocity ? peakVelocity : windowVelocity;
+    }
+
+    // Borrow regular mode's Z contribution — take the strongest thrust seen
+    // during the approach window, or at the fallback contact frame.
+    var bestZSpeed = 0.0;
+    if (useApproachPeak &&
+        _approachPeakPrevZ != null &&
+        _approachPeakZ != null) {
+      bestZSpeed = _zSpeedNorm(_approachPeakZ! - _approachPeakPrevZ!);
+    }
+    if (useApproachZ) {
+      bestZSpeed =
+          max(bestZSpeed, _zSpeedNorm(_approachZPeakZDelta));
+    }
+    if (!useApproachPeak && !useApproachZ) {
+      bestZSpeed = _zSpeedNorm(fallbackZDelta);
+    }
+    final power =
+        _combinedRingCapturePower(xyVelocity: xyVelocity, zSpeed: bestZSpeed);
 
     final sensorDegrees =
         PoseDetectorService.instance.cameraSensorOrientation ??
         PoseDetectorService.instance.sensorRotationDegrees ??
         0;
 
-    final neutral = _legNeutralPosition ?? contact.positionNormalized;
+    final neutral = _legNeutralPosition ?? contactPosition;
 
     Offset neutralAimBoost = Offset.zero;
     if (_legNeutralPosition != null && swingDelta.distance < 0.02) {
-      neutralAimBoost = (contact.positionNormalized - neutral) * 0.5;
+      neutralAimBoost = (contactPosition - neutral) * 0.5;
     }
 
     final aimDelta = _lateralAimDelta(
@@ -669,18 +858,17 @@ class KickDetector {
         (aimDelta.dx / _config.aimReferenceDelta).clamp(-1.6, 1.6);
 
     final kickType = _classifyType(
-      footPos: contact.positionNormalized,
+      footPos: contactPosition,
       neutralPos: neutral,
       xyDelta: contactDelta,
       swingDelta: swingDelta,
       xySpeed: xySpeed,
     );
     final loft =
-        ((neutral.dy - contact.positionNormalized.dy) / _loftReferenceRise)
-            .clamp(0.0, 1.0);
+        ((neutral.dy - contactPosition.dy) / _loftReferenceRise).clamp(0.0, 1.0);
 
     final event = KickEvent(
-      footPositionNormalized: contact.positionNormalized,
+      footPositionNormalized: contactPosition,
       strikeDeltaNormalized: normalizedAim,
       strikeSpeed: xySpeed,
       kickPower: power,
@@ -693,9 +881,9 @@ class KickDetector {
 
     _gameFootMarker?.onShotFired();
     debugPrint(
-      '[KD] ══ ROLL CAPTURE ══ frames=${frames.length} '
+      '[KD] STRIKE peak=${useApproachPeak ? _approachPeakSpeed.toStringAsFixed(3) : (useApproachZ ? _approachZPeakDelta.distance.toStringAsFixed(3) : fallbackXySpeed.toStringAsFixed(3))} '
       'speed=${xySpeed.toStringAsFixed(3)} '
-      'travel=${windowTravel.toStringAsFixed(3)} '
+      'zSpeed=${bestZSpeed.toStringAsFixed(2)} '
       'power=${power.toStringAsFixed(2)} '
       'aim=(${normalizedAim.dx.toStringAsFixed(2)}, '
       '${normalizedAim.dy.toStringAsFixed(3)}) type=${kickType.name}',

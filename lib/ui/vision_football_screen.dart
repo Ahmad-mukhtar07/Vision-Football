@@ -32,10 +32,10 @@ enum _SetupPhase {
   playing,
 }
 
-/// Rolling-balls mode reads the leg's motion instead of a marker pass, so the
+/// Timing-strike mode reads the leg's motion when the ring closes, so the
 /// marker isn't needed to play. While tuning, keep it on screen (tracking the
-/// same knee-down point the shot is read from) as visual feedback; set false to
-/// play without it.
+/// same knee-down point the shot is read from) as visual feedback; set false
+/// to play without it.
 const bool _kShowRollingLegMarker = false;
 
 /// Full game stack: camera → Flame → HUD (landscape).
@@ -70,7 +70,7 @@ class VisionFootballScreen extends StatefulWidget {
   /// [MatchState] so the orchestrator can drive half-time / full-time UI.
   final void Function(MatchState state)? onMatchComplete;
 
-  /// Rolls the ball in from the keeper before each kick with a circle pass marker.
+  /// Shrinking-ring timing mode — kick when the ring turns green.
   final bool rollingBallsMode;
 
   @override
@@ -142,6 +142,11 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       rollingBallsMode: widget.rollingBallsMode,
       captureRollingKick:
           widget.rollingBallsMode ? _kickDetector.captureLegSwingKick : null,
+      onStrikeCueCycleStart:
+          widget.rollingBallsMode ? _kickDetector.resetApproachPeak : null,
+      onStrikeCueProgress: widget.rollingBallsMode
+          ? _kickDetector.notifyStrikeCueProgress
+          : null,
     );
     _kickDetector.setGameCanAcceptKick(false);
     _kickDetector.disarm();
@@ -563,9 +568,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
             gameFootMarker: _gameFootMarker,
             gameAligned: playing,
             setupFullscreen: !playing,
-            useCirclePassMarker: widget.rollingBallsMode,
-            showPenaltySpot: widget.rollingBallsMode &&
-                _matchController.state.shotType == ShotType.penalty,
+            hideStrikeGuide: widget.rollingBallsMode,
             hideBootMarkerInGame:
                 widget.rollingBallsMode && !_kShowRollingLegMarker,
           ),
