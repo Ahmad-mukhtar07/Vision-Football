@@ -103,6 +103,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
       onShotResolved: _onShotResolved,
       userKeeper: widget.userTeam?.keeper,
       opponentTeam: widget.opponentTeam,
+      fullMatchHalfConfig: widget.fullMatchHalfConfig,
     );
     _handSub = HandDetectorService.instance.handFrames.listen(_onHandFrame);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -163,7 +164,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
           _controller.finishCalibration();
           GamePlaySound.startStadiumCrowd();
           // Kick-off commentary first; the first whistle waits until it ends.
-          final intro = CommentarySound.playStart();
+          final intro = _kickOffCommentary();
           _scheduleNextShot(
             preShotDelayMs: intro.inMilliseconds + 400,
           );
@@ -183,6 +184,18 @@ class _KeeperScreenState extends State<KeeperScreen> {
   void _resetCalibrationGate() {
     _stopCalibrationCountdown();
     _bothHandsVisible = false;
+  }
+
+  Duration _kickOffCommentary() {
+    final cfg = widget.fullMatchHalfConfig;
+    if (cfg != null && cfg.isSecondHalf) {
+      return CommentarySound.playSecondHalfStart(
+        userShooting: false,
+        userScore: cfg.userScoreFromOtherHalf ?? 0,
+        opponentScore: 0,
+      );
+    }
+    return CommentarySound.playStart();
   }
 
   void _onMatchChanged() {

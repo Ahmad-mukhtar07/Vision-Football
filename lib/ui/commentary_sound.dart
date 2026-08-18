@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import 'second_half_commentary.dart';
+
 /// Where a shot ended up in the goal mouth (used to pick goal commentary).
 enum GoalPlacement { topCorner, bottomCorner, straight }
 
@@ -92,6 +94,39 @@ class CommentarySound {
     'sounds/commentary/save/comm-save-straight3.wav',
   ];
 
+  // ── Second half (Full Match) — flat list for [warmUp] only ──
+  static const _secondHalfAssetList = [
+    'sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-1needed.wav',
+    'sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-2needed.wav',
+    'sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-3needed.wav',
+    'sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-4needed.wav',
+    'sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-5needed.wav',
+    'sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-1needed.wav',
+    'sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-2needed.wav',
+    'sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-3needed.wav',
+    'sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-4needed.wav',
+    'sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-5needed.wav',
+    'sounds/commentary/second-half/general/comm-2h-start1.wav',
+    'sounds/commentary/second-half/general/comm-2h-start2.wav',
+    'sounds/commentary/second-half/goal/comm-2h-goal-level1.wav',
+    'sounds/commentary/second-half/goal/comm-2h-goal-level2.wav',
+    'sounds/commentary/second-half/goal/comm-2h-goal-draw.wav',
+    'sounds/commentary/second-half/goal/comm-2h-goal-win-finalkick.wav',
+    'sounds/commentary/second-half/goal/comm-2h-goal-win1.wav',
+    'sounds/commentary/second-half/goal/comm-2h-goal-win2.wav',
+    'sounds/commentary/second-half/goal/comm-2h-goal-win3.wav',
+    'sounds/commentary/second-half/save/comm-2h-save-draw1.wav',
+    'sounds/commentary/second-half/save/comm-2h-save-draw2.wav',
+    'sounds/commentary/second-half/save/comm-2h-save-draw3.wav',
+    'sounds/commentary/second-half/save/comm-2h-save-win1.wav',
+    'sounds/commentary/second-half/save/comm-2h-save-win2.wav',
+    'sounds/commentary/second-half/save/comm-2h-save-win3.wav',
+    'sounds/commentary/second-half/miss/comm-2h-miss-deadend1.wav',
+    'sounds/commentary/second-half/miss/comm-2h-miss-deadend2.wav',
+    'sounds/commentary/second-half/miss/comm-2h-miss-lost1.wav',
+    'sounds/commentary/second-half/miss/comm-2h-miss-lost2.wav',
+  ];
+
   static const List<List<String>> _allPools = [
     _startPool,
     _goalBottomCornerPool,
@@ -103,6 +138,7 @@ class CommentarySound {
     _saveDivingPool,
     _saveFingerTipPool,
     _saveStraightPool,
+    _secondHalfAssetList,
   ];
 
   /// Clip lengths measured from WAV headers during [warmUp].
@@ -176,6 +212,41 @@ class CommentarySound {
 
   /// Kick-off line played before the starting whistle (randomized).
   static Duration playStart() => _play(_pick(_startPool));
+
+  /// Second-half kick-off — role/score specific lines mixed with general openers.
+  static Duration playSecondHalfStart({
+    required bool userShooting,
+    required int userScore,
+    required int opponentScore,
+  }) {
+    final pool = SecondHalfStartCommentary.pool(
+      userShooting: userShooting,
+      userScore: userScore,
+      opponentScore: opponentScore,
+    );
+    return _play(_pick(pool));
+  }
+
+  /// Goal during a Full Match second half when a conditional clip applies.
+  static Duration? tryPlaySecondHalfGoal(SecondHalfCommentarySnapshot snap) {
+    final pool = SecondHalfResultCommentary.goalPool(snap);
+    if (pool == null) return null;
+    return _play(_pick(pool));
+  }
+
+  /// Save during a Full Match second half when a conditional clip applies.
+  static Duration? tryPlaySecondHalfSave(SecondHalfCommentarySnapshot snap) {
+    final pool = SecondHalfResultCommentary.savePool(snap);
+    if (pool == null) return null;
+    return _play(_pick(pool));
+  }
+
+  /// Miss during a Full Match second half when a conditional clip applies.
+  static Duration? tryPlaySecondHalfMiss(SecondHalfCommentarySnapshot snap) {
+    final pool = SecondHalfResultCommentary.missPool(snap);
+    if (pool == null) return null;
+    return _play(_pick(pool));
+  }
 
   static Duration _play(String asset) {
     unawaited(_restart(asset));

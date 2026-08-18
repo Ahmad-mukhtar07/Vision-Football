@@ -134,6 +134,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       onBallBecameIdle: _gameFootMarker.snapToAnchored,
       userTeam: widget.userTeam,
       opponentKeeper: widget.opponentTeam?.keeper,
+      fullMatchHalfConfig: widget.fullMatchHalfConfig,
     );
     _kickDetector.setGameCanAcceptKick(false);
     _kickDetector.disarm();
@@ -326,7 +327,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     setState(() => _setupPhase = _SetupPhase.playing);
     GamePlaySound.startStadiumCrowd();
     // Kick-off commentary; the first whistle is held until it finishes.
-    final intro = CommentarySound.playStart();
+    final intro = _kickOffCommentary();
     _matchController.introHold = intro + const Duration(milliseconds: 300);
     _matchController.startMatch(
       fullMatchConfig:
@@ -359,9 +360,21 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
     _kickDetector.disarm();
     _kickDetector.setGameCanAcceptKick(false);
     CommentarySound.stop();
-    final intro = CommentarySound.playStart();
+    final intro = _kickOffCommentary();
     _matchController.introHold = intro + const Duration(milliseconds: 300);
     _matchController.restartMatch();
+  }
+
+  Duration _kickOffCommentary() {
+    final cfg = widget.fullMatchHalfConfig;
+    if (cfg != null && cfg.isSecondHalf) {
+      return CommentarySound.playSecondHalfStart(
+        userShooting: true,
+        userScore: 0,
+        opponentScore: cfg.opponentScoreFromOtherHalf ?? 0,
+      );
+    }
+    return CommentarySound.playStart();
   }
 
   void _pauseGame() {

@@ -7,8 +7,10 @@ import '../data/game_settings.dart';
 import '../models/goal_event.dart';
 import '../models/kick_event.dart';
 import '../models/team.dart';
+import '../game/full_match_shootout.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
+import '../ui/second_half_commentary.dart';
 import 'components/ball_component.dart';
 import 'components/goal_component.dart';
 import 'components/scene_background_component.dart';
@@ -24,6 +26,7 @@ class VisionFootballGame extends FlameGame {
     this.onBallBecameIdle,
     this.userTeam,
     this.opponentKeeper,
+    this.fullMatchHalfConfig,
   }) : _kickStream = kickStream;
 
   final Stream<KickEvent> _kickStream;
@@ -36,6 +39,9 @@ class VisionFootballGame extends FlameGame {
 
   /// Opposing keeper whose reflex/prediction stats drive the AI keeper.
   final GoalkeeperRating? opponentKeeper;
+
+  /// Full Match half settings — second-half conditional commentary when set.
+  final FullMatchHalfConfig? fullMatchHalfConfig;
 
   final StreamController<GoalEvent> _goalController =
       StreamController<GoalEvent>.broadcast();
@@ -126,15 +132,23 @@ class VisionFootballGame extends FlameGame {
     // tells us how long to keep the ball at its result spot and hold the
     // match before the next run-up.
     Duration commentary;
+    final secondHalfSnap = _secondHalfSnapshot(isGoal: isGoal);
     if (isSave) {
       GamePlaySound.playSave();
       GamePlaySound.playBoo();
-      commentary = CommentarySound.playSave(_classifySave(landingPosition));
+      commentary = (secondHalfSnap != null
+              ? CommentarySound.tryPlaySecondHalfSave(secondHalfSnap)
+              : null) ??
+          CommentarySound.playSave(_classifySave(landingPosition));
     } else if (isGoal) {
-      commentary = CommentarySound.playGoal(
-        placement: _classifyPlacement(landingPosition),
-        isSlow: kick.kickPower < 0.35,
-      );
+      final secondHalfGoal = secondHalfSnap != null
+          ? CommentarySound.tryPlaySecondHalfGoal(secondHalfSnap)
+          : null;
+      commentary = secondHalfGoal ??
+          CommentarySound.playGoal(
+            placement: _classifyPlacement(landingPosition),
+            isSlow: kick.kickPower < 0.35,
+          );
       // Fade the longer cheer out to finish with the commentary line.
       GamePlaySound.playGoalCheer(fadeOutAlignedTo: commentary);
     } else {
@@ -142,10 +156,16 @@ class VisionFootballGame extends FlameGame {
         // Lead with the woodwork thud and duck the crowd's groan so it's clear.
         GamePlaySound.playCrossbar();
         GamePlaySound.playBoo(volume: 0.35);
-        commentary = CommentarySound.playMissCrossbar();
+        commentary = (secondHalfSnap != null
+                ? CommentarySound.tryPlaySecondHalfMiss(secondHalfSnap)
+                : null) ??
+            CommentarySound.playMissCrossbar();
       } else {
         GamePlaySound.playBoo();
-        commentary = CommentarySound.playMiss();
+        commentary = (secondHalfSnap != null
+                ? CommentarySound.tryPlaySecondHalfMiss(secondHalfSnap)
+                : null) ??
+            CommentarySound.playMiss();
       }
     }
 
@@ -194,6 +214,29 @@ class VisionFootballGame extends FlameGame {
     if (n.dy < 0.40) return SaveKind.fingerTip; // high / top-corner saves
     if (corner) return SaveKind.diving; // wide saves, esp. low
     return SaveKind.straight; // central, straight at the keeper
+  }
+
+  SecondHalfCommentarySnapshot? _secondHalfSnapshot({required bool isGoal}) {
+    final cfg = fullMatchHalfConfig;
+    if (cfg == null || !cfg.isSecondHalf) return null;
+    final s = matchController.state;
+    final kicksTaken = s.kicksTaken + 1;
+    final userScore = s.goalsScored + (isGoal ? 1 : 0);
+    final opponentScore = cfg.opponentScoreFromOtherHalf ?? 0;
+    final userRemaining = s.totalKicks - kicksTaken;
+    final decided = fullMatchShootoutDecided(
+      userScore: userScore,
+      opponentScore: opponentScore,
+      userRemainingKicks: userRemaining,
+      opponentRemainingKicks: 0,
+    );
+    return SecondHalfCommentarySnapshot(
+      userScore: userScore,
+      opponentScore: opponentScore,
+      userRemainingKicks: userRemaining,
+      opponentRemainingKicks: 0,
+      isLastKickOfHalf: kicksTaken >= s.totalKicks || decided != null,
+    );
   }
 
   @override

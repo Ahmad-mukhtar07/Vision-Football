@@ -144,3 +144,32 @@ flutter:
     - assets/sounds/commentary/save/comm-save-straight.wav
     - assets/sounds/commentary/save/comm-save-straight2.wav
     - assets/sounds/commentary/save/comm-save-straight3.wav
+    - assets/sounds/commentary/second-half/general/comm-2h-start1.wav
+    - assets/sounds/commentary/second-half/general/comm-2h-start2.wav
+    - assets/sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-1needed.wav
+    - assets/sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-2needed.wav
+    - assets/sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-3needed.wav
+    - assets/sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-4needed.wav
+    - assets/sounds/commentary/second-half/general/goalkeeping/comm-2h-start-keep-5needed.wav
+    - assets/sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-1needed.wav
+    - assets/sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-2needed.wav
+    - assets/sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-3needed.wav
+    - assets/sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-4needed.wav
+    - assets/sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-5needed.wav
+    - assets/sounds/commentary/second-half/goal/comm-2h-goal-level1.wav
+    - assets/sounds/commentary/second-half/goal/comm-2h-goal-level2.wav
+    - assets/sounds/commentary/second-half/goal/comm-2h-goal-draw.wav
+    - assets/sounds/commentary/second-half/goal/comm-2h-goal-win-finalkick.wav
+    - assets/sounds/commentary/second-half/goal/comm-2h-goal-win1.wav
+    - assets/sounds/commentary/second-half/goal/comm-2h-goal-win2.wav
+    - assets/sounds/commentary/second-half/goal/comm-2h-goal-win3.wav
+    - assets/sounds/commentary/second-half/save/comm-2h-save-draw1.wav
+    - assets/sounds/commentary/second-half/save/comm-2h-save-draw2.wav
+    - assets/sounds/commentary/second-half/save/comm-2h-save-draw3.wav
+    - assets/sounds/commentary/second-half/save/comm-2h-save-win1.wav
+    - assets/sounds/commentary/second-half/save/comm-2h-save-win2.wav
+    - assets/sounds/commentary/second-half/save/comm-2h-save-win3.wav
+    - assets/sounds/commentary/second-half/miss/comm-2h-miss-deadend1.wav
+    - assets/sounds/commentary/second-half/miss/comm-2h-miss-deadend2.wav
+    - assets/sounds/commentary/second-half/miss/comm-2h-miss-lost1.wav
+    - assets/sounds/commentary/second-half/miss/comm-2h-miss-lost2.wav
