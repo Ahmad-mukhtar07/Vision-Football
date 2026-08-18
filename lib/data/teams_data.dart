@@ -287,6 +287,47 @@ const Team croatia = Team(
   ),
 );
 
+
+const Team japan = Team(
+  name: 'Japan',
+  countryCode: 'JP',
+  kitPrimaryColor: Color(0xFF001E62),
+  overall: 78,
+  shooters: [
+    Player(name: 'Takafusa Kubbo', overall: 80, power: 74, accuracy: 80, curve: 83),
+    Player(name: 'Kaorru Mitomah', overall: 80, power: 72, accuracy: 78, curve: 81),
+    Player(name: 'Takumy Minamino', overall: 78, power: 75, accuracy: 79, curve: 77),
+    Player(name: 'Daychi Kamada', overall: 78, power: 73, accuracy: 78, curve: 80),
+    Player(name: 'Ritsso Doan', overall: 77, power: 77, accuracy: 76, curve: 78),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Zyon Suzuky',
+    overall: 74,
+    reflex: 78,
+    prediction: 75,
+  ),
+);
+
+const Team saudiArabia = Team(
+  name: 'Saudi Arabia',
+  countryCode: 'SA',
+  kitPrimaryColor: Color(0xFF006C35),
+  overall: 73,
+  shooters: [
+    Player(name: 'Salem Al-Dawsary', overall: 77, power: 78, accuracy: 76, curve: 80),
+    Player(name: 'Mohamed Canno', overall: 73, power: 76, accuracy: 70, curve: 68),
+    Player(name: 'Firas Al-Buraican', overall: 72, power: 73, accuracy: 73, curve: 65),
+    Player(name: 'Abdulrahman Gareeb', overall: 72, power: 68, accuracy: 71, curve: 74),
+    Player(name: 'Saleh Al-Shehry', overall: 71, power: 72, accuracy: 72, curve: 62),
+  ],
+  keeper: GoalkeeperRating(
+    name: 'Mohamed Al-Oways',
+    overall: 74,
+    reflex: 77,
+    prediction: 75,
+  ),
+);
+
 const Team india = Team(
   name: 'India',
   countryCode: 'IN',
@@ -344,6 +385,8 @@ const List<Team> kStandardTeams = [
   croatia,
   norway,
   usa,
+  japan,
+  saudiArabia,
 ];
 
 /// Extra teams shown under a separate "Special Teams" section.
