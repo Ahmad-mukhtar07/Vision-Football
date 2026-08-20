@@ -11,6 +11,7 @@ import 'data/user_profile_store.dart';
 import 'keeper/keeper_screen.dart';
 import 'ui/full_match_screen.dart';
 import 'ui/mode_selection_overlay.dart';
+import 'ui/tournament/tournament_screen.dart';
 import 'ui/onboarding/onboarding_profile_screen.dart';
 import 'ui/tutorial/keeping_tutorial_screen.dart';
 import 'ui/tutorial/kicking_tutorial_screen.dart';
@@ -176,6 +177,11 @@ class _AppBootstrapState extends State<AppBootstrap> {
       body = ModeSelectionOverlay(onModeSelected: _onModeSelected);
     } else if (_selectedMode == GameMode.fullMatch) {
       body = FullMatchScreen(
+        cameras: _cameras!,
+        onReturnToMenu: _returnToMainMenu,
+      );
+    } else if (_selectedMode == GameMode.tournament) {
+      body = TournamentScreen(
         cameras: _cameras!,
         onReturnToMenu: _returnToMainMenu,
       );

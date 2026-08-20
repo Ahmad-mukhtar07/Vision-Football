@@ -55,17 +55,35 @@ class FullMatchScreen extends StatefulWidget {
     super.key,
     required this.cameras,
     required this.onReturnToMenu,
+    this.initialUserTeam,
+    this.initialOpponentTeam,
+    this.skipTeamSelect = false,
+    this.skipMatchSetup = false,
+    this.tournamentFixture = false,
+    this.onFixtureComplete,
   });
 
   final List<CameraDescription> cameras;
   final VoidCallback onReturnToMenu;
+
+  /// When set (tournament fixture), teams are fixed and team select is skipped.
+  final Team? initialUserTeam;
+  final Team? initialOpponentTeam;
+  final bool skipTeamSelect;
+  final bool skipMatchSetup;
+  final bool tournamentFixture;
+  final void Function({
+    required bool userWon,
+    required int userGoals,
+    required int opponentGoals,
+  })? onFixtureComplete;
 
   @override
   State<FullMatchScreen> createState() => _FullMatchScreenState();
 }
 
 class _FullMatchScreenState extends State<FullMatchScreen> {
-  _FmPhase _phase = _FmPhase.teamSelect;
+  late _FmPhase _phase;
 
   Team? _userTeam;
   Team? _opponentTeam;
@@ -82,6 +100,22 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
     final first = _firstRole!;
     if (half == 1) return first;
     return first == MatchRole.shooter ? MatchRole.keeper : MatchRole.shooter;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.skipTeamSelect &&
+        widget.initialUserTeam != null &&
+        widget.initialOpponentTeam != null) {
+      _userTeam = widget.initialUserTeam;
+      _opponentTeam = widget.initialOpponentTeam;
+      _phase = widget.skipMatchSetup
+          ? _FmPhase.coinToss
+          : _FmPhase.matchSetup;
+    } else {
+      _phase = _FmPhase.teamSelect;
+    }
   }
 
   // ── Transitions ────────────────────────────────────────────────────────────
@@ -204,7 +238,9 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           userTeam: _userTeam!,
           opponentTeam: _opponentTeam!,
           onDecided: _onTossDecided,
-          onBack: () => setState(() => _phase = _FmPhase.matchSetup),
+          onBack: widget.skipMatchSetup
+              ? widget.onReturnToMenu
+              : () => setState(() => _phase = _FmPhase.matchSetup),
         );
       case _FmPhase.playingHalf1:
         return _buildHalf(1);
@@ -223,6 +259,22 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           onQuit: widget.onReturnToMenu,
         );
       case _FmPhase.fullTime:
+        if (widget.tournamentFixture) {
+          return _TournamentFixtureResultOverlay(
+            userTeam: _userTeam!,
+            opponentTeam: _opponentTeam!,
+            userGoals: _userGoals ?? 0,
+            opponentGoals: _opponentGoals ?? 0,
+            onContinue: () {
+              final userWon = (_userGoals ?? 0) > (_opponentGoals ?? 0);
+              widget.onFixtureComplete?.call(
+                userWon: userWon,
+                userGoals: _userGoals ?? 0,
+                opponentGoals: _opponentGoals ?? 0,
+              );
+            },
+          );
+        }
         return _FullTimeOverlay(
           userTeam: _userTeam!,
           opponentTeam: _opponentTeam!,
@@ -662,6 +714,104 @@ class _FullTimeOverlayState extends State<_FullTimeOverlay> {
                   Colors.white70,
                   widget.onMainMenu,
                   filled: false,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TournamentFixtureResultOverlay extends StatefulWidget {
+  const _TournamentFixtureResultOverlay({
+    required this.userTeam,
+    required this.opponentTeam,
+    required this.userGoals,
+    required this.opponentGoals,
+    required this.onContinue,
+  });
+
+  final Team userTeam;
+  final Team opponentTeam;
+  final int userGoals;
+  final int opponentGoals;
+  final VoidCallback onContinue;
+
+  @override
+  State<_TournamentFixtureResultOverlay> createState() =>
+      _TournamentFixtureResultOverlayState();
+}
+
+class _TournamentFixtureResultOverlayState
+    extends State<_TournamentFixtureResultOverlay> {
+  @override
+  void initState() {
+    super.initState();
+    GamePlaySound.playFullTimeWhistle();
+    if (widget.userGoals > widget.opponentGoals) {
+      GamePlaySound.playGoalCheer();
+    }
+  }
+
+  @override
+  void dispose() {
+    GamePlaySound.stopFullTimeWhistle();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final won = widget.userGoals > widget.opponentGoals;
+    final lost = widget.userGoals < widget.opponentGoals;
+    final (String title, Color color) = won
+        ? ('YOU WIN', _Pal.green)
+        : lost
+            ? ('YOU LOSE', _Pal.red)
+            : ('DRAW', _Pal.gold);
+
+    return DecoratedBox(
+      decoration: _bgDecoration,
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'FULL TIME',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 40,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                _Scoreline(
+                  userTeam: widget.userTeam,
+                  opponentTeam: widget.opponentTeam,
+                  userGoals: widget.userGoals,
+                  opponentGoals: widget.opponentGoals,
+                ),
+                const SizedBox(height: 36),
+                _pillButton(
+                  won ? 'Continue' : 'View Bracket',
+                  _Pal.green,
+                  widget.onContinue,
+                  icon: Icons.arrow_forward_rounded,
                 ),
               ],
             ),

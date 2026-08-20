@@ -13,6 +13,7 @@ import 'profile_settings_sheet.dart';
 /// Selectable game mode from the start screen.
 enum GameMode {
   fullMatch,
+  tournament,
   takeShots,
   beTheKeeper,
   kickingTutorial,
@@ -152,6 +153,10 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
     );
   }
 
+  void _openTournament(BuildContext context) {
+    widget.onModeSelected(GameMode.tournament);
+  }
+
   void _openTutorials(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -256,6 +261,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
                       tutorialArt: _tutorialArt,
                       masterAnimation: _masterController,
                       onFullMatchTap: () => _openFullMatch(context),
+                      onTournamentTap: () => _openTournament(context),
                       onTutorialsTap: () => _openTutorials(context),
                       onSettingsTap: () => _openSettings(context),
                     ),
@@ -775,6 +781,7 @@ class _ModeSelectorGrid extends StatelessWidget {
     required this.tutorialArt,
     required this.masterAnimation,
     required this.onFullMatchTap,
+    required this.onTournamentTap,
     required this.onTutorialsTap,
     required this.onSettingsTap,
   });
@@ -786,6 +793,7 @@ class _ModeSelectorGrid extends StatelessWidget {
   final String tutorialArt;
   final Animation<double> masterAnimation;
   final VoidCallback onFullMatchTap;
+  final VoidCallback onTournamentTap;
   final VoidCallback onTutorialsTap;
   final VoidCallback onSettingsTap;
 
@@ -821,10 +829,9 @@ class _ModeSelectorGrid extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: cardWidth,
-                    child: _LockedModeCard(
-                      title: 'TOURNAMENTS',
+                    child: _TournamentModeCard(
                       artAsset: tournamentArt,
-                      accent: _Arcade.lime,
+                      onTap: onTournamentTap,
                     ),
                   ),
                   const SizedBox(width: _rowGap),
@@ -857,6 +864,96 @@ class _ModeSelectorGrid extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Tappable "Tournaments" card in the scrollable bottom strip.
+class _TournamentModeCard extends StatelessWidget {
+  const _TournamentModeCard({
+    required this.artAsset,
+    required this.onTap,
+  });
+
+  final String artAsset;
+  final VoidCallback onTap;
+
+  static const _accent = _Arcade.lime;
+  static const _cardStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w900,
+    fontStyle: FontStyle.italic,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return _TapScaleCard(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(artAsset, fit: BoxFit.cover),
+            ColoredBox(
+              color: const Color(0xFF0C0620).withValues(alpha: 0.55),
+            ),
+            ColoredBox(color: _accent.withValues(alpha: 0.16)),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _accent.withValues(alpha: 0.7),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _accent.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    spreadRadius: 0.5,
+                  ),
+                ],
+              ),
+            ),
+            Center(
+              child: Icon(
+                Icons.emoji_events_rounded,
+                size: 32,
+                color: Colors.white.withValues(alpha: 0.92),
+              ),
+            ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 12,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'TOURNAMENTS',
+                    textAlign: TextAlign.center,
+                    style: _cardStyle.copyWith(
+                      fontSize: 13,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Knockout cup',
+                    style: TextStyle(
+                      color: _accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
