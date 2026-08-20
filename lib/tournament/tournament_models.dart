@@ -63,7 +63,8 @@ class TournamentFixture {
     this.scoreB,
     this.isUserFixture = false,
     this.userIsTeamA = true,
-  });
+    int? displayOrder,
+  }) : displayOrder = displayOrder ?? indexInRound;
 
   final String id;
   final TournamentRound round;
@@ -75,6 +76,7 @@ class TournamentFixture {
   int? scoreB;
   bool isUserFixture;
   bool userIsTeamA;
+  int displayOrder;
 
   bool get isPlayed => winner != null;
 

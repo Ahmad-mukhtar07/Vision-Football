@@ -3,6 +3,7 @@ import 'dart:math';
 import '../data/teams_data.dart';
 import '../models/team.dart';
 import 'tournament_models.dart';
+import 'tournament_store.dart';
 
 /// Builds a 16-team knockout bracket with a favourable Round-of-16 draw for
 /// the user's team.
@@ -51,6 +52,7 @@ class TournamentBracketBuilder {
         ),
       );
     }
+    assignShuffledDisplayOrder(r16, random: _random);
 
     final rounds = <TournamentRound, List<TournamentFixture>>{
       TournamentRound.roundOf16: r16,

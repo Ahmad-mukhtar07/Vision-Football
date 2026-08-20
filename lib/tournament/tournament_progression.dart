@@ -1,6 +1,7 @@
 import '../data/teams_data.dart';
 import 'tournament_models.dart';
 import 'tournament_simulator.dart';
+import 'tournament_store.dart';
 
 /// Advances bracket state: simulates AI fixtures and propagates winners.
 class TournamentProgression {
@@ -107,6 +108,7 @@ class TournamentProgression {
       fixture.isUserFixture = userInA || userInB;
       fixture.userIsTeamA = userInA;
     }
+    assignShuffledDisplayOrder(nextFixtures);
   }
 
   TournamentFixture? _lastUserFixtureInRound(

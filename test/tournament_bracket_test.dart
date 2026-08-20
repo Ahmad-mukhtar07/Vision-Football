@@ -1,13 +1,17 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vision_football/data/teams_data.dart';
 import 'package:vision_football/tournament/tournament_bracket_builder.dart';
 import 'package:vision_football/tournament/tournament_models.dart';
 import 'package:vision_football/tournament/tournament_progression.dart';
 import 'package:vision_football/tournament/tournament_simulator.dart';
+import 'package:vision_football/tournament/tournament_store.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('TournamentBracketBuilder', () {
     test('builds 16-team bracket with favourable opening draw', () {
       const seed = 42;
@@ -24,6 +28,49 @@ void main() {
           ? userFixture.teamB!
           : userFixture.teamA!;
       expect(opponent.overall, lessThan(87));
+    });
+
+    test('does not always place the user in the first displayed match', () {
+      var userWasFirst = 0;
+      for (var seed = 0; seed < 30; seed++) {
+        final bracket =
+            TournamentBracketBuilder(random: Random(seed)).build(userTeam: brazil);
+        final sorted = fixturesSortedForDisplay(
+          TournamentRound.roundOf16,
+          bracket,
+        );
+        if (sorted.first.isUserFixture) userWasFirst++;
+      }
+      expect(userWasFirst, lessThan(30));
+    });
+  });
+
+  group('TournamentStore', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('round-trips bracket state', () async {
+      final bracket =
+          TournamentBracketBuilder(random: Random(1)).build(userTeam: spain);
+      final fixture = bracket.userFixture!;
+      fixture.winner = fixture.teamA;
+      fixture.scoreA = 4;
+      fixture.scoreB = 3;
+
+      await TournamentStore.save(bracket: bracket, matchInProgress: false);
+      final loaded = await TournamentStore.load();
+
+      expect(loaded, isNotNull);
+      expect(loaded!.matchInProgress, isFalse);
+      expect(teamsMatch(loaded.bracket.userTeam, bracket.userTeam), isTrue);
+      expect(loaded.bracket.currentRound, bracket.currentRound);
+      expect(
+        loaded.bracket.fixturesFor(TournamentRound.roundOf16).first.scoreA,
+        4,
+      );
+
+      await TournamentStore.clear();
     });
   });
 

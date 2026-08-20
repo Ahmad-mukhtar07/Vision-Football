@@ -6,6 +6,7 @@ import '../../data/teams_data.dart';
 import '../../models/team.dart';
 import '../main_page_sound.dart';
 import '../team_squad_sheet.dart';
+import 'tournament_confirm_dialog.dart';
 
 class _Pal {
   const _Pal._();
@@ -51,6 +52,19 @@ class _TournamentTeamPickScreenState extends State<TournamentTeamPickScreen> {
         setState(() => _selected = team);
       },
     );
+  }
+
+  Future<void> _confirmEnter() async {
+    final team = _selected;
+    if (team == null) return;
+    final confirmed = await showTournamentConfirmDialog(
+      context,
+      title: 'Enter Tournament?',
+      message:
+          'Play as ${team.name} in the knockout cup? You cannot change teams once the tournament starts.',
+      confirmLabel: 'Enter',
+    );
+    if (confirmed && mounted) widget.onTeamSelected(team);
   }
 
   @override
@@ -153,12 +167,7 @@ class _TournamentTeamPickScreenState extends State<TournamentTeamPickScreen> {
                 ),
                 _EnterBar(
                   ready: _selected != null,
-                  onEnter: _selected == null
-                      ? null
-                      : () {
-                          _tap();
-                          widget.onTeamSelected(_selected!);
-                        },
+                  onEnter: _selected == null ? null : _confirmEnter,
                 ),
               ],
             );
@@ -320,7 +329,7 @@ class _EnterBar extends StatelessWidget {
   const _EnterBar({required this.ready, required this.onEnter});
 
   final bool ready;
-  final VoidCallback? onEnter;
+  final Future<void> Function()? onEnter;
 
   @override
   Widget build(BuildContext context) {
@@ -355,7 +364,12 @@ class _EnterBar extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(27),
-              onTap: onEnter,
+              onTap: ready
+                  ? () {
+                      _tap();
+                      onEnter!();
+                    }
+                  : null,
               child: Center(
                 child: Text(
                   ready ? 'ENTER TOURNAMENT' : 'Select your nation',

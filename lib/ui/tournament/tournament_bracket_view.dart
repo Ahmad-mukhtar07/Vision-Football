@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../data/teams_data.dart';
 import '../../models/team.dart';
 import '../../tournament/tournament_models.dart';
+import '../../tournament/tournament_store.dart';
 
 class _Pal {
   const _Pal._();
@@ -120,7 +121,7 @@ class _TournamentBracketViewState extends State<TournamentBracketView> {
     final bracket = widget.bracket;
     final remaining = _teamsRemaining(bracket);
     final progress = _tournamentProgress(bracket);
-    final fixtures = bracket.fixturesFor(_selectedRound);
+    final fixtures = fixturesSortedForDisplay(_selectedRound, bracket);
     final useGrid = _selectedRound == TournamentRound.roundOf16 ||
         _selectedRound == TournamentRound.quarterFinal;
 
@@ -187,20 +188,24 @@ class _TournamentBracketViewState extends State<TournamentBracketView> {
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: useGrid
-                ? _MatchGrid(
-                    fixtures: fixtures,
-                    userTeam: bracket.userTeam,
-                  )
-                : _MatchList(
-                    fixtures: fixtures,
-                    userTeam: bracket.userTeam,
-                  ),
+            child: Column(
+              children: [
+                useGrid
+                    ? _MatchGrid(
+                        fixtures: fixtures,
+                        userTeam: bracket.userTeam,
+                      )
+                    : _MatchList(
+                        fixtures: fixtures,
+                        userTeam: bracket.userTeam,
+                      ),
+                if (bracket.champion != null) ...[
+                  const SizedBox(height: 12),
+                  _ChampionCard(bracket: bracket),
+                ],
+              ],
+            ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: _ChampionCard(bracket: bracket),
         ),
       ],
     );
@@ -342,21 +347,26 @@ class _MatchGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.92,
-      ),
-      itemCount: fixtures.length,
-      itemBuilder: (context, i) => _MatchCard(
-        fixture: fixtures[i],
-        userTeam: userTeam,
-        compact: true,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 12.0;
+        final cardWidth = (constraints.maxWidth - gap) / 2;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final fixture in fixtures)
+              SizedBox(
+                width: cardWidth,
+                child: _MatchCard(
+                  fixture: fixture,
+                  userTeam: userTeam,
+                  compact: true,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -400,6 +410,8 @@ class _MatchCard extends StatelessWidget {
 
   bool get _isUserNext => fixture.isUserFixture && !fixture.isPlayed;
 
+  String get _matchLabel => 'Match ${fixture.displayOrder + 1}';
+
   bool get _userWon =>
       fixture.isPlayed &&
       fixture.winner != null &&
@@ -434,36 +446,41 @@ class _MatchCard extends StatelessWidget {
             : null,
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_isUserNext)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: _Pal.cyan.withValues(alpha: 0.14),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(14),
-                ),
-              ),
-              child: Text(
-                'YOUR MATCH',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _Pal.cyan,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.4,
-                ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _isUserNext
+                  ? _Pal.cyan.withValues(alpha: 0.14)
+                  : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(compact ? 14 : 16),
               ),
             ),
+            child: Text(
+              _matchLabel,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _isUserNext
+                    ? _Pal.cyan
+                    : Colors.white.withValues(alpha: 0.5),
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
           Padding(
             padding: EdgeInsets.fromLTRB(
               compact ? 10 : 14,
-              _isUserNext ? 8 : (compact ? 10 : 12),
+              6,
               compact ? 10 : 14,
-              compact ? 10 : 12,
+              compact ? 8 : 12,
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 _TeamRow(
                   team: fixture.teamA,
@@ -481,7 +498,7 @@ class _MatchCard extends StatelessWidget {
                   emphasize: _rowEmphasis(isTeamA: true),
                 ),
                 Padding(
-                  padding: EdgeInsets.symmetric(vertical: compact ? 4 : 6),
+                  padding: EdgeInsets.symmetric(vertical: compact ? 3 : 5),
                   child: Divider(
                     height: 1,
                     color: Colors.white.withValues(alpha: 0.1),
@@ -655,8 +672,7 @@ class _ChampionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final champion = bracket.champion;
-    final complete = champion != null;
+    final champion = bracket.champion!;
     final userWon = bracket.userWonTournament;
 
     return Container(
@@ -665,28 +681,22 @@ class _ChampionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         color: Colors.white.withValues(alpha: 0.05),
         border: Border.all(
-          color: complete
-              ? _Pal.gold.withValues(alpha: 0.7)
-              : Colors.white.withValues(alpha: 0.14),
-          width: complete ? 1.8 : 1,
+          color: _Pal.gold.withValues(alpha: 0.7),
+          width: 1.8,
         ),
-        boxShadow: complete
-            ? [
-                BoxShadow(
-                  color: _Pal.gold.withValues(alpha: 0.25),
-                  blurRadius: 14,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
+        boxShadow: [
+          BoxShadow(
+            color: _Pal.gold.withValues(alpha: 0.25),
+            blurRadius: 14,
+            spreadRadius: 1,
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(
+          const Icon(
             Icons.emoji_events_rounded,
-            color: complete
-                ? _Pal.gold
-                : Colors.white.withValues(alpha: 0.35),
+            color: _Pal.gold,
             size: 32,
           ),
           const SizedBox(width: 14),
@@ -695,11 +705,9 @@ class _ChampionCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  complete ? 'CHAMPION' : 'CHAMPION',
+                  'CHAMPION',
                   style: TextStyle(
-                    color: complete
-                        ? _Pal.gold
-                        : Colors.white.withValues(alpha: 0.45),
+                    color: _Pal.gold.withValues(alpha: 0.95),
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.6,
@@ -707,19 +715,17 @@ class _ChampionCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  complete ? champion.name : 'To be decided',
+                  champion.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: complete
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.55),
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
-                if (complete && userWon)
+                if (userWon)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
@@ -734,14 +740,13 @@ class _ChampionCard extends StatelessWidget {
               ],
             ),
           ),
-          if (complete)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: CountryFlag.fromCountryCode(
-                champion.countryCode,
-                theme: const ImageTheme(width: 48, height: 32),
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: CountryFlag.fromCountryCode(
+              champion.countryCode,
+              theme: const ImageTheme(width: 48, height: 32),
             ),
+          ),
         ],
       ),
     );
