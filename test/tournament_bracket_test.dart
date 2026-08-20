@@ -115,6 +115,34 @@ void main() {
       expect(bracket.userFixture!.teamA, isNotNull);
       expect(bracket.userFixture!.teamB, isNotNull);
     });
+
+    test('draw does not mark user fixture as played', () {
+      final bracket =
+          TournamentBracketBuilder(random: Random(3)).build(userTeam: usa);
+      final fixture = bracket.userFixture!;
+
+      expect(fixture.isPlayed, isFalse);
+      expect(bracket.userEliminated, isFalse);
+    });
+  });
+
+  group('TournamentStore clear', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('clear removes saved tournament', () async {
+      final bracket =
+          TournamentBracketBuilder(random: Random(1)).build(userTeam: spain);
+      bracket.userEliminated = true;
+
+      await TournamentStore.save(bracket: bracket, matchInProgress: false);
+      expect(await TournamentStore.hasSavedTournament(), isTrue);
+
+      await TournamentStore.clear();
+      expect(await TournamentStore.hasSavedTournament(), isFalse);
+      expect(await TournamentStore.load(), isNull);
+    });
   });
 }
 

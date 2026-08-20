@@ -142,12 +142,16 @@ class VisionFootballGame extends FlameGame {
           CommentarySound.playSave(_classifySave(landingPosition));
     } else if (isGoal) {
       final secondHalfGoal = secondHalfSnap != null
-          ? CommentarySound.tryPlaySecondHalfGoal(secondHalfSnap)
+          ? CommentarySound.tryPlaySecondHalfGoal(
+              secondHalfSnap,
+              userAction: true,
+            )
           : null;
       commentary = secondHalfGoal ??
           CommentarySound.playGoal(
             placement: _classifyPlacement(landingPosition),
             isSlow: kick.kickPower < 0.35,
+            userAction: true,
           );
       // Fade the longer cheer out to finish with the commentary line.
       GamePlaySound.playGoalCheer(fadeOutAlignedTo: commentary);

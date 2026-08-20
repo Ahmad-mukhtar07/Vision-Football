@@ -61,6 +61,8 @@ class FullMatchScreen extends StatefulWidget {
     this.skipMatchSetup = false,
     this.tournamentFixture = false,
     this.onFixtureComplete,
+    this.onFixtureDrawPending,
+    this.onFixtureRematch,
   });
 
   final List<CameraDescription> cameras;
@@ -77,6 +79,8 @@ class FullMatchScreen extends StatefulWidget {
     required int userGoals,
     required int opponentGoals,
   })? onFixtureComplete;
+  final VoidCallback? onFixtureDrawPending;
+  final VoidCallback? onFixtureRematch;
 
   @override
   State<FullMatchScreen> createState() => _FullMatchScreenState();
@@ -265,13 +269,20 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
             opponentTeam: _opponentTeam!,
             userGoals: _userGoals ?? 0,
             opponentGoals: _opponentGoals ?? 0,
+            onDrawPending: widget.onFixtureDrawPending,
             onContinue: () {
-              final userWon = (_userGoals ?? 0) > (_opponentGoals ?? 0);
+              final userGoals = _userGoals ?? 0;
+              final opponentGoals = _opponentGoals ?? 0;
+              if (userGoals == opponentGoals) return;
               widget.onFixtureComplete?.call(
-                userWon: userWon,
-                userGoals: _userGoals ?? 0,
-                opponentGoals: _opponentGoals ?? 0,
+                userWon: userGoals > opponentGoals,
+                userGoals: userGoals,
+                opponentGoals: opponentGoals,
               );
+            },
+            onRematch: () {
+              widget.onFixtureRematch?.call();
+              _rematch();
             },
           );
         }
@@ -731,6 +742,8 @@ class _TournamentFixtureResultOverlay extends StatefulWidget {
     required this.userGoals,
     required this.opponentGoals,
     required this.onContinue,
+    required this.onRematch,
+    this.onDrawPending,
   });
 
   final Team userTeam;
@@ -738,6 +751,8 @@ class _TournamentFixtureResultOverlay extends StatefulWidget {
   final int userGoals;
   final int opponentGoals;
   final VoidCallback onContinue;
+  final VoidCallback onRematch;
+  final VoidCallback? onDrawPending;
 
   @override
   State<_TournamentFixtureResultOverlay> createState() =>
@@ -753,6 +768,9 @@ class _TournamentFixtureResultOverlayState
     if (widget.userGoals > widget.opponentGoals) {
       GamePlaySound.playGoalCheer();
     }
+    if (widget.userGoals == widget.opponentGoals) {
+      widget.onDrawPending?.call();
+    }
   }
 
   @override
@@ -765,6 +783,7 @@ class _TournamentFixtureResultOverlayState
   Widget build(BuildContext context) {
     final won = widget.userGoals > widget.opponentGoals;
     final lost = widget.userGoals < widget.opponentGoals;
+    final isDraw = !won && !lost;
     final (String title, Color color) = won
         ? ('YOU WIN', _Pal.green)
         : lost
@@ -808,10 +827,16 @@ class _TournamentFixtureResultOverlayState
                 ),
                 const SizedBox(height: 36),
                 _pillButton(
-                  won ? 'Continue' : 'View Bracket',
+                  isDraw
+                      ? 'Rematch'
+                      : won
+                          ? 'Continue'
+                          : 'View Bracket',
                   _Pal.green,
-                  widget.onContinue,
-                  icon: Icons.arrow_forward_rounded,
+                  isDraw ? widget.onRematch : widget.onContinue,
+                  icon: isDraw
+                      ? Icons.refresh_rounded
+                      : Icons.arrow_forward_rounded,
                 ),
               ],
             ),

@@ -68,6 +68,10 @@ class _TournamentScreenState extends State<TournamentScreen>
   final _progression = TournamentProgression();
   TournamentMatchSettingsScope? _settingsScope;
   bool _hydrated = false;
+  /// After [TournamentStore.clear], skip persisting eliminated state on dispose.
+  bool _saveCleared = false;
+  /// True while a fixture is actively being played (not draw-result screen).
+  bool _matchInProgress = false;
 
   @override
   void initState() {
@@ -80,8 +84,10 @@ class _TournamentScreenState extends State<TournamentScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _settingsScope?.restore();
-    if (_bracket != null && _phase != _TournamentPhase.pickTeam) {
-      _persistBracket(matchInProgress: _phase == _TournamentPhase.playingMatch);
+    if (!_saveCleared &&
+        _bracket != null &&
+        _phase != _TournamentPhase.pickTeam) {
+      _persistBracket(matchInProgress: _matchInProgress);
     }
     super.dispose();
   }
@@ -91,7 +97,7 @@ class _TournamentScreenState extends State<TournamentScreen>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
-      _persistBracket(matchInProgress: _phase == _TournamentPhase.playingMatch);
+      _persistBracket(matchInProgress: _matchInProgress);
     }
   }
 
@@ -169,7 +175,10 @@ class _TournamentScreenState extends State<TournamentScreen>
     _settingsScope = TournamentMatchSettingsScope.apply(settings);
     await _persistBracket(matchInProgress: true);
     if (!mounted) return;
-    setState(() => _phase = _TournamentPhase.playingMatch);
+    setState(() {
+      _matchInProgress = true;
+      _phase = _TournamentPhase.playingMatch;
+    });
   }
 
   Future<void> _onFixtureComplete({
@@ -179,6 +188,9 @@ class _TournamentScreenState extends State<TournamentScreen>
   }) async {
     final bracket = _bracket;
     if (bracket == null) return;
+
+    // Draws restart the fixture — only wins/losses advance the bracket.
+    if (userGoals == opponentGoals) return;
 
     _settingsScope?.restore();
     _settingsScope = null;
@@ -199,12 +211,28 @@ class _TournamentScreenState extends State<TournamentScreen>
 
     await _persistBracket(matchInProgress: false);
     if (!mounted) return;
-    setState(() => _phase = _TournamentPhase.bracket);
+    setState(() {
+      _matchInProgress = false;
+      _phase = _TournamentPhase.bracket;
+    });
+  }
+
+  Future<void> _onFixtureDrawPending() async {
+    // Match finished in a draw — no result recorded; closing the app here
+    // should not forfeit the fixture.
+    _matchInProgress = false;
+    await _persistBracket(matchInProgress: false);
+  }
+
+  Future<void> _onFixtureRematch() async {
+    _matchInProgress = true;
+    await _persistBracket(matchInProgress: true);
   }
 
   Future<void> _abortToBracket() async {
     _settingsScope?.restore();
     _settingsScope = null;
+    _matchInProgress = false;
     await _persistBracket(matchInProgress: false);
     if (!mounted) return;
     setState(() => _phase = _TournamentPhase.bracket);
@@ -224,6 +252,8 @@ class _TournamentScreenState extends State<TournamentScreen>
     if (!confirmed || !mounted) return;
 
     if (quitting) {
+      _saveCleared = true;
+      _bracket = null;
       await TournamentStore.clear();
     } else {
       await _persistBracket(matchInProgress: false);
@@ -232,7 +262,15 @@ class _TournamentScreenState extends State<TournamentScreen>
   }
 
   Future<void> _saveAndReturnToMenu() async {
-    await _persistBracket(matchInProgress: false);
+    final bracket = _bracket;
+    if (bracket != null &&
+        (bracket.userEliminated || bracket.isComplete)) {
+      _saveCleared = true;
+      _bracket = null;
+      await TournamentStore.clear();
+    } else {
+      await _persistBracket(matchInProgress: false);
+    }
     _exitTournament();
   }
 
@@ -277,6 +315,8 @@ class _TournamentScreenState extends State<TournamentScreen>
         skipTeamSelect: true,
         skipMatchSetup: true,
         tournamentFixture: true,
+        onFixtureDrawPending: _onFixtureDrawPending,
+        onFixtureRematch: _onFixtureRematch,
         onFixtureComplete: ({
           required bool userWon,
           required int userGoals,

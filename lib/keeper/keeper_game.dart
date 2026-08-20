@@ -297,9 +297,15 @@ class KeeperGame extends FlameGame {
       if (!tutorialMode) {
         final snap = _secondHalfSnapshot(conceded: false);
         lastCommentaryDuration = (snap != null
-                ? CommentarySound.tryPlaySecondHalfSave(snap)
+                ? CommentarySound.tryPlaySecondHalfSave(
+                    snap,
+                    userAction: true,
+                  )
                 : null) ??
-            CommentarySound.playSave(_classifySave(ballLandingScreen));
+            CommentarySound.playSave(
+              _classifySave(ballLandingScreen),
+              userAction: true,
+            );
       }
     } else {
       _goal.flashRed();

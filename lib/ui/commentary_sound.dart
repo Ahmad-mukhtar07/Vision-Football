@@ -41,7 +41,6 @@ class CommentarySound {
     'sounds/commentary/goal/comm-goal-bottomCorner2.wav',
     'sounds/commentary/goal/comm-goal-bottomCorner3.wav',
     'sounds/commentary/goal/comm-goal-bottomCorner4.wav',
-    'sounds/commentary/goal/comm-goal-topCorner4.wav',
     'sounds/commentary/goal/comm-goal-topCorner5.wav',
   ];
 
@@ -155,6 +154,11 @@ class CommentarySound {
   static final Random _rng = Random();
   static bool _warmed = false;
 
+  /// Default commentary level; boosted when the user scores or saves so lines
+  /// stay audible over goal cheer / save effects playing at the same time.
+  static const double _volume = 1.0;
+  static const double _userActionVolume = 1.32;
+
   /// Measures every clip's length from its bundled WAV header and caches it.
   /// Safe to call repeatedly; only does the work once.
   static Future<void> warmUp() async {
@@ -181,28 +185,35 @@ class CommentarySound {
   static Duration playGoal({
     required GoalPlacement placement,
     required bool isSlow,
+    bool userAction = false,
   }) {
-    if (isSlow) return _play(_pick(_goalSlowPool));
+    final volume = userAction ? _userActionVolume : _volume;
+    if (isSlow) return _play(_pick(_goalSlowPool), volume: volume);
     switch (placement) {
       case GoalPlacement.topCorner:
-        if (_rng.nextDouble() < 0.15) return _play(_pick(_goalStraightPool));
-        return _play(_pick(_goalTopCornerPool));
+        if (_rng.nextDouble() < 0.15) {
+          return _play(_pick(_goalStraightPool), volume: volume);
+        }
+        return _play(_pick(_goalTopCornerPool), volume: volume);
       case GoalPlacement.bottomCorner:
-        if (_rng.nextDouble() < 0.15) return _play(_pick(_goalStraightPool));
-        return _play(_pick(_goalBottomCornerPool));
+        if (_rng.nextDouble() < 0.15) {
+          return _play(_pick(_goalStraightPool), volume: volume);
+        }
+        return _play(_pick(_goalBottomCornerPool), volume: volume);
       case GoalPlacement.straight:
-        return _play(_pick(_goalStraightPool));
+        return _play(_pick(_goalStraightPool), volume: volume);
     }
   }
 
-  static Duration playSave(SaveKind kind) {
+  static Duration playSave(SaveKind kind, {bool userAction = false}) {
+    final volume = userAction ? _userActionVolume : _volume;
     switch (kind) {
       case SaveKind.diving:
-        return _play(_pick(_saveDivingPool));
+        return _play(_pick(_saveDivingPool), volume: volume);
       case SaveKind.fingerTip:
-        return _play(_pick(_saveFingerTipPool));
+        return _play(_pick(_saveFingerTipPool), volume: volume);
       case SaveKind.straight:
-        return _play(_pick(_saveStraightPool));
+        return _play(_pick(_saveStraightPool), volume: volume);
     }
   }
 
@@ -219,26 +230,40 @@ class CommentarySound {
     required int userScore,
     required int opponentScore,
   }) {
-    final pool = SecondHalfStartCommentary.pool(
-      userShooting: userShooting,
-      userScore: userScore,
-      opponentScore: opponentScore,
+    return _play(
+      SecondHalfStartCommentary.pick(
+        userShooting: userShooting,
+        userScore: userScore,
+        opponentScore: opponentScore,
+        random: _rng,
+      ),
     );
-    return _play(_pick(pool));
   }
 
   /// Goal during a Full Match second half when a conditional clip applies.
-  static Duration? tryPlaySecondHalfGoal(SecondHalfCommentarySnapshot snap) {
+  static Duration? tryPlaySecondHalfGoal(
+    SecondHalfCommentarySnapshot snap, {
+    bool userAction = false,
+  }) {
     final pool = SecondHalfResultCommentary.goalPool(snap);
     if (pool == null) return null;
-    return _play(_pick(pool));
+    return _play(
+      _pick(pool),
+      volume: userAction ? _userActionVolume : _volume,
+    );
   }
 
   /// Save during a Full Match second half when a conditional clip applies.
-  static Duration? tryPlaySecondHalfSave(SecondHalfCommentarySnapshot snap) {
+  static Duration? tryPlaySecondHalfSave(
+    SecondHalfCommentarySnapshot snap, {
+    bool userAction = false,
+  }) {
     final pool = SecondHalfResultCommentary.savePool(snap);
     if (pool == null) return null;
-    return _play(_pick(pool));
+    return _play(
+      _pick(pool),
+      volume: userAction ? _userActionVolume : _volume,
+    );
   }
 
   /// Miss during a Full Match second half when a conditional clip applies.
@@ -248,13 +273,14 @@ class CommentarySound {
     return _play(_pick(pool));
   }
 
-  static Duration _play(String asset) {
-    unawaited(_restart(asset));
+  static Duration _play(String asset, {double volume = _volume}) {
+    unawaited(_restart(asset, volume: volume));
     return _durations[asset] ?? _fallback;
   }
 
-  static Future<void> _restart(String asset) async {
+  static Future<void> _restart(String asset, {double volume = _volume}) async {
     await _player.stop();
+    await _player.setVolume(volume);
     await _player.play(AssetSource(asset));
   }
 

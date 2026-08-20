@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../game/full_match_shootout.dart';
 
 /// Match totals and kick budget after a second-half kick resolves.
@@ -79,21 +81,40 @@ class SecondHalfStartCommentary {
     5: 'sounds/commentary/second-half/general/shooting/comm-2h-start-shoot-5needed.wav',
   };
 
-  /// Builds the pool for [pickRandom] — specific need line plus general openers.
-  static List<String> pool({
+  static const _generalWeight = 0.28;
+
+  /// Situational need line for the current role and half-time score.
+  static String? specificClip({
     required bool userShooting,
     required int userScore,
     required int opponentScore,
   }) {
-    final specific = userShooting
-        ? _shoot[SecondHalfCommentarySnapshot.goalsNeededAtStartShooting(
-            opponentScore,
-          )]
-        : _keep[
-            SecondHalfCommentarySnapshot.savesNeededToWinAtStart(userScore) ??
-                5];
-    if (specific == null) return List<String>.from(_general);
-    return [specific, ..._general];
+    if (userShooting) {
+      return _shoot[SecondHalfCommentarySnapshot.goalsNeededAtStartShooting(
+        opponentScore,
+      )];
+    }
+    return _keep[
+        SecondHalfCommentarySnapshot.savesNeededToWinAtStart(userScore) ?? 5];
+  }
+
+  /// Weighted pick: 28% each general opener, 44% situational need line.
+  static String pick({
+    required bool userShooting,
+    required int userScore,
+    required int opponentScore,
+    Random? random,
+  }) {
+    final rng = random ?? Random();
+    final roll = rng.nextDouble();
+    if (roll < _generalWeight) return _general[0];
+    if (roll < _generalWeight + _generalWeight) return _general[1];
+    return specificClip(
+          userShooting: userShooting,
+          userScore: userScore,
+          opponentScore: opponentScore,
+        ) ??
+        _general[rng.nextInt(_general.length)];
   }
 }
 
