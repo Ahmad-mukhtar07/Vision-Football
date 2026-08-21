@@ -8,6 +8,7 @@ import '../game/match_state.dart';
 import '../keeper/keeper_match_state.dart';
 import '../keeper/keeper_screen.dart';
 import '../models/team.dart';
+import '../tournament/tournament_models.dart';
 import 'coin_toss_screen.dart';
 import 'game_play_sound.dart';
 import 'main_page_sound.dart';
@@ -60,6 +61,7 @@ class FullMatchScreen extends StatefulWidget {
     this.skipTeamSelect = false,
     this.skipMatchSetup = false,
     this.tournamentFixture = false,
+    this.tournamentRound,
     this.onFixtureComplete,
     this.onFixtureDrawPending,
     this.onFixtureRematch,
@@ -74,6 +76,7 @@ class FullMatchScreen extends StatefulWidget {
   final bool skipTeamSelect;
   final bool skipMatchSetup;
   final bool tournamentFixture;
+  final TournamentRound? tournamentRound;
   final void Function({
     required bool userWon,
     required int userGoals,
@@ -190,6 +193,11 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
   Widget _buildHalf(int half) {
     final role = _roleForHalf(half);
     final isSecondHalf = half == 2;
+    final tournamentKickOffRound = widget.tournamentFixture &&
+            half == 1 &&
+            widget.tournamentRound != null
+        ? widget.tournamentRound
+        : null;
     if (role == MatchRole.shooter) {
       return VisionFootballScreen(
         key: ValueKey('fm-shooter-$half'),
@@ -199,6 +207,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
         opponentTeam: _opponentTeam,
         opponentScore: _opponentGoals,
         onMatchComplete: _onShootingHalfDone,
+        tournamentKickOffRound: tournamentKickOffRound,
         fullMatchHalfConfig: isSecondHalf
             ? FullMatchHalfConfig.secondHalfShooting(
                 opponentScore: _opponentGoals ?? 0,
@@ -214,6 +223,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       opponentTeam: _opponentTeam,
       userScore: _userGoals,
       onMatchComplete: _onKeeperHalfDone,
+      tournamentKickOffRound: tournamentKickOffRound,
       fullMatchHalfConfig: isSecondHalf
           ? FullMatchHalfConfig.secondHalfKeeping(
               userScore: _userGoals ?? 0,

@@ -11,6 +11,7 @@ import '../ui/game_play_sound.dart';
 import '../ui/pause_menu_overlay.dart';
 import '../ui/tutorial/tutorial_common.dart';
 import '../game/full_match_shootout.dart';
+import '../tournament/tournament_models.dart';
 import 'glove_overlay.dart';
 import 'hand_detector_service.dart';
 import 'keeper_calibration_overlay.dart';
@@ -37,6 +38,7 @@ class KeeperScreen extends StatefulWidget {
     this.userScore,
     this.onMatchComplete,
     this.fullMatchHalfConfig,
+    this.tournamentKickOffRound,
   });
 
   final List<CameraDescription> cameras;
@@ -59,6 +61,9 @@ class KeeperScreen extends StatefulWidget {
 
   /// Full Match half settings (early end in half 2 only).
   final FullMatchHalfConfig? fullMatchHalfConfig;
+
+  /// Tournament round for first-half kick-off lines only (QF/SF/Final).
+  final TournamentRound? tournamentKickOffRound;
 
   @override
   State<KeeperScreen> createState() => _KeeperScreenState();
@@ -194,6 +199,10 @@ class _KeeperScreenState extends State<KeeperScreen> {
         userScore: cfg.userScoreFromOtherHalf ?? 0,
         opponentScore: 0,
       );
+    }
+    final round = widget.tournamentKickOffRound;
+    if (round != null) {
+      return CommentarySound.playTournamentFirstHalfStart(round);
     }
     return CommentarySound.playStart();
   }

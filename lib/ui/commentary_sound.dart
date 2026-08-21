@@ -6,6 +6,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'second_half_commentary.dart';
+import 'tournament_start_commentary.dart';
+import '../tournament/tournament_models.dart';
 
 /// Where a shot ended up in the goal mouth (used to pick goal commentary).
 enum GoalPlacement { topCorner, bottomCorner, straight }
@@ -138,6 +140,7 @@ class CommentarySound {
     _saveFingerTipPool,
     _saveStraightPool,
     _secondHalfAssetList,
+    TournamentStartCommentary.allAssets,
   ];
 
   /// Clip lengths measured from WAV headers during [warmUp].
@@ -223,6 +226,14 @@ class CommentarySound {
 
   /// Kick-off line played before the starting whistle (randomized).
   static Duration playStart() => _play(_pick(_startPool));
+
+  /// Tournament first-half kick-off — round-specific lines for QF/SF/Final.
+  /// Round of 16 falls back to [playStart].
+  static Duration playTournamentFirstHalfStart(TournamentRound round) {
+    final pool = TournamentStartCommentary.poolForRound(round);
+    if (pool == null) return playStart();
+    return _play(_pick(pool));
+  }
 
   /// Second-half kick-off — role/score specific lines mixed with general openers.
   static Duration playSecondHalfStart({

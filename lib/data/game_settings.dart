@@ -27,7 +27,7 @@ class GameSettings {
   static DifficultyMode difficulty = DifficultyMode.easy;
 
   /// Stadium shown in goalkeeper mode (selected before each match).
-  static KeeperStadiumLocation keeperStadium = KeeperStadiumLocation.italy;
+  static KeeperStadiumLocation keeperStadium = KeeperStadiumLocation.brazil;
 
   static bool get isEasyMode => difficulty == DifficultyMode.easy;
 
@@ -47,7 +47,7 @@ class GameSettings {
     final savedStadium = prefs.getString(_keyKeeperStadium);
     keeperStadium = KeeperStadiumLocation.values.firstWhere(
       (location) => location.name == savedStadium,
-      orElse: () => KeeperStadiumLocation.italy,
+      orElse: () => KeeperStadiumLocation.brazil,
     );
   }
 

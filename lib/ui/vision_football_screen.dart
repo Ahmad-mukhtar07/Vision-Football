@@ -13,6 +13,7 @@ import '../game/match_state.dart';
 import '../game/vision_football_game.dart';
 import '../models/kicking_foot.dart';
 import '../models/team.dart';
+import '../tournament/tournament_models.dart';
 import '../pose/kick_detector.dart';
 import '../pose/player_calibration.dart';
 import '../pose/pose_detector_service.dart';
@@ -44,6 +45,7 @@ class VisionFootballScreen extends StatefulWidget {
     this.opponentScore,
     this.onMatchComplete,
     this.fullMatchHalfConfig,
+    this.tournamentKickOffRound,
   });
 
   final List<CameraDescription> cameras;
@@ -68,6 +70,9 @@ class VisionFootballScreen extends StatefulWidget {
   /// Full Match half settings (early end in half 2 only). Standalone play
   /// leaves this null.
   final FullMatchHalfConfig? fullMatchHalfConfig;
+
+  /// Tournament round for first-half kick-off lines only (QF/SF/Final).
+  final TournamentRound? tournamentKickOffRound;
 
   @override
   State<VisionFootballScreen> createState() => _VisionFootballScreenState();
@@ -373,6 +378,10 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
         userScore: 0,
         opponentScore: cfg.opponentScoreFromOtherHalf ?? 0,
       );
+    }
+    final round = widget.tournamentKickOffRound;
+    if (round != null) {
+      return CommentarySound.playTournamentFirstHalfStart(round);
     }
     return CommentarySound.playStart();
   }

@@ -315,6 +315,7 @@ class _TournamentScreenState extends State<TournamentScreen>
         skipTeamSelect: true,
         skipMatchSetup: true,
         tournamentFixture: true,
+        tournamentRound: bracket.currentRound,
         onFixtureDrawPending: _onFixtureDrawPending,
         onFixtureRematch: _onFixtureRematch,
         onFixtureComplete: ({

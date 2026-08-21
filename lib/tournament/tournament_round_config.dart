@@ -15,6 +15,10 @@ class TournamentRoundSettings {
   static TournamentRoundSettings forRound(TournamentRound round) {
     switch (round) {
       case TournamentRound.roundOf16:
+        return const TournamentRoundSettings(
+          difficulty: DifficultyMode.easy,
+          stadium: KeeperStadiumLocation.brazil,
+        );
       case TournamentRound.quarterFinal:
         return const TournamentRoundSettings(
           difficulty: DifficultyMode.easy,
