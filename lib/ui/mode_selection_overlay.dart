@@ -940,7 +940,7 @@ class _TournamentModeCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Knockout cup',
+                    'Global Cup',
                     style: TextStyle(
                       color: _accent,
                       fontSize: 11,

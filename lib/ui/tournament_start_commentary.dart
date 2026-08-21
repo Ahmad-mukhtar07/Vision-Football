@@ -26,10 +26,10 @@ class TournamentStartCommentary {
   ];
 
   /// Returns a clip path for [round], or `null` when the round uses the
-  /// standard Full Match opener (Round of 16).
+  /// standard Full Match opener (group stage).
   static List<String>? poolForRound(TournamentRound round) {
     switch (round) {
-      case TournamentRound.roundOf16:
+      case TournamentRound.groupStage:
         return null;
       case TournamentRound.quarterFinal:
         return _quarterFinal;

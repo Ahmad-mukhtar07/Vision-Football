@@ -1,9 +1,9 @@
 import '../data/teams_data.dart';
 import '../models/team.dart';
 
-/// Knockout stage in the 16-team cup.
+/// Tournament stage — group phase then knockout rounds.
 enum TournamentRound {
-  roundOf16,
+  groupStage,
   quarterFinal,
   semiFinal,
   finalMatch,
@@ -12,8 +12,8 @@ enum TournamentRound {
 extension TournamentRoundX on TournamentRound {
   String get label {
     switch (this) {
-      case TournamentRound.roundOf16:
-        return 'Round of 16';
+      case TournamentRound.groupStage:
+        return 'Group Stage';
       case TournamentRound.quarterFinal:
         return 'Quarter Finals';
       case TournamentRound.semiFinal:
@@ -25,8 +25,8 @@ extension TournamentRoundX on TournamentRound {
 
   int get fixtureCount {
     switch (this) {
-      case TournamentRound.roundOf16:
-        return 8;
+      case TournamentRound.groupStage:
+        return 24;
       case TournamentRound.quarterFinal:
         return 4;
       case TournamentRound.semiFinal:
@@ -38,7 +38,7 @@ extension TournamentRoundX on TournamentRound {
 
   TournamentRound? get next {
     switch (this) {
-      case TournamentRound.roundOf16:
+      case TournamentRound.groupStage:
         return TournamentRound.quarterFinal;
       case TournamentRound.quarterFinal:
         return TournamentRound.semiFinal;
@@ -50,12 +50,26 @@ extension TournamentRoundX on TournamentRound {
   }
 }
 
-/// One penalty-shootout fixture in the bracket tree.
+/// Four teams in one World-Cup-style group.
+class TournamentGroup {
+  TournamentGroup({
+    required this.index,
+    required this.teams,
+  }) : assert(teams.length == 4);
+
+  final int index;
+  final List<Team> teams;
+
+  String get label => 'Group ${String.fromCharCode(65 + index)}';
+}
+
+/// One fixture in the group phase or knockout tree.
 class TournamentFixture {
   TournamentFixture({
     required this.id,
     required this.round,
     required this.indexInRound,
+    this.groupIndex,
     this.teamA,
     this.teamB,
     this.winner,
@@ -69,6 +83,7 @@ class TournamentFixture {
   final String id;
   final TournamentRound round;
   final int indexInRound;
+  final int? groupIndex;
   Team? teamA;
   Team? teamB;
   Team? winner;
@@ -78,7 +93,9 @@ class TournamentFixture {
   bool userIsTeamA;
   int displayOrder;
 
-  bool get isPlayed => winner != null;
+  bool get isPlayed => scoreA != null && scoreB != null;
+
+  bool get isDraw => isPlayed && scoreA == scoreB;
 
   Team? get loser {
     if (winner == null || teamA == null || teamB == null) return null;
@@ -96,6 +113,7 @@ class TournamentFixture {
       id: id,
       round: round,
       indexInRound: indexInRound,
+      groupIndex: groupIndex,
       teamA: teamA ?? this.teamA,
       teamB: teamB ?? this.teamB,
       winner: winner ?? this.winner,
@@ -107,17 +125,19 @@ class TournamentFixture {
   }
 }
 
-/// Full knockout tree for one tournament run.
+/// Full tournament state: group phase plus knockout bracket.
 class TournamentBracket {
   TournamentBracket({
     required this.userTeam,
+    required this.groups,
     required this.rounds,
-    this.currentRound = TournamentRound.roundOf16,
+    this.currentRound = TournamentRound.groupStage,
     this.userEliminated = false,
     this.champion,
   });
 
   final Team userTeam;
+  final List<TournamentGroup> groups;
   final Map<TournamentRound, List<TournamentFixture>> rounds;
   TournamentRound currentRound;
   bool userEliminated;
@@ -125,6 +145,11 @@ class TournamentBracket {
 
   List<TournamentFixture> fixturesFor(TournamentRound round) =>
       rounds[round] ?? const [];
+
+  TournamentGroup get userGroup =>
+      groups.firstWhere(
+        (g) => g.teams.any((t) => teamsMatch(t, userTeam)),
+      );
 
   TournamentFixture? get userFixture {
     for (final fixture in fixturesFor(currentRound)) {
@@ -143,4 +168,10 @@ class TournamentBracket {
     if (fixtures.isEmpty) return false;
     return fixtures.every((f) => f.isPlayed);
   }
+}
+
+/// Maps legacy save data to the current [TournamentRound] enum.
+TournamentRound decodeTournamentRound(String name) {
+  if (name == 'roundOf16') return TournamentRound.groupStage;
+  return TournamentRound.values.byName(name);
 }

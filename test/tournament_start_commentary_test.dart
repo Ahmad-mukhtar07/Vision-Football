@@ -4,9 +4,9 @@ import 'package:vision_football/ui/tournament_start_commentary.dart';
 
 void main() {
   group('TournamentStartCommentary', () {
-    test('round of 16 uses standard opener', () {
+    test('group stage uses standard opener', () {
       expect(
-        TournamentStartCommentary.poolForRound(TournamentRound.roundOf16),
+        TournamentStartCommentary.poolForRound(TournamentRound.groupStage),
         isNull,
       );
     });

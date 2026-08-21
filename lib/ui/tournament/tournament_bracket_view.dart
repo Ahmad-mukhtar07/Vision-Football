@@ -5,6 +5,8 @@ import '../../data/teams_data.dart';
 import '../../models/team.dart';
 import '../../tournament/tournament_models.dart';
 import '../../tournament/tournament_store.dart';
+import 'tournament_confirm_dialog.dart';
+import 'tournament_group_tables_view.dart';
 
 class _Pal {
   const _Pal._();
@@ -15,7 +17,7 @@ class _Pal {
 }
 
 const _roundOrder = <TournamentRound>[
-  TournamentRound.roundOf16,
+  TournamentRound.groupStage,
   TournamentRound.quarterFinal,
   TournamentRound.semiFinal,
   TournamentRound.finalMatch,
@@ -55,7 +57,10 @@ class _TournamentBracketViewState extends State<TournamentBracketView> {
 
   int _teamsRemaining(TournamentBracket bracket) {
     if (bracket.champion != null) return 1;
-    var remaining = 16;
+    if (bracket.currentRound == TournamentRound.groupStage) {
+      return 16;
+    }
+    var remaining = 8;
     for (final round in _roundOrder) {
       if (bracket.isRoundComplete(round)) {
         remaining ~/= 2;
@@ -94,7 +99,7 @@ class _TournamentBracketViewState extends State<TournamentBracketView> {
   }
 
   bool _isRoundReachable(TournamentRound round) {
-    if (round == TournamentRound.roundOf16) return true;
+    if (round == TournamentRound.groupStage) return true;
     final index = _roundOrder.indexOf(round);
     final prev = _roundOrder[index - 1];
     if (widget.bracket.isRoundComplete(prev)) return true;
@@ -105,8 +110,8 @@ class _TournamentBracketViewState extends State<TournamentBracketView> {
 
   String _shortTabLabel(TournamentRound round) {
     switch (round) {
-      case TournamentRound.roundOf16:
-        return 'R16';
+      case TournamentRound.groupStage:
+        return 'Groups';
       case TournamentRound.quarterFinal:
         return 'QF';
       case TournamentRound.semiFinal:
@@ -122,35 +127,55 @@ class _TournamentBracketViewState extends State<TournamentBracketView> {
     final remaining = _teamsRemaining(bracket);
     final progress = _tournamentProgress(bracket);
     final fixtures = fixturesSortedForDisplay(_selectedRound, bracket);
-    final useGrid = _selectedRound == TournamentRound.roundOf16 ||
-        _selectedRound == TournamentRound.quarterFinal;
+    final showGroupTables = _selectedRound == TournamentRound.groupStage;
+    final useGrid = _selectedRound == TournamentRound.quarterFinal;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-          child: Column(
+          padding: const EdgeInsets.fromLTRB(20, 4, 12, 0),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'KNOCKOUT CUP',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'GLOBAL CUP',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$remaining teams remain',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.62),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '$remaining teams remain',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.62),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+              if (showGroupTables)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  tooltip: 'Group stage rules',
+                  onPressed: () => showGroupStageInfoDialog(context),
+                  icon: Icon(
+                    Icons.info_outline_rounded,
+                    size: 22,
+                    color: _Pal.cyan.withValues(alpha: 0.65),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -188,23 +213,25 @@ class _TournamentBracketViewState extends State<TournamentBracketView> {
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Column(
-              children: [
-                useGrid
-                    ? _MatchGrid(
-                        fixtures: fixtures,
-                        userTeam: bracket.userTeam,
-                      )
-                    : _MatchList(
-                        fixtures: fixtures,
-                        userTeam: bracket.userTeam,
-                      ),
-                if (bracket.champion != null) ...[
-                  const SizedBox(height: 12),
-                  _ChampionCard(bracket: bracket),
-                ],
-              ],
-            ),
+            child: showGroupTables
+                ? TournamentGroupTablesView(bracket: bracket)
+                : Column(
+                    children: [
+                      useGrid
+                          ? _MatchGrid(
+                              fixtures: fixtures,
+                              userTeam: bracket.userTeam,
+                            )
+                          : _MatchList(
+                              fixtures: fixtures,
+                              userTeam: bracket.userTeam,
+                            ),
+                      if (bracket.champion != null) ...[
+                        const SizedBox(height: 12),
+                        _ChampionCard(bracket: bracket),
+                      ],
+                    ],
+                  ),
           ),
         ),
       ],

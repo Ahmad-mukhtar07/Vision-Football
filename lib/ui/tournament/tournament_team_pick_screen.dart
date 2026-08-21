@@ -104,7 +104,7 @@ class _TournamentTeamPickScreenState extends State<TournamentTeamPickScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            'KNOCKOUT CUP',
+                            'GLOBAL CUP',
                             style: TextStyle(
                               color: _Pal.lime.withValues(alpha: 0.95),
                               fontSize: 11,

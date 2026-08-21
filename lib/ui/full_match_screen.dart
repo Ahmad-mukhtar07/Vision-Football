@@ -274,16 +274,19 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
         );
       case _FmPhase.fullTime:
         if (widget.tournamentFixture) {
+          final groupStageDrawCounts =
+              widget.tournamentRound == TournamentRound.groupStage;
           return _TournamentFixtureResultOverlay(
             userTeam: _userTeam!,
             opponentTeam: _opponentTeam!,
             userGoals: _userGoals ?? 0,
             opponentGoals: _opponentGoals ?? 0,
+            groupStageDrawCounts: groupStageDrawCounts,
             onDrawPending: widget.onFixtureDrawPending,
             onContinue: () {
               final userGoals = _userGoals ?? 0;
               final opponentGoals = _opponentGoals ?? 0;
-              if (userGoals == opponentGoals) return;
+              if (userGoals == opponentGoals && !groupStageDrawCounts) return;
               widget.onFixtureComplete?.call(
                 userWon: userGoals > opponentGoals,
                 userGoals: userGoals,
@@ -753,6 +756,7 @@ class _TournamentFixtureResultOverlay extends StatefulWidget {
     required this.opponentGoals,
     required this.onContinue,
     required this.onRematch,
+    this.groupStageDrawCounts = false,
     this.onDrawPending,
   });
 
@@ -762,6 +766,7 @@ class _TournamentFixtureResultOverlay extends StatefulWidget {
   final int opponentGoals;
   final VoidCallback onContinue;
   final VoidCallback onRematch;
+  final bool groupStageDrawCounts;
   final VoidCallback? onDrawPending;
 
   @override
@@ -778,7 +783,8 @@ class _TournamentFixtureResultOverlayState
     if (widget.userGoals > widget.opponentGoals) {
       GamePlaySound.playGoalCheer();
     }
-    if (widget.userGoals == widget.opponentGoals) {
+    if (widget.userGoals == widget.opponentGoals &&
+        !widget.groupStageDrawCounts) {
       widget.onDrawPending?.call();
     }
   }
@@ -794,6 +800,7 @@ class _TournamentFixtureResultOverlayState
     final won = widget.userGoals > widget.opponentGoals;
     final lost = widget.userGoals < widget.opponentGoals;
     final isDraw = !won && !lost;
+    final knockoutDrawRematch = isDraw && !widget.groupStageDrawCounts;
     final (String title, Color color) = won
         ? ('YOU WIN', _Pal.green)
         : lost
@@ -837,14 +844,14 @@ class _TournamentFixtureResultOverlayState
                 ),
                 const SizedBox(height: 36),
                 _pillButton(
-                  isDraw
+                  knockoutDrawRematch
                       ? 'Rematch'
-                      : won
+                      : isDraw || won
                           ? 'Continue'
                           : 'View Bracket',
                   _Pal.green,
-                  isDraw ? widget.onRematch : widget.onContinue,
-                  icon: isDraw
+                  knockoutDrawRematch ? widget.onRematch : widget.onContinue,
+                  icon: knockoutDrawRematch
                       ? Icons.refresh_rounded
                       : Icons.arrow_forward_rounded,
                 ),

@@ -11,7 +11,7 @@ import 'tournament_models.dart';
 class TournamentStore {
   TournamentStore._();
 
-  static const _key = 'tournament_save_v1';
+  static const _key = 'tournament_save_v2';
 
   static Future<bool> hasSavedTournament() async {
     final prefs = await SharedPreferences.getInstance();
@@ -56,12 +56,20 @@ class TournamentStore {
       }
     }
     return {
-      'version': 1,
+      'version': 2,
       'userTeamCode': bracket.userTeam.countryCode,
       'currentRound': bracket.currentRound.name,
       'userEliminated': bracket.userEliminated,
       'championCode': bracket.champion?.countryCode,
       'matchInProgress': matchInProgress,
+      'groups': bracket.groups
+          .map(
+            (g) => {
+              'index': g.index,
+              'teamCodes': g.teams.map((t) => t.countryCode).toList(),
+            },
+          )
+          .toList(),
       'fixtures': fixtures,
     };
   }
@@ -71,6 +79,7 @@ class TournamentStore {
       'id': fixture.id,
       'round': fixture.round.name,
       'indexInRound': fixture.indexInRound,
+      'groupIndex': fixture.groupIndex,
       'displayOrder': fixture.displayOrder,
       'teamACode': fixture.teamA?.countryCode,
       'teamBCode': fixture.teamB?.countryCode,
@@ -97,7 +106,7 @@ class TournamentStore {
 
     for (final raw in map['fixtures'] as List<dynamic>) {
       final fixtureMap = raw as Map<String, dynamic>;
-      final round = TournamentRound.values.byName(fixtureMap['round'] as String);
+      final round = decodeTournamentRound(fixtureMap['round'] as String);
       rounds[round]!.add(_decodeFixture(fixtureMap));
     }
 
@@ -105,13 +114,15 @@ class TournamentStore {
       rounds[round]!.sort((a, b) => a.indexInRound.compareTo(b.indexInRound));
     }
 
+    final groups = _decodeGroups(map, userTeam: userTeam);
+
     final championCode = map['championCode'] as String?;
     return (
       bracket: TournamentBracket(
         userTeam: userTeam,
+        groups: groups,
         rounds: rounds,
-        currentRound:
-            TournamentRound.values.byName(map['currentRound'] as String),
+        currentRound: decodeTournamentRound(map['currentRound'] as String),
         userEliminated: map['userEliminated'] as bool? ?? false,
         champion:
             championCode == null ? null : teamForCountryCode(championCode),
@@ -120,14 +131,68 @@ class TournamentStore {
     );
   }
 
+  static List<TournamentGroup> _decodeGroups(
+    Map<String, dynamic> map, {
+    required Team userTeam,
+  }) {
+    final rawGroups = map['groups'] as List<dynamic>?;
+    if (rawGroups != null) {
+      final groups = rawGroups.map((raw) {
+        final groupMap = raw as Map<String, dynamic>;
+        final teams = (groupMap['teamCodes'] as List<dynamic>)
+            .map((code) => teamForCountryCode(code as String)!)
+            .toList();
+        return TournamentGroup(
+          index: groupMap['index'] as int,
+          teams: teams,
+        );
+      }).toList()
+        ..sort((a, b) => a.index.compareTo(b.index));
+      return groups;
+    }
+
+    // Legacy v1 saves without groups: rebuild from group-stage fixtures.
+    final groupFixtures =
+        (map['fixtures'] as List<dynamic>? ?? const [])
+            .map((raw) => _decodeFixture(raw as Map<String, dynamic>))
+            .where((f) => f.round == TournamentRound.groupStage)
+            .toList();
+    if (groupFixtures.isEmpty) {
+      throw FormatException('Missing tournament groups');
+    }
+
+    final byGroup = <int, Set<Team>>{};
+    for (final fixture in groupFixtures) {
+      final index = fixture.groupIndex;
+      if (index == null || fixture.teamA == null || fixture.teamB == null) {
+        continue;
+      }
+      byGroup.putIfAbsent(index, () => {}).addAll([
+        fixture.teamA!,
+        fixture.teamB!,
+      ]);
+    }
+
+    return byGroup.entries
+        .map(
+          (entry) => TournamentGroup(
+            index: entry.key,
+            teams: entry.value.toList(),
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.index.compareTo(b.index));
+  }
+
   static TournamentFixture _decodeFixture(Map<String, dynamic> map) {
     Team? team(String? code) =>
         code == null ? null : teamForCountryCode(code);
 
     return TournamentFixture(
       id: map['id'] as String,
-      round: TournamentRound.values.byName(map['round'] as String),
+      round: decodeTournamentRound(map['round'] as String),
       indexInRound: map['indexInRound'] as int,
+      groupIndex: map['groupIndex'] as int?,
       displayOrder: map['displayOrder'] as int?,
       teamA: team(map['teamACode'] as String?),
       teamB: team(map['teamBCode'] as String?),

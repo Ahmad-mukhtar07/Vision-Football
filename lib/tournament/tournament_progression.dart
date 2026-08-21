@@ -21,19 +21,34 @@ class TournamentProgression {
         _lastUserFixtureInRound(bracket, bracket.currentRound);
     if (fixture == null) return;
 
-    if (userWon) {
-      fixture.winner = fixture.userIsTeamA ? fixture.teamA : fixture.teamB;
-    } else {
-      bracket.userEliminated = true;
-      fixture.winner = fixture.userIsTeamA ? fixture.teamB : fixture.teamA;
-    }
-
     if (fixture.userIsTeamA) {
       fixture.scoreA = userGoals;
       fixture.scoreB = opponentGoals;
     } else {
       fixture.scoreA = opponentGoals;
       fixture.scoreB = userGoals;
+    }
+
+    if (bracket.currentRound == TournamentRound.groupStage) {
+      if (userGoals == opponentGoals) {
+        fixture.winner = null;
+      } else if (userWon) {
+        fixture.winner =
+            fixture.userIsTeamA ? fixture.teamA : fixture.teamB;
+      } else {
+        fixture.winner =
+            fixture.userIsTeamA ? fixture.teamB : fixture.teamA;
+      }
+      return;
+    }
+
+    if (userGoals == opponentGoals) return;
+
+    if (userWon) {
+      fixture.winner = fixture.userIsTeamA ? fixture.teamA : fixture.teamB;
+    } else {
+      bracket.userEliminated = true;
+      fixture.winner = fixture.userIsTeamA ? fixture.teamB : fixture.teamA;
     }
   }
 
@@ -50,6 +65,11 @@ class TournamentProgression {
   void advanceRound(TournamentBracket bracket) {
     final round = bracket.currentRound;
     if (!bracket.isRoundComplete(round)) return;
+
+    if (round == TournamentRound.groupStage) {
+      // Group-to-knockout qualification will be wired in a follow-up change.
+      return;
+    }
 
     final next = round.next;
     if (next == null) {
@@ -78,7 +98,8 @@ class TournamentProgression {
   void completeUserRoundStep(TournamentBracket bracket) {
     simulateRound(bracket.currentRound, bracket);
     while (bracket.isRoundComplete(bracket.currentRound) &&
-        bracket.currentRound.next != null) {
+        bracket.currentRound.next != null &&
+        bracket.currentRound != TournamentRound.groupStage) {
       advanceRound(bracket);
     }
     if (bracket.isRoundComplete(TournamentRound.finalMatch)) {

@@ -30,8 +30,8 @@ class _Pal {
 String _stageLabel(TournamentBracket bracket) {
   if (bracket.userEliminated) return 'Disqualified';
   switch (bracket.currentRound) {
-    case TournamentRound.roundOf16:
-      return 'R16';
+    case TournamentRound.groupStage:
+      return 'Groups';
     case TournamentRound.quarterFinal:
       return 'QF';
     case TournamentRound.semiFinal:
@@ -46,7 +46,7 @@ void _tap() {
   HapticFeedback.selectionClick();
 }
 
-/// Knockout cup: pick a nation, play your fixtures, AI simulates the rest.
+/// Global Cup: pick a nation, play your fixtures, AI simulates the rest.
 class TournamentScreen extends StatefulWidget {
   const TournamentScreen({
     super.key,
@@ -189,8 +189,10 @@ class _TournamentScreenState extends State<TournamentScreen>
     final bracket = _bracket;
     if (bracket == null) return;
 
-    // Draws restart the fixture — only wins/losses advance the bracket.
-    if (userGoals == opponentGoals) return;
+    // Draws count in the group stage; knockout draws still restart the fixture.
+    final isGroupDraw = userGoals == opponentGoals &&
+        bracket.currentRound == TournamentRound.groupStage;
+    if (userGoals == opponentGoals && !isGroupDraw) return;
 
     _settingsScope?.restore();
     _settingsScope = null;
@@ -204,9 +206,11 @@ class _TournamentScreenState extends State<TournamentScreen>
 
     if (userWon) {
       _progression.completeUserRoundStep(bracket);
-    } else {
+    } else if (!isGroupDraw) {
       bracket.userEliminated = true;
       _progression.simulateToCompletion(bracket);
+    } else {
+      _progression.simulateRound(bracket.currentRound, bracket);
     }
 
     await _persistBracket(matchInProgress: false);
@@ -338,6 +342,7 @@ class _TournamentScreenState extends State<TournamentScreen>
       onExit: _confirmExitTournament,
       onClose: _saveAndReturnToMenu,
       canPlay: _activeFixture != null && !_bracket!.userEliminated,
+      nextOpponent: _opponent,
     );
   }
 }
@@ -349,6 +354,7 @@ class _BracketHub extends StatelessWidget {
     required this.onExit,
     required this.onClose,
     required this.canPlay,
+    this.nextOpponent,
   });
 
   final TournamentBracket bracket;
@@ -356,6 +362,7 @@ class _BracketHub extends StatelessWidget {
   final Future<void> Function() onExit;
   final Future<void> Function() onClose;
   final bool canPlay;
+  final Team? nextOpponent;
 
   @override
   Widget build(BuildContext context) {
@@ -429,6 +436,9 @@ class _BracketHub extends StatelessWidget {
                   if (canPlay)
                     _ActionButton(
                       label: 'PLAY MATCH',
+                      subtitle: nextOpponent != null
+                          ? 'vs ${nextOpponent!.name}'
+                          : null,
                       color: _Pal.green,
                       filled: true,
                       onTap: onPlayNext,
@@ -458,9 +468,11 @@ class _ActionButton extends StatelessWidget {
     required this.color,
     required this.filled,
     required this.onTap,
+    this.subtitle,
   });
 
   final String label;
+  final String? subtitle;
   final Color color;
   final bool filled;
   final VoidCallback onTap;
@@ -468,7 +480,7 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 50,
+      height: subtitle == null ? 50 : 56,
       width: double.infinity,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -487,14 +499,39 @@ class _ActionButton extends StatelessWidget {
               onTap();
             },
             child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: filled ? Colors.black87 : color,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
-                ),
-              ),
+              child: subtitle == null
+                  ? Text(
+                      label,
+                      style: TextStyle(
+                        color: filled ? Colors.black87 : color,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    )
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(
+                            color: Colors.black.withValues(alpha: 0.62),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ),

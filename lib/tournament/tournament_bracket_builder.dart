@@ -5,57 +5,57 @@ import '../models/team.dart';
 import 'tournament_models.dart';
 import 'tournament_store.dart';
 
-/// Builds a 16-team knockout bracket with a favourable Round-of-16 draw for
-/// the user's team.
+/// Builds a 16-team tournament: four random groups of four, then knockout.
 class TournamentBracketBuilder {
   TournamentBracketBuilder({Random? random}) : _random = random ?? Random();
 
   final Random _random;
 
-  /// Teams with overall at or above this rating are "too strong" for the
-  /// user's opening fixture.
-  static const int _strongOpponentOverall = 87;
-
   TournamentBracket build({required Team userTeam}) {
-    final others = kStandardTeams
-        .where((t) => !teamsMatch(t, userTeam))
-        .toList()
-      ..shuffle(_random);
+    final pool = List<Team>.from(kStandardTeams)..shuffle(_random);
+    assert(pool.length == 16);
+    assert(pool.any((t) => teamsMatch(t, userTeam)));
 
-    final softOpponents = others
-        .where((t) => t.overall < _strongOpponentOverall)
-        .toList();
-    final userOpponentPool =
-        softOpponents.isNotEmpty ? softOpponents : others;
-    final opponent = (userOpponentPool.toList()..shuffle(_random)).first;
-
-    final remaining = others.where((t) => !teamsMatch(t, opponent)).toList()
-      ..shuffle(_random);
-
-    final r16Teams = <Team>[userTeam, opponent, ...remaining];
-    assert(r16Teams.length == 16);
-
-    final r16 = <TournamentFixture>[];
-    for (var i = 0; i < 8; i++) {
-      final a = r16Teams[i * 2];
-      final b = r16Teams[i * 2 + 1];
-      final isUser = teamsMatch(a, userTeam) || teamsMatch(b, userTeam);
-      r16.add(
-        TournamentFixture(
-          id: 'r16-$i',
-          round: TournamentRound.roundOf16,
-          indexInRound: i,
-          teamA: a,
-          teamB: b,
-          isUserFixture: isUser,
-          userIsTeamA: teamsMatch(a, userTeam),
+    final groups = <TournamentGroup>[];
+    for (var g = 0; g < 4; g++) {
+      groups.add(
+        TournamentGroup(
+          index: g,
+          teams: pool.sublist(g * 4, g * 4 + 4),
         ),
       );
     }
-    assignShuffledDisplayOrder(r16, random: _random);
+
+    final groupFixtures = <TournamentFixture>[];
+    var fixtureIndex = 0;
+    for (final group in groups) {
+      final teams = group.teams;
+      for (var i = 0; i < teams.length; i++) {
+        for (var j = i + 1; j < teams.length; j++) {
+          final a = teams[i];
+          final b = teams[j];
+          final userInA = teamsMatch(a, userTeam);
+          final userInB = teamsMatch(b, userTeam);
+          groupFixtures.add(
+            TournamentFixture(
+              id: 'group-${group.index}-$fixtureIndex',
+              round: TournamentRound.groupStage,
+              indexInRound: fixtureIndex,
+              groupIndex: group.index,
+              teamA: a,
+              teamB: b,
+              isUserFixture: userInA || userInB,
+              userIsTeamA: userInA,
+            ),
+          );
+          fixtureIndex++;
+        }
+      }
+    }
+    assignShuffledDisplayOrder(groupFixtures, random: _random);
 
     final rounds = <TournamentRound, List<TournamentFixture>>{
-      TournamentRound.roundOf16: r16,
+      TournamentRound.groupStage: groupFixtures,
       TournamentRound.quarterFinal:
           _emptyRound(TournamentRound.quarterFinal, 4),
       TournamentRound.semiFinal: _emptyRound(TournamentRound.semiFinal, 2),
@@ -64,6 +64,7 @@ class TournamentBracketBuilder {
 
     return TournamentBracket(
       userTeam: userTeam,
+      groups: groups,
       rounds: rounds,
     );
   }
