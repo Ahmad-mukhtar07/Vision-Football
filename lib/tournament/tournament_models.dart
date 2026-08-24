@@ -26,7 +26,7 @@ extension TournamentRoundX on TournamentRound {
   int get fixtureCount {
     switch (this) {
       case TournamentRound.groupStage:
-        return 24;
+        return 48;
       case TournamentRound.quarterFinal:
         return 4;
       case TournamentRound.semiFinal:
@@ -152,11 +152,19 @@ class TournamentBracket {
       );
 
   TournamentFixture? get userFixture {
-    for (final fixture in fixturesFor(currentRound)) {
-      if (fixture.isUserFixture && !fixture.isPlayed) return fixture;
-    }
-    return null;
+    final fixtures = fixturesFor(currentRound)
+        .where((f) => f.isUserFixture && !f.isPlayed)
+        .toList()
+      ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+    return fixtures.isEmpty ? null : fixtures.first;
   }
+
+  int get userGroupMatchesPlayed =>
+      fixturesFor(TournamentRound.groupStage)
+          .where((f) => f.isUserFixture && f.isPlayed)
+          .length;
+
+  bool get userGroupStageComplete => userGroupMatchesPlayed >= 6;
 
   bool get isComplete => champion != null;
 

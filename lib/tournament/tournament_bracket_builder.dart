@@ -11,6 +11,9 @@ class TournamentBracketBuilder {
 
   final Random _random;
 
+  /// Each team plays every group opponent twice (home and away).
+  static const int groupMatchesPerTeam = 6;
+
   TournamentBracket build({required Team userTeam}) {
     final pool = List<Team>.from(kStandardTeams)..shuffle(_random);
     assert(pool.length == 16);
@@ -27,17 +30,18 @@ class TournamentBracketBuilder {
     }
 
     final groupFixtures = <TournamentFixture>[];
+    final userFixtures = <TournamentFixture>[];
     var fixtureIndex = 0;
     for (final group in groups) {
       final teams = group.teams;
-      for (var i = 0; i < teams.length; i++) {
-        for (var j = i + 1; j < teams.length; j++) {
-          final a = teams[i];
-          final b = teams[j];
-          final userInA = teamsMatch(a, userTeam);
-          final userInB = teamsMatch(b, userTeam);
-          groupFixtures.add(
-            TournamentFixture(
+      for (var leg = 0; leg < 2; leg++) {
+        for (var i = 0; i < teams.length; i++) {
+          for (var j = i + 1; j < teams.length; j++) {
+            final a = leg == 0 ? teams[i] : teams[j];
+            final b = leg == 0 ? teams[j] : teams[i];
+            final userInA = teamsMatch(a, userTeam);
+            final userInB = teamsMatch(b, userTeam);
+            final fixture = TournamentFixture(
               id: 'group-${group.index}-$fixtureIndex',
               round: TournamentRound.groupStage,
               indexInRound: fixtureIndex,
@@ -46,13 +50,24 @@ class TournamentBracketBuilder {
               teamB: b,
               isUserFixture: userInA || userInB,
               userIsTeamA: userInA,
-            ),
-          );
-          fixtureIndex++;
+            );
+            groupFixtures.add(fixture);
+            if (fixture.isUserFixture) userFixtures.add(fixture);
+            fixtureIndex++;
+          }
         }
       }
     }
-    assignShuffledDisplayOrder(groupFixtures, random: _random);
+
+    assignUserGroupFixtureOrder(userFixtures, userTeam, random: _random);
+
+    final nonUserFixtures =
+        groupFixtures.where((f) => !f.isUserFixture).toList();
+    assignShuffledDisplayOrder(
+      nonUserFixtures,
+      random: _random,
+      startAt: groupMatchesPerTeam,
+    );
 
     final rounds = <TournamentRound, List<TournamentFixture>>{
       TournamentRound.groupStage: groupFixtures,
@@ -79,4 +94,48 @@ class TournamentBracketBuilder {
       ),
     );
   }
+}
+
+/// Orders the user's six group fixtures so no opponent appears back-to-back.
+void assignUserGroupFixtureOrder(
+  List<TournamentFixture> userFixtures,
+  Team userTeam, {
+  required Random random,
+}) {
+  if (userFixtures.isEmpty) return;
+
+  final byOpponent = <String, List<TournamentFixture>>{};
+  for (final fixture in userFixtures) {
+    final opponent = opponentInFixture(fixture, userTeam);
+    byOpponent.putIfAbsent(opponent.countryCode, () => []).add(fixture);
+  }
+
+  final queues = byOpponent.values.toList()..shuffle(random);
+  final ordered = <TournamentFixture>[];
+  String? lastOpponentCode;
+
+  while (ordered.length < userFixtures.length) {
+    final available = queues.where((q) => q.isNotEmpty).toList();
+    var candidates = available.where((queue) {
+      final code = opponentInFixture(queue.first, userTeam).countryCode;
+      return lastOpponentCode == null || code != lastOpponentCode;
+    }).toList();
+    if (candidates.isEmpty) candidates = available;
+    candidates.shuffle(random);
+
+    final fixture = candidates.first.removeAt(0);
+    ordered.add(fixture);
+    lastOpponentCode = opponentInFixture(fixture, userTeam).countryCode;
+  }
+
+  for (var i = 0; i < ordered.length; i++) {
+    ordered[i].displayOrder = i;
+  }
+}
+
+Team opponentInFixture(TournamentFixture fixture, Team userTeam) {
+  if (fixture.teamA == null || fixture.teamB == null) {
+    throw StateError('Fixture teams must be set');
+  }
+  return teamsMatch(fixture.teamA!, userTeam) ? fixture.teamB! : fixture.teamA!;
 }

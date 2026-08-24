@@ -137,7 +137,7 @@ Future<void> showGroupStageInfoDialog(BuildContext context) async {
             ),
             const SizedBox(height: 12),
             Text(
-              'Each team plays every other team in its group once — three '
+              'Each team plays every other team in its group twice — six '
               'matches in all.\n\n'
               'Every match is a five-kick shootout per side. You earn '
               '3 points for a win, 1 for a draw, and 0 for a loss. '

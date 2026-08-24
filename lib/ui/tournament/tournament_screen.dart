@@ -136,6 +136,20 @@ class _TournamentScreenState extends State<TournamentScreen>
     final fixture = bracket.userFixture;
     if (fixture == null || fixture.isPlayed) return;
 
+    if (bracket.currentRound == TournamentRound.groupStage) {
+      _progression.recordUserMatch(
+        bracket: bracket,
+        userWon: false,
+        userGoals: 0,
+        opponentGoals: 1,
+      );
+      _progression.completeUserGroupMatch(bracket);
+      if (bracket.userEliminated) {
+        _progression.simulateToCompletion(bracket);
+      }
+      return;
+    }
+
     _progression.recordUserMatch(
       bracket: bracket,
       userWon: false,
@@ -204,13 +218,16 @@ class _TournamentScreenState extends State<TournamentScreen>
       opponentGoals: opponentGoals,
     );
 
-    if (userWon) {
+    if (bracket.currentRound == TournamentRound.groupStage) {
+      _progression.completeUserGroupMatch(bracket);
+      if (bracket.userEliminated) {
+        _progression.simulateToCompletion(bracket);
+      }
+    } else if (userWon) {
       _progression.completeUserRoundStep(bracket);
     } else if (!isGroupDraw) {
       bracket.userEliminated = true;
       _progression.simulateToCompletion(bracket);
-    } else {
-      _progression.simulateRound(bracket.currentRound, bracket);
     }
 
     await _persistBracket(matchInProgress: false);
@@ -243,38 +260,23 @@ class _TournamentScreenState extends State<TournamentScreen>
   }
 
   Future<void> _confirmExitTournament() async {
-    final quitting =
-        _bracket?.userEliminated == true || _bracket?.isComplete == true;
     final confirmed = await showTournamentConfirmDialog(
       context,
-      title: quitting ? 'Quit Tournament?' : 'Leave Tournament?',
-      message: quitting
-          ? 'Return to the main menu? This clears the finished tournament.'
-          : 'Return to the main menu? Your cup progress will be saved.',
-      confirmLabel: quitting ? 'Quit' : 'Leave',
+      title: 'Exit Tournament?',
+      message:
+          'Return to the main menu? Your Global Cup progress will be cleared.',
+      confirmLabel: 'Exit',
     );
     if (!confirmed || !mounted) return;
 
-    if (quitting) {
-      _saveCleared = true;
-      _bracket = null;
-      await TournamentStore.clear();
-    } else {
-      await _persistBracket(matchInProgress: false);
-    }
+    _saveCleared = true;
+    _bracket = null;
+    await TournamentStore.clear();
     _exitTournament();
   }
 
   Future<void> _saveAndReturnToMenu() async {
-    final bracket = _bracket;
-    if (bracket != null &&
-        (bracket.userEliminated || bracket.isComplete)) {
-      _saveCleared = true;
-      _bracket = null;
-      await TournamentStore.clear();
-    } else {
-      await _persistBracket(matchInProgress: false);
-    }
+    await _persistBracket(matchInProgress: false);
     _exitTournament();
   }
 
@@ -436,9 +438,7 @@ class _BracketHub extends StatelessWidget {
                   if (canPlay)
                     _ActionButton(
                       label: 'PLAY MATCH',
-                      subtitle: nextOpponent != null
-                          ? 'vs ${nextOpponent!.name}'
-                          : null,
+                      opponent: nextOpponent,
                       color: _Pal.green,
                       filled: true,
                       onTap: onPlayNext,
@@ -468,19 +468,20 @@ class _ActionButton extends StatelessWidget {
     required this.color,
     required this.filled,
     required this.onTap,
-    this.subtitle,
+    this.opponent,
   });
 
   final String label;
-  final String? subtitle;
+  final Team? opponent;
   final Color color;
   final bool filled;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final hasOpponent = opponent != null;
     return SizedBox(
-      height: subtitle == null ? 50 : 56,
+      height: hasOpponent ? 58 : 50,
       width: double.infinity,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -499,16 +500,8 @@ class _ActionButton extends StatelessWidget {
               onTap();
             },
             child: Center(
-              child: subtitle == null
-                  ? Text(
-                      label,
-                      style: TextStyle(
-                        color: filled ? Colors.black87 : color,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                      ),
-                    )
-                  : Column(
+              child: hasOpponent
+                  ? Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
@@ -520,17 +513,41 @@ class _ActionButton extends StatelessWidget {
                             fontSize: 14,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            color: Colors.black.withValues(alpha: 0.62),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                            letterSpacing: 0.3,
-                          ),
+                        const SizedBox(height: 3),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(3),
+                              child: CountryFlag.fromCountryCode(
+                                opponent!.countryCode,
+                                theme: const ImageTheme(
+                                  width: 22,
+                                  height: 14,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'vs ${opponent!.name}',
+                              style: TextStyle(
+                                color: Colors.black.withValues(alpha: 0.62),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
+                    )
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        color: filled ? Colors.black87 : color,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
                     ),
             ),
           ),

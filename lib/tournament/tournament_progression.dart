@@ -1,14 +1,21 @@
 import '../data/teams_data.dart';
+import 'tournament_bracket_builder.dart';
+import 'tournament_group_simulator.dart';
 import 'tournament_models.dart';
 import 'tournament_simulator.dart';
 import 'tournament_store.dart';
 
 /// Advances bracket state: simulates AI fixtures and propagates winners.
 class TournamentProgression {
-  TournamentProgression({TournamentSimulator? simulator})
-      : _simulator = simulator ?? TournamentSimulator();
+  TournamentProgression({
+    TournamentSimulator? simulator,
+    TournamentGroupSimulator? groupSimulator,
+  })  : _simulator = simulator ?? TournamentSimulator(),
+        _groupSimulator = groupSimulator ??
+            TournamentGroupSimulator(simulator: simulator);
 
   final TournamentSimulator _simulator;
+  final TournamentGroupSimulator _groupSimulator;
 
   /// Records the user's live match result on their current fixture.
   void recordUserMatch({
@@ -52,7 +59,19 @@ class TournamentProgression {
     }
   }
 
-  /// Simulates every unplayed fixture in [round].
+  /// After a user group match: simulate some AI results, then maybe advance.
+  void completeUserGroupMatch(TournamentBracket bracket) {
+    final played = TournamentGroupSimulator.userGroupMatchesPlayed(bracket);
+    _groupSimulator.simulateProgressAfterUserMatch(
+      bracket,
+      userMatchesCompleted: played,
+    );
+    if (played >= TournamentBracketBuilder.groupMatchesPerTeam) {
+      _groupSimulator.advanceFromGroupStage(bracket);
+    }
+  }
+
+  /// Simulates every unplayed fixture in [round] (knockout rounds).
   void simulateRound(TournamentRound round, TournamentBracket bracket) {
     for (final fixture in bracket.fixturesFor(round)) {
       if (!fixture.isPlayed) {
@@ -67,7 +86,7 @@ class TournamentProgression {
     if (!bracket.isRoundComplete(round)) return;
 
     if (round == TournamentRound.groupStage) {
-      // Group-to-knockout qualification will be wired in a follow-up change.
+      _groupSimulator.advanceFromGroupStage(bracket);
       return;
     }
 
@@ -94,7 +113,7 @@ class TournamentProgression {
     }
   }
 
-  /// After the user finishes a match: sim rest of round, advance if ready.
+  /// After the user finishes a knockout match: sim rest of round, advance.
   void completeUserRoundStep(TournamentBracket bracket) {
     simulateRound(bracket.currentRound, bracket);
     while (bracket.isRoundComplete(bracket.currentRound) &&

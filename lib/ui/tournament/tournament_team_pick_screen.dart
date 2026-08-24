@@ -23,7 +23,7 @@ void _tap() {
   HapticFeedback.selectionClick();
 }
 
-/// Pick one standard team to represent the player in the knockout cup.
+/// Pick one standard team to represent the player in the global cup.
 class TournamentTeamPickScreen extends StatefulWidget {
   const TournamentTeamPickScreen({
     super.key,
@@ -61,7 +61,7 @@ class _TournamentTeamPickScreenState extends State<TournamentTeamPickScreen> {
       context,
       title: 'Enter Tournament?',
       message:
-          'Play as ${team.name} in the knockout cup? You cannot change teams once the tournament starts.',
+          'Play as ${team.name} in the global cup? You cannot change teams once the tournament starts.',
       confirmLabel: 'Enter',
     );
     if (confirmed && mounted) widget.onTeamSelected(team);

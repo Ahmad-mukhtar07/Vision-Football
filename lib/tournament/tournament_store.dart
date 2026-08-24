@@ -209,12 +209,13 @@ class TournamentStore {
 void assignShuffledDisplayOrder(
   List<TournamentFixture> fixtures, {
   Random? random,
+  int startAt = 0,
 }) {
   if (fixtures.isEmpty) return;
   final order = List.generate(fixtures.length, (i) => i)
     ..shuffle(random ?? Random());
   for (var display = 0; display < order.length; display++) {
-    fixtures[order[display]].displayOrder = display;
+    fixtures[order[display]].displayOrder = startAt + display;
   }
 }
 

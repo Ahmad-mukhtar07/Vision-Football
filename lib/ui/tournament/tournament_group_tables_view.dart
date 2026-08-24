@@ -9,6 +9,7 @@ import '../../tournament/tournament_models.dart';
 class _Pal {
   const _Pal._();
   static const cyan = Color(0xFF00E5FF);
+  static const green = Color(0xFF1FE07A);
 }
 
 /// All group standings stacked vertically on one scrollable page.
@@ -20,11 +21,18 @@ class TournamentGroupTablesView extends StatelessWidget {
 
   final TournamentBracket bracket;
 
+  bool get _showQualifiers =>
+      bracket.isRoundComplete(TournamentRound.groupStage);
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_showQualifiers) ...[
+          _QualificationBanner(),
+          const SizedBox(height: 12),
+        ],
         for (var i = 0; i < bracket.groups.length; i++) ...[
           if (i > 0) const SizedBox(height: 12),
           _GroupTableCard(
@@ -32,9 +40,46 @@ class TournamentGroupTablesView extends StatelessWidget {
             standings: TournamentGroupStandings.forGroupIndex(bracket, i),
             userTeam: bracket.userTeam,
             isUserGroup: bracket.groups[i].index == bracket.userGroup.index,
+            showQualifiers: _showQualifiers,
           ),
         ],
       ],
+    );
+  }
+}
+
+class _QualificationBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _Pal.green.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _Pal.green.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_rounded,
+            color: _Pal.green.withValues(alpha: 0.9),
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Top two teams per group (marked Q) advance to the quarter-finals.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.88),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -45,12 +90,14 @@ class _GroupTableCard extends StatelessWidget {
     required this.standings,
     required this.userTeam,
     required this.isUserGroup,
+    required this.showQualifiers,
   });
 
   final TournamentGroup group;
   final List<GroupStanding> standings;
   final Team userTeam;
   final bool isUserGroup;
+  final bool showQualifiers;
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +139,7 @@ class _GroupTableCard extends StatelessWidget {
               ),
             ),
           ),
-          const _GroupTableHeader(),
+          _GroupTableHeader(showQualifiers: showQualifiers),
           for (var i = 0; i < standings.length; i++) ...[
             if (i > 0)
               Divider(
@@ -107,6 +154,7 @@ class _GroupTableCard extends StatelessWidget {
                 rank: i + 1,
                 standing: standings[i],
                 isUserTeam: teamsMatch(standings[i].team, userTeam),
+                isQualified: showQualifiers && i < 2,
               ),
             ),
           ],
@@ -118,7 +166,9 @@ class _GroupTableCard extends StatelessWidget {
 }
 
 class _GroupTableHeader extends StatelessWidget {
-  const _GroupTableHeader();
+  const _GroupTableHeader({required this.showQualifiers});
+
+  final bool showQualifiers;
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +183,7 @@ class _GroupTableHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const SizedBox(width: 22),
+          SizedBox(width: showQualifiers ? 34 : 22),
           Expanded(
             child: Text(
               'Team',
@@ -171,60 +221,105 @@ class _GroupTableRow extends StatelessWidget {
     required this.rank,
     required this.standing,
     required this.isUserTeam,
+    required this.isQualified,
   });
 
   final int rank;
   final GroupStanding standing;
   final bool isUserTeam;
+  final bool isQualified;
 
   @override
   Widget build(BuildContext context) {
     final accent = isUserTeam ? _Pal.cyan : Colors.white;
     final gd = standing.goalDifference;
     final gdText = gd > 0 ? '+$gd' : '$gd';
+    final rowColor = isQualified
+        ? _Pal.green.withValues(alpha: 0.08)
+        : Colors.transparent;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 22,
-            child: Text(
-              '$rank',
-              style: TextStyle(
-                color: accent.withValues(alpha: isUserTeam ? 1 : 0.7),
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: rowColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            SizedBox(
+              width: isQualified ? 34 : 22,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$rank',
+                    style: TextStyle(
+                      color: accent.withValues(alpha: isUserTeam ? 1 : 0.7),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (isQualified) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _Pal.green.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: _Pal.green.withValues(alpha: 0.55),
+                        ),
+                      ),
+                      child: const Text(
+                        'Q',
+                        style: TextStyle(
+                          color: _Pal.green,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-          ),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: CountryFlag.fromCountryCode(
-              standing.team.countryCode,
-              theme: const ImageTheme(width: 28, height: 18),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              standing.team.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: accent.withValues(alpha: isUserTeam ? 1 : 0.88),
-                fontSize: 13,
-                fontWeight: isUserTeam ? FontWeight.w800 : FontWeight.w600,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: CountryFlag.fromCountryCode(
+                standing.team.countryCode,
+                theme: const ImageTheme(width: 28, height: 18),
               ),
             ),
-          ),
-          _StatCell('${standing.played}'),
-          _StatCell('${standing.won}'),
-          _StatCell('${standing.drawn}'),
-          _StatCell('${standing.lost}'),
-          _StatCell(gdText),
-          _StatCell('${standing.points}', bold: true),
-        ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                standing.team.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isQualified
+                      ? _Pal.green.withValues(alpha: isUserTeam ? 1 : 0.95)
+                      : accent.withValues(alpha: isUserTeam ? 1 : 0.88),
+                  fontSize: 13,
+                  fontWeight: isUserTeam || isQualified
+                      ? FontWeight.w800
+                      : FontWeight.w600,
+                ),
+              ),
+            ),
+            _StatCell('${standing.played}'),
+            _StatCell('${standing.won}'),
+            _StatCell('${standing.drawn}'),
+            _StatCell('${standing.lost}'),
+            _StatCell(gdText),
+            _StatCell('${standing.points}', bold: true),
+          ],
+        ),
       ),
     );
   }
