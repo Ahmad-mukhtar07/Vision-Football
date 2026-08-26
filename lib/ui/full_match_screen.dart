@@ -19,6 +19,7 @@ import 'main_page_sound.dart';
 import 'match_setup_screen.dart';
 import 'team_selection_screen.dart';
 import 'test_score_entry_dialog.dart';
+import 'tournament/tournament_champion_celebration.dart';
 import 'vision_football_screen.dart';
 
 /// Stages of a Full Match.
@@ -107,6 +108,8 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
   int? _opponentGoals;
   List<String> _userGoalScorers = const [];
   List<String> _opponentGoalScorers = const [];
+  bool _showFinalCelebration = false;
+  bool _finalCelebrationShown = false;
 
   MatchRole _roleForHalf(int half) {
     final first = _firstRole!;
@@ -167,13 +170,26 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
     _advanceAfterHalf();
   }
 
+  bool get _wonTournamentFinal =>
+      widget.tournamentFixture &&
+      widget.tournamentRound == TournamentRound.finalMatch &&
+      (_userGoals ?? 0) > (_opponentGoals ?? 0);
+
+  void _enterFullTimePhase() {
+    _phase = _FmPhase.fullTime;
+    if (_wonTournamentFinal) {
+      _showFinalCelebration = true;
+      _finalCelebrationShown = false;
+    }
+  }
+
   void _advanceAfterHalf() {
     if (!mounted) return;
     setState(() {
       if (_phase == _FmPhase.playingHalf1) {
         _phase = _FmPhase.halfTime;
       } else if (_phase == _FmPhase.playingHalf2) {
-        _phase = _FmPhase.fullTime;
+        _enterFullTimePhase();
         if (!widget.tournamentFixture) {
           unawaited(GameProgressStore.recordFullMatchCompleted());
         }
@@ -192,6 +208,8 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       _opponentGoals = null;
       _userGoalScorers = const [];
       _opponentGoalScorers = const [];
+      _showFinalCelebration = false;
+      _finalCelebrationShown = false;
       _phase = _FmPhase.coinToss;
     });
   }
@@ -209,7 +227,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       _opponentGoals = entry.opponentGoals;
       _userGoalScorers = List.filled(entry.userGoals, 'Test');
       _opponentGoalScorers = List.filled(entry.opponentGoals, 'Test');
-      _phase = _FmPhase.fullTime;
+      _enterFullTimePhase();
     });
     if (!widget.tournamentFixture) {
       unawaited(GameProgressStore.recordFullMatchCompleted());
@@ -322,12 +340,22 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
         if (widget.tournamentFixture) {
           final groupStageDrawCounts =
               widget.tournamentRound == TournamentRound.groupStage;
+          if (_showFinalCelebration) {
+            return TournamentChampionCelebration(
+              userTeam: _userTeam!,
+              onContinue: () => setState(() {
+                _showFinalCelebration = false;
+                _finalCelebrationShown = true;
+              }),
+            );
+          }
           return _TournamentFixtureResultOverlay(
             userTeam: _userTeam!,
             opponentTeam: _opponentTeam!,
             userGoals: _userGoals ?? 0,
             opponentGoals: _opponentGoals ?? 0,
             groupStageDrawCounts: groupStageDrawCounts,
+            skipWinCheer: _finalCelebrationShown,
             onDrawPending: widget.onFixtureDrawPending,
             onContinue: () {
               final userGoals = _userGoals ?? 0;
@@ -804,6 +832,7 @@ class _TournamentFixtureResultOverlay extends StatefulWidget {
     required this.onRematch,
     this.groupStageDrawCounts = false,
     this.onDrawPending,
+    this.skipWinCheer = false,
   });
 
   final Team userTeam;
@@ -814,6 +843,7 @@ class _TournamentFixtureResultOverlay extends StatefulWidget {
   final VoidCallback onRematch;
   final bool groupStageDrawCounts;
   final VoidCallback? onDrawPending;
+  final bool skipWinCheer;
 
   @override
   State<_TournamentFixtureResultOverlay> createState() =>
@@ -826,7 +856,7 @@ class _TournamentFixtureResultOverlayState
   void initState() {
     super.initState();
     GamePlaySound.playFullTimeWhistle();
-    if (widget.userGoals > widget.opponentGoals) {
+    if (widget.userGoals > widget.opponentGoals && !widget.skipWinCheer) {
       GamePlaySound.playGoalCheer();
     }
     if (widget.userGoals == widget.opponentGoals &&

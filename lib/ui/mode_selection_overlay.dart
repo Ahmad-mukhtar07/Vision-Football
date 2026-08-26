@@ -10,6 +10,7 @@ import '../data/game_progress_store.dart';
 import '../data/user_profile_store.dart';
 import '../models/user_profile.dart';
 import 'profile_settings_sheet.dart';
+import 'tournament_unlock_dialog.dart';
 
 /// Selectable game mode from the start screen.
 enum GameMode {
@@ -132,8 +133,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
     if (mounted) {
       setState(() {
         _fullMatchesCompleted = count;
-        _tournamentUnlocked =
-            count > GameProgressStore.tournamentUnlockThreshold;
+        _tournamentUnlocked = GameProgressStore.isUnlocked(count);
       });
     }
   }
@@ -171,7 +171,15 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   }
 
   void _openTournament(BuildContext context) {
-    if (!_tournamentUnlocked) return;
+    if (!_tournamentUnlocked) {
+      unawaited(
+        showTournamentUnlockDialog(
+          context,
+          fullMatchesCompleted: _fullMatchesCompleted,
+        ),
+      );
+      return;
+    }
     widget.onModeSelected(GameMode.tournament);
   }
 
@@ -261,6 +269,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
                   _ProfileStrip(
                     avatarAsset: _avatarAsset,
                     profile: _profile,
+                    onAvatarTap: () => _openSettings(context),
                   ),
                   const SizedBox(height: 14),
                   Expanded(
@@ -423,6 +432,7 @@ class _ProfileStrip extends StatelessWidget {
   const _ProfileStrip({
     required this.avatarAsset,
     required this.profile,
+    this.onAvatarTap,
   });
 
   static const _logoAsset = 'assets/images/VisionFootball-Logo-NoBG.png';
@@ -431,6 +441,7 @@ class _ProfileStrip extends StatelessWidget {
 
   final String avatarAsset;
   final UserProfile profile;
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
@@ -440,32 +451,38 @@ class _ProfileStrip extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          width: _avatarSize,
-          height: _avatarSize,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.08),
-            border: Border.all(color: _Arcade.cyan, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: _Arcade.cyan.withValues(alpha: 0.5),
-                blurRadius: 12,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: ClipOval(
-            child: Image.asset(
-              avatarAsset,
-              fit: BoxFit.cover,
-              // Avatar renders at 44px; decode it small to save memory on
-              // low-end devices instead of keeping the full-res bitmap.
-              cacheWidth: 132,
-              errorBuilder: (context, error, stack) => const Icon(
-                Icons.person_rounded,
-                size: 24,
-                color: Colors.white,
+        GestureDetector(
+          onTap: () {
+            _playTapFeedback();
+            onAvatarTap?.call();
+          },
+          child: Container(
+            width: _avatarSize,
+            height: _avatarSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.08),
+              border: Border.all(color: _Arcade.cyan, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: _Arcade.cyan.withValues(alpha: 0.5),
+                  blurRadius: 12,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                avatarAsset,
+                fit: BoxFit.cover,
+                // Avatar renders at 44px; decode it small to save memory on
+                // low-end devices instead of keeping the full-res bitmap.
+                cacheWidth: 132,
+                errorBuilder: (context, error, stack) => const Icon(
+                  Icons.person_rounded,
+                  size: 24,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
