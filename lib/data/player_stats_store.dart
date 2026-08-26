@@ -27,6 +27,7 @@ class PlayerStats {
     this.tournamentsWon = 0,
     this.tournamentFixturesPlayed = 0,
     this.tournamentFixturesWon = 0,
+    this.reachedQuarterFinals = false,
   });
 
   final int easyPlayed;
@@ -43,6 +44,7 @@ class PlayerStats {
   final int tournamentsWon;
   final int tournamentFixturesPlayed;
   final int tournamentFixturesWon;
+  final bool reachedQuarterFinals;
 
   int get totalMatchesPlayed =>
       easyPlayed +
@@ -76,6 +78,7 @@ class PlayerStatsStore {
   static const _keyTournamentsWon = 'stats_tournaments_won';
   static const _keyTournamentFixturesPlayed = 'stats_tournament_fixtures_played';
   static const _keyTournamentFixturesWon = 'stats_tournament_fixtures_won';
+  static const _keyReachedQuarterFinals = 'stats_reached_quarter_finals';
 
   static Future<PlayerStats> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -95,6 +98,7 @@ class PlayerStatsStore {
       tournamentFixturesPlayed:
           prefs.getInt(_keyTournamentFixturesPlayed) ?? 0,
       tournamentFixturesWon: prefs.getInt(_keyTournamentFixturesWon) ?? 0,
+      reachedQuarterFinals: prefs.getBool(_keyReachedQuarterFinals) ?? false,
     );
   }
 
@@ -144,6 +148,11 @@ class PlayerStatsStore {
     );
   }
 
+  static Future<void> recordReachedQuarterFinals() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyReachedQuarterFinals, true);
+  }
+
   static Future<void> recordTournamentExit(TournamentExitStage stage) async {
     final prefs = await SharedPreferences.getInstance();
     final key = switch (stage) {
@@ -171,5 +180,6 @@ class PlayerStatsStore {
     await prefs.remove(_keyTournamentsWon);
     await prefs.remove(_keyTournamentFixturesPlayed);
     await prefs.remove(_keyTournamentFixturesWon);
+    await prefs.remove(_keyReachedQuarterFinals);
   }
 }

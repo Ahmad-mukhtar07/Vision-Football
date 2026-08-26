@@ -1,6 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'keeper_stadium.dart';
+import 'player_stats_store.dart';
+import 'stadium_unlock_store.dart';
 
 /// Match difficulty chosen before a Full Match on the team selection screen.
 enum DifficultyMode {
@@ -49,6 +51,11 @@ class GameSettings {
       (location) => location.name == savedStadium,
       orElse: () => KeeperStadiumLocation.brazil,
     );
+    final stats = await PlayerStatsStore.load();
+    if (!StadiumUnlockStore.isUnlocked(keeperStadium, stats)) {
+      keeperStadium = KeeperStadiumLocation.brazil;
+      await prefs.setString(_keyKeeperStadium, keeperStadium.name);
+    }
   }
 
   /// Persists and applies the chosen difficulty immediately.

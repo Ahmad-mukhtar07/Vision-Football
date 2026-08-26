@@ -340,6 +340,10 @@ class _TournamentScreenState extends State<TournamentScreen>
     if (bracket.currentRound == TournamentRound.groupStage) {
       _progression.completeUserGroupMatch(bracket);
       unawaited(_recordTournamentFixtureResult(userWon: userWon));
+      if (!bracket.userEliminated &&
+          bracket.currentRound == TournamentRound.quarterFinal) {
+        unawaited(PlayerStatsStore.recordReachedQuarterFinals());
+      }
       if (bracket.userEliminated) {
         _progression.simulateToCompletion(bracket);
         unawaited(_maybeRecordTournamentOutcome(bracket));

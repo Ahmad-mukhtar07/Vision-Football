@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../data/game_settings.dart';
 import '../data/keeper_stadium.dart';
+import '../data/player_stats_store.dart';
+import '../data/stadium_unlock_store.dart';
 import 'main_page_sound.dart';
+import 'stadium_unlock_dialog.dart';
 
 class DifficultyModeSelector extends StatefulWidget {
   const DifficultyModeSelector({
@@ -130,21 +133,57 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
 
   late final PageController _pageController;
   late KeeperStadiumLocation _selected;
+  int _focusedIndex = 0;
+  PlayerStats _stats = PlayerStats.empty;
+  bool _loadingUnlocks = true;
   bool _suppressPageSound = true;
+
+  bool _isUnlocked(KeeperStadiumLocation location) =>
+      StadiumUnlockStore.isUnlocked(location, _stats);
 
   @override
   void initState() {
     super.initState();
     _selected = GameSettings.keeperStadium;
-    final initialPage = _locations.indexOf(_selected).clamp(0, _locations.length - 1);
+    _focusedIndex =
+        _locations.indexOf(_selected).clamp(0, _locations.length - 1);
     _pageController = PageController(
-      initialPage: initialPage,
+      initialPage: _focusedIndex,
       viewportFraction: 0.86,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _suppressPageSound = false;
     });
+    _loadUnlockState();
   }
+
+  Future<void> _loadUnlockState() async {
+    final stats = await PlayerStatsStore.load();
+    if (!mounted) return;
+
+    var selected = GameSettings.keeperStadium;
+    if (!_isUnlockedFor(stats, selected)) {
+      selected = KeeperStadiumLocation.brazil;
+      await GameSettings.setKeeperStadium(selected);
+    }
+
+    final pageIndex =
+        _locations.indexOf(selected).clamp(0, _locations.length - 1);
+    setState(() {
+      _stats = stats;
+      _selected = selected;
+      _focusedIndex = pageIndex;
+      _loadingUnlocks = false;
+    });
+
+    if (_pageController.hasClients &&
+        _pageController.page?.round() != pageIndex) {
+      _pageController.jumpToPage(pageIndex);
+    }
+  }
+
+  bool _isUnlockedFor(PlayerStats stats, KeeperStadiumLocation location) =>
+      StadiumUnlockStore.isUnlocked(location, stats);
 
   @override
   void dispose() {
@@ -152,14 +191,32 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
     super.dispose();
   }
 
-  Future<void> _selectPage(int index) async {
-    final location = _locations[index];
+  Future<void> _selectUnlocked(KeeperStadiumLocation location) async {
     if (location == _selected) return;
     setState(() => _selected = location);
     await GameSettings.setKeeperStadium(location);
   }
 
+  void _onPageChanged(int index) {
+    final location = _locations[index];
+    setState(() => _focusedIndex = index);
+    if (!_suppressPageSound) MainPageSound.playButtonClick();
+    if (_isUnlocked(location)) {
+      _selectUnlocked(location);
+    }
+  }
+
   void _jumpToPage(int index) {
+    final location = _locations[index];
+    if (!_isUnlocked(location)) {
+      MainPageSound.playButtonClick();
+      showStadiumUnlockDialog(
+        context,
+        location: location,
+        stats: _stats,
+      );
+      return;
+    }
     if (_pageController.page?.round() == index) return;
     _pageController.animateToPage(
       index,
@@ -168,18 +225,32 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
     );
   }
 
+  KeeperStadiumLocation get _focusedLocation => _locations[_focusedIndex];
+
   @override
   Widget build(BuildContext context) {
+    if (_loadingUnlocks) {
+      return SizedBox(
+        height: widget.expandPreview ? null : widget.previewHeight,
+        child: const Center(
+          child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
+        ),
+      );
+    }
+
+    final focused = _focusedLocation;
+    final focusedLocked = !_isUnlocked(focused);
+    final progressHint =
+        StadiumUnlockStore.progressHint(focused, _stats);
+
     final pageView = PageView.builder(
       controller: _pageController,
       itemCount: _locations.length,
       physics: const BouncingScrollPhysics(),
-      onPageChanged: (index) {
-        if (!_suppressPageSound) MainPageSound.playButtonClick();
-        _selectPage(index);
-      },
+      onPageChanged: _onPageChanged,
       itemBuilder: (context, index) {
         final location = _locations[index];
+        final locked = !_isUnlocked(location);
         return AnimatedBuilder(
           animation: _pageController,
           builder: (context, child) {
@@ -198,7 +269,8 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: _StadiumPreviewCard(
               location: location,
-              selected: location == _selected,
+              selected: !locked && location == _selected,
+              locked: locked,
               accent: widget.accent,
               selectedColor: widget.selectedColor,
               onTap: () => _jumpToPage(index),
@@ -230,15 +302,31 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
           SizedBox(height: widget.previewHeight, child: pageView),
         const SizedBox(height: 10),
         Text(
-          _selected.label,
+          focusedLocked ? '${focused.label} — LOCKED' : _selected.label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: widget.selectedColor,
+            color: focusedLocked
+                ? Colors.white.withValues(alpha: 0.72)
+                : widget.selectedColor,
             fontSize: 15,
             fontWeight: FontWeight.w800,
             letterSpacing: 0.4,
           ),
         ),
+        if (focusedLocked) ...[
+          const SizedBox(height: 4),
+          Text(
+            progressHint ??
+                StadiumUnlockStore.unlockRequirement(focused, _stats),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: widget.accent.withValues(alpha: 0.85),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              height: 1.3,
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -246,7 +334,8 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
             for (var i = 0; i < _locations.length; i++) ...[
               if (i > 0) const SizedBox(width: 8),
               _StadiumPageDot(
-                active: _locations[i] == _selected,
+                active: _locations[i] == focused,
+                locked: !_isUnlocked(_locations[i]),
                 selectedColor: widget.selectedColor,
                 onTap: () => _jumpToPage(i),
               ),
@@ -255,7 +344,9 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Swipe for more stadiums',
+          focusedLocked
+              ? 'Complete the challenge to unlock this stadium'
+              : 'Swipe for more stadiums',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.42),
@@ -271,6 +362,7 @@ class _StadiumPreviewCard extends StatelessWidget {
   const _StadiumPreviewCard({
     required this.location,
     required this.selected,
+    required this.locked,
     required this.accent,
     required this.selectedColor,
     required this.onTap,
@@ -278,6 +370,7 @@ class _StadiumPreviewCard extends StatelessWidget {
 
   final KeeperStadiumLocation location;
   final bool selected;
+  final bool locked;
   final Color accent;
   final Color selectedColor;
   final VoidCallback onTap;
@@ -295,7 +388,9 @@ class _StadiumPreviewCard extends StatelessWidget {
             border: Border.all(
               color: selected
                   ? selectedColor.withValues(alpha: 0.9)
-                  : Colors.white.withValues(alpha: 0.18),
+                  : locked
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : Colors.white.withValues(alpha: 0.18),
               width: selected ? 2 : 1,
             ),
             boxShadow: selected
@@ -317,6 +412,8 @@ class _StadiumPreviewCard extends StatelessWidget {
                   location.assetPath,
                   fit: BoxFit.cover,
                   alignment: Alignment.center,
+                  color: locked ? Colors.black54 : null,
+                  colorBlendMode: locked ? BlendMode.darken : null,
                 ),
                 DecoratedBox(
                   decoration: BoxDecoration(
@@ -325,11 +422,34 @@ class _StadiumPreviewCard extends StatelessWidget {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.transparent,
-                        Colors.black.withValues(alpha: 0.35),
+                        Colors.black.withValues(alpha: locked ? 0.55 : 0.35),
                       ],
                     ),
                   ),
                 ),
+                if (locked)
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.lock_rounded,
+                          color: selectedColor.withValues(alpha: 0.95),
+                          size: 34,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'LOCKED',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.92),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
@@ -342,11 +462,13 @@ class _StadiumPreviewCard extends StatelessWidget {
 class _StadiumPageDot extends StatelessWidget {
   const _StadiumPageDot({
     required this.active,
+    required this.locked,
     required this.selectedColor,
     required this.onTap,
   });
 
   final bool active;
+  final bool locked;
   final Color selectedColor;
   final VoidCallback onTap;
 
@@ -361,8 +483,10 @@ class _StadiumPageDot extends StatelessWidget {
         height: 7,
         decoration: BoxDecoration(
           color: active
-              ? selectedColor
-              : Colors.white.withValues(alpha: 0.28),
+              ? (locked
+                  ? Colors.white.withValues(alpha: 0.45)
+                  : selectedColor)
+              : Colors.white.withValues(alpha: locked ? 0.16 : 0.28),
           borderRadius: BorderRadius.circular(4),
         ),
       ),
