@@ -163,19 +163,19 @@ class _TournamentBracketViewState extends State<TournamentBracketView> {
                   ],
                 ),
               ),
-              if (showGroupTables)
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                  tooltip: 'Group stage rules',
-                  onPressed: () => showGroupStageInfoDialog(context),
-                  icon: Icon(
-                    Icons.info_outline_rounded,
-                    size: 22,
-                    color: _Pal.cyan.withValues(alpha: 0.65),
-                  ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                tooltip: '${_shortTabLabel(_selectedRound)} rules',
+                onPressed: () =>
+                    showTournamentRoundInfoDialog(context, _selectedRound),
+                icon: Icon(
+                  Icons.info_outline_rounded,
+                  size: 22,
+                  color: _Pal.cyan.withValues(alpha: 0.65),
                 ),
+              ),
             ],
           ),
         ),

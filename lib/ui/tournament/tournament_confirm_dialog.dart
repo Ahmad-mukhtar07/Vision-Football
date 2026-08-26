@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../tournament/tournament_models.dart';
 import '../main_page_sound.dart';
 
 class _Pal {
@@ -109,8 +110,12 @@ Future<bool> showTournamentConfirmDialog(
   return result ?? false;
 }
 
-/// Explains how the group stage works.
-Future<void> showGroupStageInfoDialog(BuildContext context) async {
+/// Explains how a tournament round works.
+Future<void> showTournamentRoundInfoDialog(
+  BuildContext context,
+  TournamentRound round,
+) async {
+  final content = _roundInfoContent(round);
   _tap();
   await showDialog<void>(
     context: context,
@@ -126,9 +131,9 @@ Future<void> showGroupStageInfoDialog(BuildContext context) async {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'GROUP STAGE',
-              style: TextStyle(
+            Text(
+              content.title,
+              style: const TextStyle(
                 color: _Pal.cyan,
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
@@ -137,13 +142,7 @@ Future<void> showGroupStageInfoDialog(BuildContext context) async {
             ),
             const SizedBox(height: 12),
             Text(
-              'Each team plays every other team in its group twice — six '
-              'matches in all.\n\n'
-              'Every match is a five-kick shootout per side. You earn '
-              '3 points for a win, 1 for a draw, and 0 for a loss. '
-              'Teams level on points are ranked by goal difference.\n\n'
-              'The top two teams from each group advance to the '
-              'quarter-finals.',
+              content.body,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.82),
                 fontSize: 14,
@@ -174,4 +173,70 @@ Future<void> showGroupStageInfoDialog(BuildContext context) async {
       ),
     ),
   );
+}
+
+/// Explains how the group stage works.
+Future<void> showGroupStageInfoDialog(BuildContext context) =>
+    showTournamentRoundInfoDialog(context, TournamentRound.groupStage);
+
+class _RoundInfoContent {
+  const _RoundInfoContent({required this.title, required this.body});
+
+  final String title;
+  final String body;
+}
+
+_RoundInfoContent _roundInfoContent(TournamentRound round) {
+  switch (round) {
+    case TournamentRound.groupStage:
+      return const _RoundInfoContent(
+        title: 'GROUP STAGE',
+        body:
+            'Each team plays every other team in its group twice — six '
+            'matches in all.\n\n'
+            'Every match is a five-kick shootout per side. You earn '
+            '3 points for a win, 1 for a draw, and 0 for a loss. '
+            'Teams level on points are ranked by goal difference.\n\n'
+            'The top two teams from each group advance to the '
+            'quarter-finals.',
+      );
+    case TournamentRound.quarterFinal:
+      return const _RoundInfoContent(
+        title: 'QUARTER-FINALS',
+        body:
+            'Eight teams remain — the top two from every group. Each tie is '
+            'a single Full Match knockout.\n\n'
+            'You shoot five penalties in one half and keep five in the '
+            'other. A coin toss decides which role you take first. Win to '
+            'reach the semi-finals; lose and you are out of the Global Cup.\n\n'
+            'Draws do not count — replay the match until there is a winner. '
+            'Teams from the same group cannot be paired in this round.\n\n'
+            'Matches are played in Greece on Easy difficulty.',
+      );
+    case TournamentRound.semiFinal:
+      return const _RoundInfoContent(
+        title: 'SEMI-FINALS',
+        body:
+            'Four teams remain. Each tie is a winner-takes-all Full Match — '
+            'the same five-kick shootout format as the quarter-finals.\n\n'
+            'Win to reach the Global Cup Final. Lose and your tournament '
+            'run is over.\n\n'
+            'Draws must be replayed until one team wins. Rivals from the '
+            'same group still cannot meet in this round.\n\n'
+            'Matches are played in Spain on Moderate difficulty.',
+      );
+    case TournamentRound.finalMatch:
+      return const _RoundInfoContent(
+        title: 'FINAL',
+        body:
+            'Two teams, one trophy. The Global Cup Final uses the same Full '
+            'Match shootout format — five kicks as the shooter and five as '
+            'the keeper.\n\n'
+            'Win the match to become Global Cup champion. Lose and the '
+            'other nation lifts the trophy.\n\n'
+            'If the score is level after both halves, replay the match until '
+            'someone wins.\n\n'
+            'The Final is played in the USA on Hard difficulty.',
+      );
+  }
 }
