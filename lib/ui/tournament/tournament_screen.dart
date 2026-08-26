@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/energy_drink_store.dart';
+import '../../data/player_stats_store.dart';
+import '../../data/teams_data.dart';
 import '../../models/team.dart';
 import '../../tournament/tournament_bracket_builder.dart';
 import '../../tournament/tournament_models.dart';
@@ -74,6 +76,7 @@ class _TournamentScreenState extends State<TournamentScreen>
   bool _hydrated = false;
   /// After [TournamentStore.clear], skip persisting eliminated state on dispose.
   bool _saveCleared = false;
+  bool _outcomeStatsRecorded = false;
   /// True while a fixture is actively being played (not draw-result screen).
   bool _matchInProgress = false;
   EnergyDrinkState _energyState = const EnergyDrinkState(
@@ -134,6 +137,7 @@ class _TournamentScreenState extends State<TournamentScreen>
 
     if (saved != null) {
       final bracket = saved.bracket;
+      _outcomeStatsRecorded = saved.outcomeStatsRecorded;
       if (saved.matchInProgress) {
         _applyMidMatchForfeit(bracket);
       }
@@ -142,6 +146,9 @@ class _TournamentScreenState extends State<TournamentScreen>
         _phase = _TournamentPhase.bracket;
         _hydrated = true;
       });
+      if (!_outcomeStatsRecorded) {
+        await _maybeRecordTournamentOutcome(bracket);
+      }
       await _persistBracket(matchInProgress: false);
       return;
     }
@@ -155,7 +162,61 @@ class _TournamentScreenState extends State<TournamentScreen>
     await TournamentStore.save(
       bracket: bracket,
       matchInProgress: matchInProgress,
+      outcomeStatsRecorded: _outcomeStatsRecorded,
     );
+  }
+
+  TournamentExitStage? _eliminationStage(TournamentBracket bracket) {
+    if (!bracket.userEliminated) return null;
+
+    for (final round in [
+      TournamentRound.finalMatch,
+      TournamentRound.semiFinal,
+      TournamentRound.quarterFinal,
+    ]) {
+      final playedUserFixtures = bracket
+          .fixturesFor(round)
+          .where((f) => f.isUserFixture && f.isPlayed)
+          .toList();
+      if (playedUserFixtures.isEmpty) continue;
+
+      final last = playedUserFixtures.last;
+      final loser = last.loser;
+      if (loser != null && teamsMatch(loser, bracket.userTeam)) {
+        return switch (round) {
+          TournamentRound.quarterFinal => TournamentExitStage.quarterFinal,
+          TournamentRound.semiFinal => TournamentExitStage.semiFinal,
+          TournamentRound.finalMatch => TournamentExitStage.finalMatch,
+          _ => TournamentExitStage.groupStage,
+        };
+      }
+    }
+
+    return TournamentExitStage.groupStage;
+  }
+
+  Future<void> _maybeRecordTournamentOutcome(TournamentBracket bracket) async {
+    if (_outcomeStatsRecorded) return;
+
+    if (bracket.userWonTournament) {
+      _outcomeStatsRecorded = true;
+      await PlayerStatsStore.recordTournamentWon();
+      await _persistBracket(matchInProgress: _matchInProgress);
+      return;
+    }
+
+    final stage = _eliminationStage(bracket);
+    if (stage == null) return;
+
+    _outcomeStatsRecorded = true;
+    await PlayerStatsStore.recordTournamentExit(stage);
+    await _persistBracket(matchInProgress: _matchInProgress);
+  }
+
+  Future<void> _recordTournamentFixtureResult({
+    required bool userWon,
+  }) async {
+    await PlayerStatsStore.recordTournamentFixture(won: userWon);
   }
 
   void _applyMidMatchForfeit(TournamentBracket bracket) {
@@ -171,8 +232,10 @@ class _TournamentScreenState extends State<TournamentScreen>
         opponentGoals: 1,
       );
       _progression.completeUserGroupMatch(bracket);
+      unawaited(_recordTournamentFixtureResult(userWon: false));
       if (bracket.userEliminated) {
         _progression.simulateToCompletion(bracket);
+        unawaited(_maybeRecordTournamentOutcome(bracket));
       }
       return;
     }
@@ -184,12 +247,20 @@ class _TournamentScreenState extends State<TournamentScreen>
       opponentGoals: 1,
     );
     bracket.userEliminated = true;
+    unawaited(_recordTournamentFixtureResult(userWon: false));
     _progression.simulateToCompletion(bracket);
+    unawaited(_maybeRecordTournamentOutcome(bracket));
   }
 
   Future<void> _startTournament(Team userTeam) async {
     final bracket = TournamentBracketBuilder().build(userTeam: userTeam);
-    await TournamentStore.save(bracket: bracket, matchInProgress: false);
+    _outcomeStatsRecorded = false;
+    await PlayerStatsStore.recordTournamentStarted();
+    await TournamentStore.save(
+      bracket: bracket,
+      matchInProgress: false,
+      outcomeStatsRecorded: false,
+    );
     setState(() {
       _bracket = bracket;
       _phase = _TournamentPhase.bracket;
@@ -268,14 +339,22 @@ class _TournamentScreenState extends State<TournamentScreen>
 
     if (bracket.currentRound == TournamentRound.groupStage) {
       _progression.completeUserGroupMatch(bracket);
+      unawaited(_recordTournamentFixtureResult(userWon: userWon));
       if (bracket.userEliminated) {
         _progression.simulateToCompletion(bracket);
+        unawaited(_maybeRecordTournamentOutcome(bracket));
       }
     } else if (userWon) {
+      unawaited(_recordTournamentFixtureResult(userWon: true));
       _progression.completeUserRoundStep(bracket);
+      if (bracket.userWonTournament) {
+        unawaited(_maybeRecordTournamentOutcome(bracket));
+      }
     } else if (!isGroupDraw) {
+      unawaited(_recordTournamentFixtureResult(userWon: false));
       bracket.userEliminated = true;
       _progression.simulateToCompletion(bracket);
+      unawaited(_maybeRecordTournamentOutcome(bracket));
     }
 
     await _persistBracket(matchInProgress: false);

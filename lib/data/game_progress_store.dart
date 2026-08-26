@@ -7,7 +7,7 @@ class GameProgressStore {
   static const _keyFullMatches = 'progress_full_matches_completed';
 
   /// Full matches required to unlock tournament mode.
-  static const tournamentMatchesRequired = 2;
+  static const tournamentMatchesRequired = 3;
 
   static double tournamentUnlockProgress(int completed) =>
       (completed / tournamentMatchesRequired).clamp(0.0, 1.0);

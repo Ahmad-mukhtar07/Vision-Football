@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 
 import '../data/energy_drink_store.dart';
 import '../data/game_progress_store.dart';
+import '../data/game_settings.dart';
+import '../data/player_stats_store.dart';
 import '../data/testing_profile.dart';
 import '../game/full_match_shootout.dart';
 import '../game/match_state.dart';
@@ -210,6 +212,16 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
     }
   }
 
+  void _recordFullMatchStatsIfNeeded() {
+    if (widget.tournamentFixture) return;
+    final userGoals = _userGoals ?? 0;
+    final opponentGoals = _opponentGoals ?? 0;
+    unawaited(PlayerStatsStore.recordFullMatch(
+      difficulty: GameSettings.difficulty,
+      won: userGoals > opponentGoals,
+    ));
+  }
+
   void _advanceAfterHalf() {
     if (!mounted) return;
     setState(() {
@@ -219,6 +231,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
         _enterFullTimePhase();
         if (!widget.tournamentFixture) {
           unawaited(GameProgressStore.recordFullMatchCompleted());
+          _recordFullMatchStatsIfNeeded();
         }
       }
     });
@@ -260,6 +273,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
     });
     if (!widget.tournamentFixture) {
       unawaited(GameProgressStore.recordFullMatchCompleted());
+      _recordFullMatchStatsIfNeeded();
     }
   }
 

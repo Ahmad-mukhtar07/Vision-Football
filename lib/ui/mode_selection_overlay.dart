@@ -15,6 +15,7 @@ import '../data/game_progress_store.dart';
 import '../data/testing_profile.dart';
 import '../data/user_profile_store.dart';
 import '../models/user_profile.dart';
+import 'player_stats_sheet.dart';
 import 'profile_settings_sheet.dart';
 import 'tournament_carousel_news.dart';
 import 'tournament_unlock_dialog.dart';
@@ -237,6 +238,10 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
     if (mounted) unawaited(_loadEnergy());
   }
 
+  Future<void> _openPlayerStats(BuildContext context) async {
+    await showPlayerStatsSheet(context, profile: _profile);
+  }
+
   Future<void> _openSettings(BuildContext context) async {
     final updated = await showModalBottomSheet<UserProfile>(
       context: context,
@@ -310,7 +315,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
                     avatarAsset: _avatarAsset,
                     profile: _profile,
                     energyState: _energyState,
-                    onAvatarTap: () => _openSettings(context),
+                    onAvatarTap: () => _openPlayerStats(context),
                     onEnergyTap: () => _openEnergyStatus(context),
                   ),
                   const SizedBox(height: 14),

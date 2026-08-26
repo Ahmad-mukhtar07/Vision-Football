@@ -2,6 +2,7 @@ import '../tournament/tournament_store.dart';
 import 'daily_streak_store.dart';
 import 'energy_drink_store.dart';
 import 'game_progress_store.dart';
+import 'player_stats_store.dart';
 import 'user_profile_store.dart';
 
 /// Special QA usernames applied once on app startup (after a restart).
@@ -48,6 +49,7 @@ class TestingProfile {
     await DailyStreakStore.reset();
     await EnergyDrinkStore.resetToDefault();
     await TournamentStore.clear();
+    await PlayerStatsStore.reset();
   }
 
   static Future<void> _applyFullUnlock() async {

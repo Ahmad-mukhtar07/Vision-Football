@@ -21,13 +21,23 @@ class TournamentStore {
   static Future<void> save({
     required TournamentBracket bracket,
     required bool matchInProgress,
+    bool outcomeStatsRecorded = false,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final payload = _encode(bracket, matchInProgress: matchInProgress);
+    final payload = _encode(
+      bracket,
+      matchInProgress: matchInProgress,
+      outcomeStatsRecorded: outcomeStatsRecorded,
+    );
     await prefs.setString(_key, jsonEncode(payload));
   }
 
-  static Future<({TournamentBracket bracket, bool matchInProgress})?> load() async {
+  static Future<
+      ({
+        TournamentBracket bracket,
+        bool matchInProgress,
+        bool outcomeStatsRecorded,
+      })?> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
     if (raw == null) return null;
@@ -48,6 +58,7 @@ class TournamentStore {
   static Map<String, dynamic> _encode(
     TournamentBracket bracket, {
     required bool matchInProgress,
+    required bool outcomeStatsRecorded,
   }) {
     final fixtures = <Map<String, dynamic>>[];
     for (final round in TournamentRound.values) {
@@ -62,6 +73,7 @@ class TournamentStore {
       'userEliminated': bracket.userEliminated,
       'championCode': bracket.champion?.countryCode,
       'matchInProgress': matchInProgress,
+      'outcomeStatsRecorded': outcomeStatsRecorded,
       'moderateGroupMatchIndices':
           bracket.moderateGroupMatchIndices.toList()..sort(),
       'groups': bracket.groups
@@ -93,7 +105,11 @@ class TournamentStore {
     };
   }
 
-  static ({TournamentBracket bracket, bool matchInProgress}) _decode(
+  static ({
+    TournamentBracket bracket,
+    bool matchInProgress,
+    bool outcomeStatsRecorded,
+  }) _decode(
     Map<String, dynamic> map,
   ) {
     final userTeam = teamForCountryCode(map['userTeamCode'] as String);
@@ -131,6 +147,7 @@ class TournamentStore {
         moderateGroupMatchIndices: _decodeModerateGroupMatchIndices(map),
       ),
       matchInProgress: map['matchInProgress'] as bool? ?? false,
+      outcomeStatsRecorded: map['outcomeStatsRecorded'] as bool? ?? false,
     );
   }
 
