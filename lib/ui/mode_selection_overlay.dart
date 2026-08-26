@@ -4,9 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'energy_drink_widgets.dart';
 import 'glass_panel.dart';
 import 'main_page_sound.dart';
+import '../data/energy_drink_store.dart';
 import '../data/game_progress_store.dart';
+import '../data/testing_profile.dart';
 import '../data/user_profile_store.dart';
 import '../models/user_profile.dart';
 import 'profile_settings_sheet.dart';
@@ -95,6 +98,11 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   UserProfile _profile = UserProfile.defaults;
   bool _tournamentUnlocked = false;
   int _fullMatchesCompleted = 0;
+  EnergyDrinkState _energyState = const EnergyDrinkState(
+    count: EnergyDrinkStore.defaultDrinks,
+    max: EnergyDrinkStore.maxDrinks,
+  );
+  Timer? _energyTimer;
 
   @override
   void initState() {
@@ -102,6 +110,10 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
     _avatarAsset = _avatars[math.Random().nextInt(_avatars.length)];
     unawaited(_loadProfile());
     unawaited(_loadProgress());
+    unawaited(_loadEnergy());
+    _energyTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(_loadEnergy(silent: true));
+    });
 
     _masterController = AnimationController(
       vsync: this,
@@ -122,6 +134,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
 
   @override
   void dispose() {
+    _energyTimer?.cancel();
     _masterController.dispose();
     super.dispose();
   }
@@ -138,6 +151,17 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
     }
   }
 
+  Future<void> _loadEnergy({bool silent = false}) async {
+    final state = await EnergyDrinkStore.loadState();
+    if (!mounted) return;
+    if (silent &&
+        state.count == _energyState.count &&
+        state.nextRefillAt == _energyState.nextRefillAt) {
+      return;
+    }
+    setState(() => _energyState = state);
+  }
+
   Future<void> _loadProfile() async {
     final profile = await UserProfileStore.load();
     if (mounted) setState(() => _profile = profile);
@@ -152,7 +176,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
     );
   }
 
-  void _openFullMatch(BuildContext context) {
+  Future<void> _openFullMatch(BuildContext context) async {
     if (!_kShowStandalonePracticeModes) {
       widget.onModeSelected(GameMode.fullMatch);
       return;
@@ -195,6 +219,18 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
         },
       ),
     );
+  }
+
+  Future<void> _openEnergyStatus(BuildContext context) async {
+    final state = await EnergyDrinkStore.loadState();
+    if (!mounted) return;
+    setState(() => _energyState = state);
+    await showEnergyDrinkStatusDialog(
+      context,
+      initialState: state,
+      allowEditing: TestingProfile.unlocksEverything,
+    );
+    if (mounted) unawaited(_loadEnergy());
   }
 
   Future<void> _openSettings(BuildContext context) async {
@@ -269,7 +305,9 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
                   _ProfileStrip(
                     avatarAsset: _avatarAsset,
                     profile: _profile,
+                    energyState: _energyState,
                     onAvatarTap: () => _openSettings(context),
+                    onEnergyTap: () => _openEnergyStatus(context),
                   ),
                   const SizedBox(height: 14),
                   Expanded(
@@ -432,16 +470,18 @@ class _ProfileStrip extends StatelessWidget {
   const _ProfileStrip({
     required this.avatarAsset,
     required this.profile,
+    required this.energyState,
     this.onAvatarTap,
+    this.onEnergyTap,
   });
 
-  static const _logoAsset = 'assets/images/VisionFootball-Logo-NoBG.png';
   static const _avatarSize = 44.0;
-  static const _logoHeight = 54.0;
 
   final String avatarAsset;
   final UserProfile profile;
+  final EnergyDrinkState energyState;
   final VoidCallback? onAvatarTap;
+  final VoidCallback? onEnergyTap;
 
   @override
   Widget build(BuildContext context) {
@@ -517,14 +557,10 @@ class _ProfileStrip extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        SizedBox(
-          height: _logoHeight,
-          child: Image.asset(
-            _logoAsset,
-            fit: BoxFit.contain,
-            alignment: Alignment.centerRight,
-            filterQuality: FilterQuality.high,
-          ),
+        EnergyDrinkHeaderBadge(
+          count: energyState.count,
+          max: energyState.max,
+          onTap: onEnergyTap ?? () {},
         ),
       ],
     );

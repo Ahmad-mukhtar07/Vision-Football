@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../data/energy_drink_store.dart';
 import '../../models/team.dart';
 import '../../tournament/tournament_bracket_builder.dart';
 import '../../tournament/tournament_models.dart';
 import '../../tournament/tournament_progression.dart';
 import '../../tournament/tournament_round_config.dart';
 import '../../tournament/tournament_store.dart';
+import '../energy_drink_widgets.dart';
 import '../full_match_screen.dart';
 import '../main_page_sound.dart';
 import 'tournament_bracket_view.dart';
@@ -72,16 +76,28 @@ class _TournamentScreenState extends State<TournamentScreen>
   bool _saveCleared = false;
   /// True while a fixture is actively being played (not draw-result screen).
   bool _matchInProgress = false;
+  EnergyDrinkState _energyState = const EnergyDrinkState(
+    count: EnergyDrinkStore.defaultDrinks,
+    max: EnergyDrinkStore.maxDrinks,
+  );
+  Timer? _energyTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_loadEnergy());
+    _energyTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_phase == _TournamentPhase.bracket) {
+        unawaited(_loadEnergy(silent: true));
+      }
+    });
     _hydrate();
   }
 
   @override
   void dispose() {
+    _energyTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _settingsScope?.restore();
     if (!_saveCleared &&
@@ -99,6 +115,17 @@ class _TournamentScreenState extends State<TournamentScreen>
         state == AppLifecycleState.hidden) {
       _persistBracket(matchInProgress: _matchInProgress);
     }
+  }
+
+  Future<void> _loadEnergy({bool silent = false}) async {
+    final state = await EnergyDrinkStore.loadState();
+    if (!mounted) return;
+    if (silent &&
+        state.count == _energyState.count &&
+        state.nextRefillAt == _energyState.nextRefillAt) {
+      return;
+    }
+    setState(() => _energyState = state);
   }
 
   Future<void> _hydrate() async {
@@ -183,6 +210,21 @@ class _TournamentScreenState extends State<TournamentScreen>
     if (bracket == null || opponent == null || _activeFixture == null) {
       return;
     }
+
+    final cost = EnergyDrinkStore.costForTournamentRound(bracket.currentRound);
+    final state = await EnergyDrinkStore.loadState();
+    if (!mounted) return;
+    setState(() => _energyState = state);
+    if (state.count < cost) {
+      _tap();
+      await showInsufficientEnergyDialog(
+        context,
+        required: cost,
+        available: state.count,
+      );
+      return;
+    }
+
     _tap();
     final settings = TournamentRoundSettings.forRound(
       bracket.currentRound,
@@ -242,6 +284,7 @@ class _TournamentScreenState extends State<TournamentScreen>
       _matchInProgress = false;
       _phase = _TournamentPhase.bracket;
     });
+    unawaited(_loadEnergy());
   }
 
   Future<void> _onFixtureDrawPending() async {
@@ -263,6 +306,7 @@ class _TournamentScreenState extends State<TournamentScreen>
     await _persistBracket(matchInProgress: false);
     if (!mounted) return;
     setState(() => _phase = _TournamentPhase.bracket);
+    unawaited(_loadEnergy());
   }
 
   Future<void> _confirmExitTournament() async {
@@ -346,6 +390,7 @@ class _TournamentScreenState extends State<TournamentScreen>
 
     return _BracketHub(
       bracket: _bracket!,
+      energyState: _energyState,
       onPlayNext: () => _playNextMatch(),
       onExit: _confirmExitTournament,
       onClose: _saveAndReturnToMenu,
@@ -358,6 +403,7 @@ class _TournamentScreenState extends State<TournamentScreen>
 class _BracketHub extends StatelessWidget {
   const _BracketHub({
     required this.bracket,
+    required this.energyState,
     required this.onPlayNext,
     required this.onExit,
     required this.onClose,
@@ -366,6 +412,7 @@ class _BracketHub extends StatelessWidget {
   });
 
   final TournamentBracket bracket;
+  final EnergyDrinkState energyState;
   final VoidCallback onPlayNext;
   final Future<void> Function() onExit;
   final Future<void> Function() onClose;
@@ -376,6 +423,9 @@ class _BracketHub extends StatelessWidget {
   Widget build(BuildContext context) {
     final stage = _stageLabel(bracket);
     final stageColor = bracket.userEliminated ? _Pal.red : _Pal.cyan;
+    final matchCost =
+        EnergyDrinkStore.costForTournamentRound(bracket.currentRound);
+    final hasEnoughEnergy = energyState.count >= matchCost;
 
     return DecoratedBox(
       decoration: const BoxDecoration(
@@ -445,6 +495,8 @@ class _BracketHub extends StatelessWidget {
                     _ActionButton(
                       label: 'PLAY MATCH',
                       opponent: nextOpponent,
+                      energyCost: matchCost,
+                      hasEnoughEnergy: hasEnoughEnergy,
                       color: _Pal.green,
                       filled: true,
                       onTap: onPlayNext,
@@ -475,10 +527,14 @@ class _ActionButton extends StatelessWidget {
     required this.filled,
     required this.onTap,
     this.opponent,
+    this.energyCost,
+    this.hasEnoughEnergy = true,
   });
 
   final String label;
   final Team? opponent;
+  final int? energyCost;
+  final bool hasEnoughEnergy;
   final Color color;
   final bool filled;
   final VoidCallback onTap;
@@ -486,8 +542,9 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasOpponent = opponent != null;
+    final showEnergy = energyCost != null;
     return SizedBox(
-      height: hasOpponent ? 58 : 50,
+      height: hasOpponent ? 58 : (showEnergy ? 54 : 50),
       width: double.infinity,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -510,14 +567,25 @@ class _ActionButton extends StatelessWidget {
                   ? Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          label,
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                            fontSize: 14,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              label,
+                              style: TextStyle(
+                                color: hasEnoughEnergy
+                                    ? Colors.black87
+                                    : Colors.black54,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
+                                fontSize: 14,
+                              ),
+                            ),
+                            if (showEnergy) ...[
+                              const SizedBox(width: 8),
+                              EnergyDrinkCostBadge(cost: energyCost!),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 3),
                         Row(
@@ -547,13 +615,25 @@ class _ActionButton extends StatelessWidget {
                         ),
                       ],
                     )
-                  : Text(
-                      label,
-                      style: TextStyle(
-                        color: filled ? Colors.black87 : color,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                      ),
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: filled ? Colors.black87 : color,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        if (showEnergy) ...[
+                          const SizedBox(width: 8),
+                          EnergyDrinkCostBadge(
+                            cost: energyCost!,
+                            color: filled ? Colors.black87 : color,
+                          ),
+                        ],
+                      ],
                     ),
             ),
           ),

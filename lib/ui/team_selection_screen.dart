@@ -2,8 +2,10 @@ import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/energy_drink_store.dart';
 import '../data/teams_data.dart';
 import '../models/team.dart';
+import 'energy_drink_widgets.dart';
 import 'main_page_sound.dart';
 import 'team_squad_sheet.dart';
 
@@ -73,6 +75,16 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
   Future<void> _start() async {
     if (!_ready) return;
     _tap();
+    final state = await EnergyDrinkStore.loadState();
+    if (!mounted) return;
+    if (state.count < EnergyDrinkStore.fullMatchCost) {
+      await showInsufficientEnergyDialog(
+        context,
+        required: EnergyDrinkStore.fullMatchCost,
+        available: state.count,
+      );
+      return;
+    }
     widget.onStart(_userTeam!, _opponentTeam!);
   }
 
@@ -661,17 +673,34 @@ class _StartBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(27),
               onTap: ready ? onStart : null,
               child: Center(
-                child: Text(
-                  ready ? 'START MATCH' : 'Select both teams',
-                  style: TextStyle(
-                    color: ready
-                        ? Colors.black87
-                        : Colors.white.withValues(alpha: 0.5),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.6,
-                  ),
-                ),
+                child: ready
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'START MATCH',
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          EnergyDrinkCostBadge(
+                            cost: EnergyDrinkStore.fullMatchCost,
+                          ),
+                        ],
+                      )
+                    : Text(
+                        'Select both teams',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
               ),
             ),
           ),

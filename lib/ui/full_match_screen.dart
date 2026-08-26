@@ -5,6 +5,7 @@ import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/energy_drink_store.dart';
 import '../data/game_progress_store.dart';
 import '../data/testing_profile.dart';
 import '../game/full_match_shootout.dart';
@@ -14,6 +15,7 @@ import '../keeper/keeper_screen.dart';
 import '../models/team.dart';
 import '../tournament/tournament_models.dart';
 import 'coin_toss_screen.dart';
+import 'energy_drink_widgets.dart';
 import 'game_play_sound.dart';
 import 'main_page_sound.dart';
 import 'match_setup_screen.dart';
@@ -147,7 +149,32 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
     setState(() => _phase = _FmPhase.coinToss);
   }
 
-  void _onTossDecided(MatchRole firstHalfRole) {
+  int get _matchEnergyCost {
+    if (widget.tournamentFixture && widget.tournamentRound != null) {
+      return EnergyDrinkStore.costForTournamentRound(widget.tournamentRound!);
+    }
+    return EnergyDrinkStore.fullMatchCost;
+  }
+
+  Future<bool> _tryConsumeMatchEnergy() async {
+    final cost = _matchEnergyCost;
+    final consumed = await EnergyDrinkStore.tryConsume(cost);
+    if (!mounted) return false;
+    if (!consumed) {
+      final state = await EnergyDrinkStore.loadState();
+      if (!mounted) return false;
+      await showInsufficientEnergyDialog(
+        context,
+        required: cost,
+        available: state.count,
+      );
+    }
+    return consumed;
+  }
+
+  Future<void> _onTossDecided(MatchRole firstHalfRole) async {
+    if (!await _tryConsumeMatchEnergy()) return;
+    if (!mounted) return;
     setState(() {
       _firstRole = firstHalfRole;
       _userGoals = null;
@@ -222,6 +249,8 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       opponentTeam: _opponentTeam!,
     );
     if (!mounted || entry == null) return;
+    if (!await _tryConsumeMatchEnergy()) return;
+    if (!mounted) return;
     setState(() {
       _userGoals = entry.userGoals;
       _opponentGoals = entry.opponentGoals;
