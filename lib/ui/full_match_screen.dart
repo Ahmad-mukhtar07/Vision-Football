@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/game_progress_store.dart';
+import '../data/testing_profile.dart';
 import '../game/full_match_shootout.dart';
 import '../game/match_state.dart';
 import '../keeper/keeper_match_state.dart';
@@ -17,6 +18,7 @@ import 'game_play_sound.dart';
 import 'main_page_sound.dart';
 import 'match_setup_screen.dart';
 import 'team_selection_screen.dart';
+import 'test_score_entry_dialog.dart';
 import 'vision_football_screen.dart';
 
 /// Stages of a Full Match.
@@ -194,6 +196,29 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
     });
   }
 
+  Future<void> _promptTestScoreEntry() async {
+    if (_userTeam == null || _opponentTeam == null) return;
+    final entry = await showTestScoreEntryDialog(
+      context,
+      userTeam: _userTeam!,
+      opponentTeam: _opponentTeam!,
+    );
+    if (!mounted || entry == null) return;
+    setState(() {
+      _userGoals = entry.userGoals;
+      _opponentGoals = entry.opponentGoals;
+      _userGoalScorers = List.filled(entry.userGoals, 'Test');
+      _opponentGoalScorers = List.filled(entry.opponentGoals, 'Test');
+      _phase = _FmPhase.fullTime;
+    });
+    if (!widget.tournamentFixture) {
+      unawaited(GameProgressStore.recordFullMatchCompleted());
+    }
+  }
+
+  VoidCallback? get _testScoreEntryAction =>
+      TestingProfile.allowsScoreSkip ? _promptTestScoreEntry : null;
+
   // ── Build ────────────────────────────────────────────────────────────────
 
   Widget _buildHalf(int half) {
@@ -264,6 +289,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           userTeam: _userTeam!,
           opponentTeam: _opponentTeam!,
           onContinue: _onMatchSetupComplete,
+          onEnterTestScore: _testScoreEntryAction,
           onBack: () => setState(() => _phase = _FmPhase.teamSelect),
         );
       case _FmPhase.coinToss:
@@ -271,6 +297,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           userTeam: _userTeam!,
           opponentTeam: _opponentTeam!,
           onDecided: _onTossDecided,
+          onEnterTestScore: _testScoreEntryAction,
           onBack: widget.skipMatchSetup
               ? widget.onReturnToMenu
               : () => setState(() => _phase = _FmPhase.matchSetup),

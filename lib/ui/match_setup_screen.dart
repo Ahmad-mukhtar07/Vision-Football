@@ -13,6 +13,7 @@ class _Pal {
   static const bgBottom = Color(0xFF0C0620);
   static const cyan = Color(0xFF00E5FF);
   static const lime = Color(0xFFC2FF1F);
+  static const orange = Color(0xFFFF6B00);
   static const green = Color(0xFF1FE07A);
 }
 
@@ -29,12 +30,14 @@ class MatchSetupScreen extends StatelessWidget {
     required this.opponentTeam,
     required this.onContinue,
     required this.onBack,
+    this.onEnterTestScore,
   });
 
   final Team userTeam;
   final Team opponentTeam;
   final VoidCallback onContinue;
   final VoidCallback onBack;
+  final VoidCallback? onEnterTestScore;
 
   static const _accent = Color(0xFF00E5FF);
   static const _lime = Color(0xFFC2FF1F);
@@ -134,6 +137,28 @@ class MatchSetupScreen extends StatelessWidget {
                 ),
               ),
             ),
+            if (onEnterTestScore != null) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: TextButton.icon(
+                  onPressed: () {
+                    _tap();
+                    onEnterTestScore!();
+                  },
+                  icon: Icon(
+                    Icons.speed_rounded,
+                    color: _Pal.orange.withValues(alpha: 0.95),
+                  ),
+                  label: Text(
+                    'Enter final score (test)',
+                    style: TextStyle(
+                      color: _Pal.orange.withValues(alpha: 0.95),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
             _ContinueBar(onContinue: () {
               _tap();
               onContinue();

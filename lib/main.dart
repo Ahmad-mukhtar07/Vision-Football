@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'data/game_settings.dart';
+import 'data/testing_profile.dart';
 import 'data/user_profile_store.dart';
 import 'keeper/keeper_screen.dart';
 import 'ui/full_match_screen.dart';
@@ -73,6 +74,8 @@ class _AppBootstrapState extends State<AppBootstrap> {
     // visible for at least the loading-strip animation so it never flashes.
     final loadingStart = DateTime.now();
     await _startCameraPipeline();
+    final profile = await UserProfileStore.load();
+    await TestingProfile.applyOnStartup(profile.displayName);
     final onboardingComplete = await UserProfileStore.isOnboardingComplete();
     final elapsed = DateTime.now().difference(loadingStart);
     final remaining = _loadingMinDuration - elapsed;

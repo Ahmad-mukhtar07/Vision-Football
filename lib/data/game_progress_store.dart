@@ -34,4 +34,14 @@ class GameProgressStore {
     final current = prefs.getInt(_keyFullMatches) ?? 0;
     await prefs.setInt(_keyFullMatches, current + 1);
   }
+
+  static Future<void> setFullMatchesCompleted(int count) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyFullMatches, count.clamp(0, 999));
+  }
+
+  static Future<void> resetFullMatches() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyFullMatches);
+  }
 }

@@ -42,6 +42,7 @@ class CoinTossScreen extends StatefulWidget {
     required this.opponentTeam,
     required this.onDecided,
     required this.onBack,
+    this.onEnterTestScore,
   });
 
   final Team userTeam;
@@ -50,6 +51,7 @@ class CoinTossScreen extends StatefulWidget {
   /// Called with the user's role in the first half once the toss is resolved.
   final void Function(MatchRole firstHalfRole) onDecided;
   final VoidCallback onBack;
+  final VoidCallback? onEnterTestScore;
 
   @override
   State<CoinTossScreen> createState() => _CoinTossScreenState();
@@ -142,6 +144,26 @@ class _CoinTossScreenState extends State<CoinTossScreen>
                           _matchupRow(),
                           _coin(),
                           _phaseContent(),
+                          if (widget.onEnterTestScore != null) ...[
+                            const SizedBox(height: 18),
+                            TextButton.icon(
+                              onPressed: () {
+                                _tap();
+                                widget.onEnterTestScore!();
+                              },
+                              icon: Icon(
+                                Icons.speed_rounded,
+                                color: _Pal.orange.withValues(alpha: 0.95),
+                              ),
+                              label: Text(
+                                'Enter final score (test)',
+                                style: TextStyle(
+                                  color: _Pal.orange.withValues(alpha: 0.95),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
