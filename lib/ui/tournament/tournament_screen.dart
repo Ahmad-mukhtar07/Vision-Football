@@ -184,7 +184,12 @@ class _TournamentScreenState extends State<TournamentScreen>
       return;
     }
     _tap();
-    final settings = TournamentRoundSettings.forRound(bracket.currentRound);
+    final settings = TournamentRoundSettings.forRound(
+      bracket.currentRound,
+      groupMatchIndex: bracket.currentRound == TournamentRound.groupStage
+          ? bracket.userGroupMatchesPlayed
+          : 0,
+    );
     _settingsScope?.restore();
     _settingsScope = TournamentMatchSettingsScope.apply(settings);
     await _persistBracket(matchInProgress: true);

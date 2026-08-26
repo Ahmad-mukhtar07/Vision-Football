@@ -12,17 +12,24 @@ class TournamentRoundSettings {
   final DifficultyMode difficulty;
   final KeeperStadiumLocation stadium;
 
-  static TournamentRoundSettings forRound(TournamentRound round) {
+  /// [groupMatchIndex] is the 0-based count of group matches the user has
+  /// already completed — used to alternate Brazil / Italy in the group stage.
+  static TournamentRoundSettings forRound(
+    TournamentRound round, {
+    int groupMatchIndex = 0,
+  }) {
     switch (round) {
       case TournamentRound.groupStage:
-        return const TournamentRoundSettings(
+        return TournamentRoundSettings(
           difficulty: DifficultyMode.easy,
-          stadium: KeeperStadiumLocation.brazil,
+          stadium: groupMatchIndex.isEven
+              ? KeeperStadiumLocation.brazil
+              : KeeperStadiumLocation.italy,
         );
       case TournamentRound.quarterFinal:
         return const TournamentRoundSettings(
           difficulty: DifficultyMode.easy,
-          stadium: KeeperStadiumLocation.italy,
+          stadium: KeeperStadiumLocation.greece,
         );
       case TournamentRound.semiFinal:
         return const TournamentRoundSettings(

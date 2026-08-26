@@ -79,9 +79,11 @@ flutter:
     - assets/images/stadium/keeping/stadium-keeper-view-us.png
     - assets/images/stadium/keeping/stadium-keeper-view-brazil.png
     - assets/images/stadium/keeping/stadium-keeper-view-italy.jpeg
+    - assets/images/stadium/keeping/stadium-keeper-view-greece.jpeg
     - assets/images/stadium/keeping/stadium-keeper-view-spain.png
     - assets/images/stadium/shooting/Stadium-shooter-view-Brazil.gif
     - assets/images/stadium/shooting/Stadium-shooter-view-Italy.gif
+    - assets/images/stadium/shooting/Stadium-shooter-view-Greece.gif
     - assets/images/stadium/shooting/Stadium-shooter-view-Spain.gif
     - assets/images/stadium/shooting/Stadium-shooter-view-US.gif
     - assets/images/VisionFootball-Logo.png
