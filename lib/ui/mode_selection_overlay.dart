@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'glass_panel.dart';
 import 'main_page_sound.dart';
+import '../data/game_progress_store.dart';
 import '../data/user_profile_store.dart';
 import '../models/user_profile.dart';
 import 'profile_settings_sheet.dart';
@@ -70,6 +71,8 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
     with SingleTickerProviderStateMixin {
   static const _matchArt = 'assets/images/main_page/match_art.png';
   static const _tournamentArt = 'assets/images/main_page/tournament_art.png';
+  static const _tournamentFeaturedArt =
+      'assets/images/main_page/tournament_mode.jpeg';
   static const _onlineArt = 'assets/images/main_page/online_art.jpeg';
   static const _ballArt = 'assets/images/ball/Ball-left.png';
   static const _tutorialArt = 'assets/images/tips/Tips-Shooting.png';
@@ -89,12 +92,15 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   late final List<_ParticleSeed> _particleSeeds;
   late final String _avatarAsset;
   UserProfile _profile = UserProfile.defaults;
+  bool _tournamentUnlocked = false;
+  int _fullMatchesCompleted = 0;
 
   @override
   void initState() {
     super.initState();
     _avatarAsset = _avatars[math.Random().nextInt(_avatars.length)];
     unawaited(_loadProfile());
+    unawaited(_loadProgress());
 
     _masterController = AnimationController(
       vsync: this,
@@ -120,6 +126,17 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   }
 
   double get _elapsedSeconds => _masterController.value * _masterLoopSeconds;
+
+  Future<void> _loadProgress() async {
+    final count = await GameProgressStore.fullMatchesCompleted();
+    if (mounted) {
+      setState(() {
+        _fullMatchesCompleted = count;
+        _tournamentUnlocked =
+            count > GameProgressStore.tournamentUnlockThreshold;
+      });
+    }
+  }
 
   Future<void> _loadProfile() async {
     final profile = await UserProfileStore.load();
@@ -154,6 +171,7 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
   }
 
   void _openTournament(BuildContext context) {
+    if (!_tournamentUnlocked) return;
     widget.onModeSelected(GameMode.tournament);
   }
 
@@ -257,9 +275,12 @@ class _ModeSelectionOverlayState extends State<ModeSelectionOverlay>
                       matchArt: _matchArt,
                       ballArt: _ballArt,
                       tournamentArt: _tournamentArt,
+                      tournamentFeaturedArt: _tournamentFeaturedArt,
                       onlineArt: _onlineArt,
                       tutorialArt: _tutorialArt,
                       masterAnimation: _masterController,
+                      tournamentUnlocked: _tournamentUnlocked,
+                      fullMatchesCompleted: _fullMatchesCompleted,
                       onFullMatchTap: () => _openFullMatch(context),
                       onTournamentTap: () => _openTournament(context),
                       onTutorialsTap: () => _openTutorials(context),
@@ -777,9 +798,12 @@ class _ModeSelectorGrid extends StatelessWidget {
     required this.matchArt,
     required this.ballArt,
     required this.tournamentArt,
+    required this.tournamentFeaturedArt,
     required this.onlineArt,
     required this.tutorialArt,
     required this.masterAnimation,
+    required this.tournamentUnlocked,
+    required this.fullMatchesCompleted,
     required this.onFullMatchTap,
     required this.onTournamentTap,
     required this.onTutorialsTap,
@@ -789,15 +813,30 @@ class _ModeSelectorGrid extends StatelessWidget {
   final String matchArt;
   final String ballArt;
   final String tournamentArt;
+  final String tournamentFeaturedArt;
   final String onlineArt;
   final String tutorialArt;
   final Animation<double> masterAnimation;
+  final bool tournamentUnlocked;
+  final int fullMatchesCompleted;
   final VoidCallback onFullMatchTap;
   final VoidCallback onTournamentTap;
   final VoidCallback onTutorialsTap;
   final VoidCallback onSettingsTap;
 
   static const double _rowGap = 14;
+
+  double get _tournamentUnlockProgress =>
+      GameProgressStore.tournamentUnlockProgress(fullMatchesCompleted);
+
+  int get _tournamentMatchesRemaining =>
+      GameProgressStore.tournamentMatchesRemaining(fullMatchesCompleted);
+
+  String get _tournamentLockSubtitle {
+    final remaining = _tournamentMatchesRemaining;
+    if (remaining <= 1) return '1 match left';
+    return '$remaining matches left';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -806,17 +845,22 @@ class _ModeSelectorGrid extends StatelessWidget {
       children: [
         Expanded(
           flex: 3,
-          child: _FullMatchCard(
-            artAsset: matchArt,
-            ballArt: ballArt,
-            masterAnimation: masterAnimation,
-            onTap: onFullMatchTap,
-          ),
+          child: tournamentUnlocked
+              ? _FeaturedTournamentCard(
+                  artAsset: tournamentFeaturedArt,
+                  masterAnimation: masterAnimation,
+                  onTap: onTournamentTap,
+                )
+              : _FullMatchCard(
+                  artAsset: matchArt,
+                  ballArt: ballArt,
+                  masterAnimation: masterAnimation,
+                  onTap: onFullMatchTap,
+                ),
         ),
         const SizedBox(height: _rowGap),
         Expanded(
           flex: 2,
-          // Horizontally scrollable strip — sized so the next card peeks in.
           child: LayoutBuilder(
             builder: (context, constraints) {
               const peek = 44.0;
@@ -829,10 +873,18 @@ class _ModeSelectorGrid extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: cardWidth,
-                    child: _TournamentModeCard(
-                      artAsset: tournamentArt,
-                      onTap: onTournamentTap,
-                    ),
+                    child: tournamentUnlocked
+                        ? _CompactFullMatchCard(
+                            artAsset: matchArt,
+                            onTap: onFullMatchTap,
+                          )
+                        : _TournamentModeCard(
+                            artAsset: tournamentArt,
+                            locked: true,
+                            lockSubtitle: _tournamentLockSubtitle,
+                            unlockProgress: _tournamentUnlockProgress,
+                            onTap: onTournamentTap,
+                          ),
                   ),
                   const SizedBox(width: _rowGap),
                   SizedBox(
@@ -873,12 +925,122 @@ class _TournamentModeCard extends StatelessWidget {
   const _TournamentModeCard({
     required this.artAsset,
     required this.onTap,
+    this.locked = false,
+    this.lockSubtitle,
+    this.unlockProgress,
+  });
+
+  final String artAsset;
+  final VoidCallback onTap;
+  final bool locked;
+  final String? lockSubtitle;
+  final double? unlockProgress;
+
+  static const _accent = _Arcade.lime;
+  static const _cardStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w900,
+    fontStyle: FontStyle.italic,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return _TapScaleCard(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(artAsset, fit: BoxFit.cover),
+            ColoredBox(
+              color: const Color(0xFF0C0620).withValues(alpha: 0.55),
+            ),
+            ColoredBox(color: _accent.withValues(alpha: 0.16)),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _accent.withValues(alpha: locked ? 0.45 : 0.7),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _accent.withValues(alpha: locked ? 0.2 : 0.35),
+                    blurRadius: 14,
+                    spreadRadius: 0.5,
+                  ),
+                ],
+              ),
+            ),
+            Center(
+              child: Icon(
+                locked ? Icons.lock_outline : Icons.emoji_events_rounded,
+                size: 32,
+                color: Colors.white.withValues(alpha: locked ? 0.75 : 0.92),
+              ),
+            ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 10,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'TOURNAMENTS',
+                    textAlign: TextAlign.center,
+                    style: _cardStyle.copyWith(
+                      fontSize: 13,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  if (locked && unlockProgress != null) ...[
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: unlockProgress,
+                        minHeight: 5,
+                        backgroundColor: Colors.white.withValues(alpha: 0.18),
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(_accent),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    locked ? (lockSubtitle ?? 'Locked') : 'Global Cup',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact "Full Match" card in the bottom strip when tournament is featured.
+class _CompactFullMatchCard extends StatelessWidget {
+  const _CompactFullMatchCard({
+    required this.artAsset,
+    required this.onTap,
   });
 
   final String artAsset;
   final VoidCallback onTap;
 
-  static const _accent = _Arcade.lime;
+  static const _accent = _Arcade.magenta;
   static const _cardStyle = TextStyle(
     color: Colors.white,
     fontWeight: FontWeight.w900,
@@ -918,7 +1080,7 @@ class _TournamentModeCard extends StatelessWidget {
             ),
             Center(
               child: Icon(
-                Icons.emoji_events_rounded,
+                Icons.sports_soccer_rounded,
                 size: 32,
                 color: Colors.white.withValues(alpha: 0.92),
               ),
@@ -931,7 +1093,7 @@ class _TournamentModeCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'TOURNAMENTS',
+                    'FULL MATCH',
                     textAlign: TextAlign.center,
                     style: _cardStyle.copyWith(
                       fontSize: 13,
@@ -940,7 +1102,7 @@ class _TournamentModeCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Global Cup',
+                    'Shoot & save',
                     style: TextStyle(
                       color: _accent,
                       fontSize: 11,
@@ -1291,6 +1453,196 @@ class _FullMatchCard extends StatelessWidget {
               child: child,
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+/// Large featured tournament card — shown when Global Cup is unlocked.
+class _FeaturedTournamentCard extends StatelessWidget {
+  const _FeaturedTournamentCard({
+    required this.artAsset,
+    required this.masterAnimation,
+    required this.onTap,
+  });
+
+  final String artAsset;
+  final Animation<double> masterAnimation;
+  final VoidCallback onTap;
+
+  static const _loopSeconds = 6.0;
+  static const _gold = Color(0xFFFFD54F);
+
+  static const _cardStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w900,
+    fontStyle: FontStyle.italic,
+  );
+
+  double _glowBlurRadius(double elapsedSeconds) {
+    final phase = (elapsedSeconds % 1.8) / 1.8;
+    final wave = (1 - math.cos(phase * math.pi * 2)) / 2;
+    return 8 + wave * 16;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cardBody = RepaintBoundary(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20.5),
+          gradient: const LinearGradient(
+            colors: [_gold, _Arcade.lime, _Arcade.cyan],
+          ),
+        ),
+        padding: const EdgeInsets.all(1.5),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(19),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: Image.asset(
+                  artAsset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      const Color(0xFF150826).withValues(alpha: 0.78),
+                      _gold.withValues(alpha: 0.22),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.5, 0.85],
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 14,
+                top: 14,
+                child: _PulsingTrophy(animation: masterAnimation),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FEATURED MODE',
+                      style: TextStyle(
+                        color: _gold.withValues(alpha: 0.95),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 3.4,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'GLOBAL CUP',
+                      style: _cardStyle.copyWith(
+                        fontSize: 26,
+                        letterSpacing: 0.6,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Lead your nation through the group stage to glory',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    return _TapScaleCard(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: masterAnimation,
+          child: cardBody,
+          builder: (context, child) {
+            final glowBlur =
+                _glowBlurRadius(masterAnimation.value * _loopSeconds);
+            return Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                gradient: const LinearGradient(
+                  colors: [_gold, _Arcade.lime, _Arcade.cyan],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _gold.withValues(alpha: 0.55),
+                    blurRadius: glowBlur,
+                    spreadRadius: 1,
+                  ),
+                  BoxShadow(
+                    color: _Arcade.lime.withValues(alpha: 0.4),
+                    blurRadius: glowBlur * 0.6,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(1.5),
+              child: child,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _PulsingTrophy extends StatelessWidget {
+  const _PulsingTrophy({required this.animation});
+
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final pulse = 0.88 + math.sin(animation.value * 2 * math.pi) * 0.12;
+        return Transform.scale(
+          scale: pulse,
+          child: child,
+        );
+      },
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.black.withValues(alpha: 0.35),
+          border: Border.all(color: _FeaturedTournamentCard._gold, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: _FeaturedTournamentCard._gold.withValues(alpha: 0.45),
+              blurRadius: 12,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Icon(
+          Icons.emoji_events_rounded,
+          color: _FeaturedTournamentCard._gold.withValues(alpha: 0.95),
+          size: 26,
         ),
       ),
     );

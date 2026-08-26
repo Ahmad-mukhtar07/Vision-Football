@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/game_progress_store.dart';
 import '../game/full_match_shootout.dart';
 import '../game/match_state.dart';
 import '../keeper/keeper_match_state.dart';
@@ -169,6 +172,9 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
         _phase = _FmPhase.halfTime;
       } else if (_phase == _FmPhase.playingHalf2) {
         _phase = _FmPhase.fullTime;
+        if (!widget.tournamentFixture) {
+          unawaited(GameProgressStore.recordFullMatchCompleted());
+        }
       }
     });
   }
