@@ -179,7 +179,8 @@ class KeeperMatchController extends ChangeNotifier {
   /// After the result pause, advance to the next round or full time.
   void readyForNextShot() {
     if (_state.phase != KeeperPhase.resultPause) return;
-    if (_fullMatchConfig.isSecondHalf) {
+    if (_fullMatchConfig.isSecondHalf &&
+        !_fullMatchConfig.playAllSecondHalfKicks) {
       final remaining = _state.totalShots - _state.shotsTaken;
       final decided = fullMatchShootoutDecided(
         userScore: _fullMatchConfig.userScoreFromOtherHalf ?? 0,

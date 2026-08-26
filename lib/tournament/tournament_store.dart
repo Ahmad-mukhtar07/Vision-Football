@@ -62,6 +62,8 @@ class TournamentStore {
       'userEliminated': bracket.userEliminated,
       'championCode': bracket.champion?.countryCode,
       'matchInProgress': matchInProgress,
+      'moderateGroupMatchIndices':
+          bracket.moderateGroupMatchIndices.toList()..sort(),
       'groups': bracket.groups
           .map(
             (g) => {
@@ -126,9 +128,20 @@ class TournamentStore {
         userEliminated: map['userEliminated'] as bool? ?? false,
         champion:
             championCode == null ? null : teamForCountryCode(championCode),
+        moderateGroupMatchIndices: _decodeModerateGroupMatchIndices(map),
       ),
       matchInProgress: map['matchInProgress'] as bool? ?? false,
     );
+  }
+
+  static Set<int> _decodeModerateGroupMatchIndices(Map<String, dynamic> map) {
+    final raw = map['moderateGroupMatchIndices'] as List<dynamic>?;
+    if (raw != null) {
+      return raw.map((value) => value as int).toSet();
+    }
+    final code = map['userTeamCode'] as String? ?? '';
+    final picks = List.generate(6, (i) => i)..shuffle(Random(code.hashCode));
+    return picks.take(2).toSet();
   }
 
   static List<TournamentGroup> _decodeGroups(

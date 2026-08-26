@@ -8,9 +8,11 @@ import '../models/goal_event.dart';
 import '../models/kick_event.dart';
 import '../models/team.dart';
 import '../game/full_match_shootout.dart';
+import '../tournament/tournament_models.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import '../ui/second_half_commentary.dart';
+import '../ui/tournament_result_commentary.dart';
 import 'components/ball_component.dart';
 import 'components/goal_component.dart';
 import 'components/scene_background_component.dart';
@@ -27,6 +29,7 @@ class VisionFootballGame extends FlameGame {
     this.userTeam,
     this.opponentKeeper,
     this.fullMatchHalfConfig,
+    this.tournamentKnockoutRound,
   }) : _kickStream = kickStream;
 
   final Stream<KickEvent> _kickStream;
@@ -42,6 +45,9 @@ class VisionFootballGame extends FlameGame {
 
   /// Full Match half settings — second-half conditional commentary when set.
   final FullMatchHalfConfig? fullMatchHalfConfig;
+
+  /// QF / SF / Final fixture — win/lose lines on the last kick of the match.
+  final TournamentRound? tournamentKnockoutRound;
 
   final StreamController<GoalEvent> _goalController =
       StreamController<GoalEvent>.broadcast();
@@ -132,8 +138,29 @@ class VisionFootballGame extends FlameGame {
     // tells us how long to keep the ball at its result spot and hold the
     // match before the next run-up.
     Duration commentary;
-    final secondHalfSnap = _secondHalfSnapshot(isGoal: isGoal);
-    if (isSave) {
+    final cfg = fullMatchHalfConfig;
+    final useSecondHalfResultPools =
+        cfg != null && cfg.isSecondHalf && !cfg.secondHalfGeneralCommentaryOnly;
+    final secondHalfSnap =
+        useSecondHalfResultPools ? _secondHalfSnapshot(isGoal: isGoal) : null;
+    final tournamentClip = _tryTournamentKnockoutCommentary(
+      isGoal: isGoal,
+      isSave: isSave,
+    );
+    if (tournamentClip != null) {
+      commentary = tournamentClip;
+      if (isGoal) {
+        GamePlaySound.playGoalCheer(fadeOutAlignedTo: commentary);
+      } else if (isSave) {
+        GamePlaySound.playSave();
+        GamePlaySound.playBoo();
+      } else if (hitCrossbar) {
+        GamePlaySound.playCrossbar();
+        GamePlaySound.playBoo(volume: 0.35);
+      } else {
+        GamePlaySound.playBoo();
+      }
+    } else if (isSave) {
       GamePlaySound.playSave();
       GamePlaySound.playBoo();
       commentary = (secondHalfSnap != null
@@ -241,6 +268,43 @@ class VisionFootballGame extends FlameGame {
       opponentRemainingKicks: 0,
       isLastKickOfHalf: kicksTaken >= s.totalKicks || decided != null,
     );
+  }
+
+  Duration? _tryTournamentKnockoutCommentary({
+    required bool isGoal,
+    required bool isSave,
+  }) {
+    final round = tournamentKnockoutRound;
+    final cfg = fullMatchHalfConfig;
+    if (round == null || cfg == null || !cfg.isSecondHalf) return null;
+
+    final s = matchController.state;
+    final kicksAfter = s.kicksTaken + 1;
+    final userTotal = s.goalsScored + (isGoal ? 1 : 0);
+    final opponentTotal = cfg.opponentScoreFromOtherHalf ?? 0;
+    if (!fullMatchEndsAfterShootingKick(
+      config: cfg,
+      totalKicks: s.totalKicks,
+      kicksAfterThis: kicksAfter,
+      userGoalsInHalfAfter: userTotal,
+      opponentGoalsInHalfAfter: opponentTotal,
+    )) {
+      return null;
+    }
+
+    if (userTotal > opponentTotal) {
+      final action = isGoal
+          ? TournamentWinAction.goal
+          : TournamentWinAction.basic;
+      return CommentarySound.tryPlayTournamentWin(
+        round: round,
+        action: action,
+      );
+    }
+    if (userTotal < opponentTotal) {
+      return CommentarySound.tryPlayTournamentLose(round: round);
+    }
+    return null;
   }
 
   @override

@@ -193,9 +193,16 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
   Widget _buildHalf(int half) {
     final role = _roleForHalf(half);
     final isSecondHalf = half == 2;
+    final isGroupStage = widget.tournamentRound == TournamentRound.groupStage;
     final tournamentKickOffRound = widget.tournamentFixture &&
             half == 1 &&
             widget.tournamentRound != null
+        ? widget.tournamentRound
+        : null;
+    final tournamentKnockoutRound = widget.tournamentFixture &&
+            isSecondHalf &&
+            widget.tournamentRound != null &&
+            widget.tournamentRound != TournamentRound.groupStage
         ? widget.tournamentRound
         : null;
     if (role == MatchRole.shooter) {
@@ -208,9 +215,12 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
         opponentScore: _opponentGoals,
         onMatchComplete: _onShootingHalfDone,
         tournamentKickOffRound: tournamentKickOffRound,
+        tournamentKnockoutRound: tournamentKnockoutRound,
         fullMatchHalfConfig: isSecondHalf
             ? FullMatchHalfConfig.secondHalfShooting(
                 opponentScore: _opponentGoals ?? 0,
+                playAllSecondHalfKicks: isGroupStage,
+                secondHalfGeneralCommentaryOnly: isGroupStage,
               )
             : null,
       );
@@ -224,9 +234,12 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
       userScore: _userGoals,
       onMatchComplete: _onKeeperHalfDone,
       tournamentKickOffRound: tournamentKickOffRound,
+      tournamentKnockoutRound: tournamentKnockoutRound,
       fullMatchHalfConfig: isSecondHalf
           ? FullMatchHalfConfig.secondHalfKeeping(
               userScore: _userGoals ?? 0,
+              playAllSecondHalfKicks: isGroupStage,
+              secondHalfGeneralCommentaryOnly: isGroupStage,
             )
           : null,
     );

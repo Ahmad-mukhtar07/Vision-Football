@@ -17,11 +17,14 @@ class TournamentRoundSettings {
   static TournamentRoundSettings forRound(
     TournamentRound round, {
     int groupMatchIndex = 0,
+    Set<int> moderateGroupMatchIndices = const {},
   }) {
     switch (round) {
       case TournamentRound.groupStage:
         return TournamentRoundSettings(
-          difficulty: DifficultyMode.easy,
+          difficulty: moderateGroupMatchIndices.contains(groupMatchIndex)
+              ? DifficultyMode.moderate
+              : DifficultyMode.easy,
           stadium: groupMatchIndex.isEven
               ? KeeperStadiumLocation.brazil
               : KeeperStadiumLocation.italy,

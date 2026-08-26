@@ -77,10 +77,14 @@ class TournamentBracketBuilder {
       TournamentRound.finalMatch: _emptyRound(TournamentRound.finalMatch, 1),
     };
 
+    final moderatePicks = List.generate(groupMatchesPerTeam, (i) => i)
+      ..shuffle(_random);
+
     return TournamentBracket(
       userTeam: userTeam,
       groups: groups,
       rounds: rounds,
+      moderateGroupMatchIndices: moderatePicks.take(2).toSet(),
     );
   }
 

@@ -39,6 +39,7 @@ class KeeperScreen extends StatefulWidget {
     this.onMatchComplete,
     this.fullMatchHalfConfig,
     this.tournamentKickOffRound,
+    this.tournamentKnockoutRound,
   });
 
   final List<CameraDescription> cameras;
@@ -64,6 +65,9 @@ class KeeperScreen extends StatefulWidget {
 
   /// Tournament round for first-half kick-off lines only (QF/SF/Final).
   final TournamentRound? tournamentKickOffRound;
+
+  /// Knockout round for win/lose lines on the final kick (QF/SF/Final).
+  final TournamentRound? tournamentKnockoutRound;
 
   @override
   State<KeeperScreen> createState() => _KeeperScreenState();
@@ -109,6 +113,7 @@ class _KeeperScreenState extends State<KeeperScreen> {
       userKeeper: widget.userTeam?.keeper,
       opponentTeam: widget.opponentTeam,
       fullMatchHalfConfig: widget.fullMatchHalfConfig,
+      tournamentKnockoutRound: widget.tournamentKnockoutRound,
     );
     _handSub = HandDetectorService.instance.handFrames.listen(_onHandFrame);
     WidgetsBinding.instance.addPostFrameCallback((_) {

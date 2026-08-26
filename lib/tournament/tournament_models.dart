@@ -134,7 +134,9 @@ class TournamentBracket {
     this.currentRound = TournamentRound.groupStage,
     this.userEliminated = false,
     this.champion,
-  });
+    Set<int>? moderateGroupMatchIndices,
+  }) : moderateGroupMatchIndices =
+            moderateGroupMatchIndices ?? const {};
 
   final Team userTeam;
   final List<TournamentGroup> groups;
@@ -142,6 +144,9 @@ class TournamentBracket {
   TournamentRound currentRound;
   bool userEliminated;
   Team? champion;
+
+  /// 0-based indices (0–5) of the user's six group fixtures on moderate difficulty.
+  final Set<int> moderateGroupMatchIndices;
 
   List<TournamentFixture> fixturesFor(TournamentRound round) =>
       rounds[round] ?? const [];

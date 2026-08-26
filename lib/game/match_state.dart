@@ -324,7 +324,8 @@ class MatchController {
   }
 
   void _advanceAfterResultPause(int kicksTaken) {
-    if (_fullMatchConfig.isSecondHalf) {
+    if (_fullMatchConfig.isSecondHalf &&
+        !_fullMatchConfig.playAllSecondHalfKicks) {
       final remaining = _state.totalKicks - kicksTaken;
       final decided = fullMatchShootoutDecided(
         userScore: _state.goalsScored,

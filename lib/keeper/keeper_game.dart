@@ -12,6 +12,8 @@ import '../game/full_match_shootout.dart';
 import '../ui/commentary_sound.dart';
 import '../ui/game_play_sound.dart';
 import '../ui/second_half_commentary.dart';
+import '../tournament/tournament_models.dart';
+import '../ui/tournament_result_commentary.dart';
 import 'keeper_layout_constants.dart';
 import 'keeper_match_state.dart';
 import 'shooter_component.dart';
@@ -32,6 +34,7 @@ class KeeperGame extends FlameGame {
     this.userKeeper,
     this.opponentTeam,
     this.fullMatchHalfConfig,
+    this.tournamentKnockoutRound,
   });
 
   final KeeperMatchController controller;
@@ -47,6 +50,9 @@ class KeeperGame extends FlameGame {
 
   /// Full Match half settings — second-half conditional commentary when set.
   final FullMatchHalfConfig? fullMatchHalfConfig;
+
+  /// QF / SF / Final fixture — win/lose lines on the last kick of the match.
+  final TournamentRound? tournamentKnockoutRound;
 
   /// The opponent shooter taking the upcoming shot. Set by the screen before
   /// each [prepareShot] so power/accuracy/curve shape the shot. Null = neutral.
@@ -295,32 +301,55 @@ class KeeperGame extends FlameGame {
       GamePlaySound.playSave();
       _flash.flash(Colors.greenAccent);
       if (!tutorialMode) {
-        final snap = _secondHalfSnapshot(conceded: false);
-        lastCommentaryDuration = (snap != null
-                ? CommentarySound.tryPlaySecondHalfSave(
-                    snap,
-                    userAction: true,
-                  )
-                : null) ??
-            CommentarySound.playSave(
-              _classifySave(ballLandingScreen),
-              userAction: true,
-            );
+        final tournamentClip = _tryTournamentKnockoutCommentary(saved: true);
+        if (tournamentClip != null) {
+          lastCommentaryDuration = tournamentClip;
+        } else {
+          final cfg = fullMatchHalfConfig;
+          final useSecondHalfResultPools = cfg != null &&
+              cfg.isSecondHalf &&
+              !cfg.secondHalfGeneralCommentaryOnly;
+          final snap =
+              useSecondHalfResultPools ? _secondHalfSnapshot(conceded: false) : null;
+          lastCommentaryDuration = (snap != null
+                  ? CommentarySound.tryPlaySecondHalfSave(
+                      snap,
+                      userAction: true,
+                    )
+                  : null) ??
+              CommentarySound.playSave(
+                _classifySave(ballLandingScreen),
+                userAction: true,
+              );
+        }
       }
     } else {
       _goal.flashRed();
       _flash.flash(Colors.redAccent.withValues(alpha: 0.35));
       if (!tutorialMode) {
-        final snap = _secondHalfSnapshot(conceded: true);
-        lastCommentaryDuration = (snap != null
-                ? CommentarySound.tryPlaySecondHalfGoal(snap)
-                : null) ??
-            CommentarySound.playGoal(
-              placement: _classifyConceded(ballLandingScreen),
-              isSlow: false,
-            );
-        // Fade the longer cheer out to finish with the commentary line.
-        GamePlaySound.playGoalCheer(fadeOutAlignedTo: lastCommentaryDuration);
+        final tournamentClip = _tryTournamentKnockoutCommentary(saved: false);
+        if (tournamentClip != null) {
+          lastCommentaryDuration = tournamentClip;
+          GamePlaySound.playGoalCheer(
+            fadeOutAlignedTo: lastCommentaryDuration,
+          );
+        } else {
+          final cfg = fullMatchHalfConfig;
+          final useSecondHalfResultPools = cfg != null &&
+              cfg.isSecondHalf &&
+              !cfg.secondHalfGeneralCommentaryOnly;
+          final snap =
+              useSecondHalfResultPools ? _secondHalfSnapshot(conceded: true) : null;
+          lastCommentaryDuration = (snap != null
+                  ? CommentarySound.tryPlaySecondHalfGoal(snap)
+                  : null) ??
+              CommentarySound.playGoal(
+                placement: _classifyConceded(ballLandingScreen),
+                isSlow: false,
+              );
+          // Fade the longer cheer out to finish with the commentary line.
+          GamePlaySound.playGoalCheer(fadeOutAlignedTo: lastCommentaryDuration);
+        }
       }
     }
     final result = saved ? KeeperShotResult.saved : KeeperShotResult.conceded;
@@ -355,6 +384,40 @@ class KeeperGame extends FlameGame {
       opponentRemainingKicks: opponentRemaining,
       isLastKickOfHalf: taken >= s.totalShots || decided != null,
     );
+  }
+
+  Duration? _tryTournamentKnockoutCommentary({required bool saved}) {
+    final round = tournamentKnockoutRound;
+    final cfg = fullMatchHalfConfig;
+    if (round == null || cfg == null || !cfg.isSecondHalf) return null;
+
+    final s = controller.state;
+    final shotsAfter = s.shotsTaken + 1;
+    final userTotal = cfg.userScoreFromOtherHalf ?? 0;
+    final opponentTotal = s.goalsConceded + (saved ? 0 : 1);
+    if (!fullMatchEndsAfterKeepingShot(
+      config: cfg,
+      totalShots: s.totalShots,
+      shotsAfterThis: shotsAfter,
+      userGoalsAfter: userTotal,
+      opponentGoalsAfter: opponentTotal,
+    )) {
+      return null;
+    }
+
+    if (userTotal > opponentTotal) {
+      final action = saved
+          ? TournamentWinAction.save
+          : TournamentWinAction.basic;
+      return CommentarySound.tryPlayTournamentWin(
+        round: round,
+        action: action,
+      );
+    }
+    if (userTotal < opponentTotal) {
+      return CommentarySound.tryPlayTournamentLose(round: round);
+    }
+    return null;
   }
 
   /// Landing position relative to the goal mouth: x across the screen width,

@@ -183,3 +183,17 @@ flutter:
     - assets/sounds/commentary/tournament/general/comm-tourn-semis-start2.wav
     - assets/sounds/commentary/tournament/general/comm-tourn-final-start1.wav
     - assets/sounds/commentary/tournament/general/comm-tourn-final-start2.wav
+    - assets/sounds/commentary/tournament/win/comm-tourn-quarters-win-goal.wav
+    - assets/sounds/commentary/tournament/win/comm-tourn-quarters-win-save.wav
+    - assets/sounds/commentary/tournament/win/comm-tourn-quarters-win-basic.wav
+    - assets/sounds/commentary/tournament/win/comm-tourn-semis-win-goal.wav
+    - assets/sounds/commentary/tournament/win/comm-tourn-semis-win-save.wav
+    - assets/sounds/commentary/tournament/win/comm-tourn-semis-win-basic.wav
+    - assets/sounds/commentary/tournament/win/comm-tourn-final-win1.wav
+    - assets/sounds/commentary/tournament/win/comm-tourn-final-win2.wav
+    - assets/sounds/commentary/tournament/lose/comm-tourn-quarters-lose1.wav
+    - assets/sounds/commentary/tournament/lose/comm-tourn-quarters-lose2.wav
+    - assets/sounds/commentary/tournament/lose/comm-tourn-semis-lose1.wav
+    - assets/sounds/commentary/tournament/lose/comm-tourn-semis-lose2.wav
+    - assets/sounds/commentary/tournament/lose/comm-tourn-final-lose1.wav
+    - assets/sounds/commentary/tournament/lose/comm-tourn-final-lose2.wav

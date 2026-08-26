@@ -6,6 +6,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'second_half_commentary.dart';
+import 'tournament_result_commentary.dart';
 import 'tournament_start_commentary.dart';
 import '../tournament/tournament_models.dart';
 
@@ -141,6 +142,7 @@ class CommentarySound {
     _saveStraightPool,
     _secondHalfAssetList,
     TournamentStartCommentary.allAssets,
+    TournamentResultCommentary.allAssets,
   ];
 
   /// Clip lengths measured from WAV headers during [warmUp].
@@ -228,11 +230,27 @@ class CommentarySound {
   static Duration playStart() => _play(_pick(_startPool));
 
   /// Tournament first-half kick-off — round-specific lines for QF/SF/Final.
-  /// Round of 16 falls back to [playStart].
   static Duration playTournamentFirstHalfStart(TournamentRound round) {
     final pool = TournamentStartCommentary.poolForRound(round);
     if (pool == null) return playStart();
     return _play(_pick(pool));
+  }
+
+  /// Tournament knockout win line on the match-deciding kick.
+  static Duration? tryPlayTournamentWin({
+    required TournamentRound round,
+    required TournamentWinAction action,
+  }) {
+    final clip = TournamentResultCommentary.pickWin(round, action);
+    if (clip == null) return null;
+    return _play(clip, volume: _userActionVolume);
+  }
+
+  /// Tournament knockout lose line on the match-deciding kick.
+  static Duration? tryPlayTournamentLose({required TournamentRound round}) {
+    final clip = TournamentResultCommentary.pickLose(round);
+    if (clip == null) return null;
+    return _play(clip);
   }
 
   /// Second-half kick-off — role/score specific lines mixed with general openers.

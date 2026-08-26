@@ -46,6 +46,7 @@ class VisionFootballScreen extends StatefulWidget {
     this.onMatchComplete,
     this.fullMatchHalfConfig,
     this.tournamentKickOffRound,
+    this.tournamentKnockoutRound,
   });
 
   final List<CameraDescription> cameras;
@@ -73,6 +74,9 @@ class VisionFootballScreen extends StatefulWidget {
 
   /// Tournament round for first-half kick-off lines only (QF/SF/Final).
   final TournamentRound? tournamentKickOffRound;
+
+  /// Knockout round for win/lose lines on the final kick (QF/SF/Final).
+  final TournamentRound? tournamentKnockoutRound;
 
   @override
   State<VisionFootballScreen> createState() => _VisionFootballScreenState();
@@ -140,6 +144,7 @@ class _VisionFootballScreenState extends State<VisionFootballScreen> {
       userTeam: widget.userTeam,
       opponentKeeper: widget.opponentTeam?.keeper,
       fullMatchHalfConfig: widget.fullMatchHalfConfig,
+      tournamentKnockoutRound: widget.tournamentKnockoutRound,
     );
     _kickDetector.setGameCanAcceptKick(false);
     _kickDetector.disarm();

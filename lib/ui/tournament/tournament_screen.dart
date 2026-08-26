@@ -189,6 +189,7 @@ class _TournamentScreenState extends State<TournamentScreen>
       groupMatchIndex: bracket.currentRound == TournamentRound.groupStage
           ? bracket.userGroupMatchesPlayed
           : 0,
+      moderateGroupMatchIndices: bracket.moderateGroupMatchIndices,
     );
     _settingsScope?.restore();
     _settingsScope = TournamentMatchSettingsScope.apply(settings);

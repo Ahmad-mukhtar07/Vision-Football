@@ -37,6 +37,7 @@ void main() {
       expect(bracket.fixturesFor(TournamentRound.quarterFinal), hasLength(4));
       expect(bracket.currentRound, TournamentRound.groupStage);
       expect(bracket.userGroup.teams.any((t) => teamsMatch(t, brazil)), isTrue);
+      expect(bracket.moderateGroupMatchIndices, hasLength(2));
     });
 
     test('user group fixtures never schedule the same opponent back-to-back', () {
