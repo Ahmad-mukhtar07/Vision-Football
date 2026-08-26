@@ -1,4 +1,5 @@
 import '../tournament/tournament_store.dart';
+import 'daily_streak_store.dart';
 import 'energy_drink_store.dart';
 import 'game_progress_store.dart';
 import 'user_profile_store.dart';
@@ -44,6 +45,7 @@ class TestingProfile {
   static Future<void> _applyFreshInstall() async {
     await UserProfileStore.markOnboardingComplete();
     await GameProgressStore.resetFullMatches();
+    await DailyStreakStore.reset();
     await EnergyDrinkStore.resetToDefault();
     await TournamentStore.clear();
   }

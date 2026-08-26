@@ -4,15 +4,19 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../tournament/tournament_models.dart';
+import '../tournament/tournament_store.dart';
 import 'energy_drink_widgets.dart';
 import 'glass_panel.dart';
 import 'main_page_sound.dart';
+import '../data/daily_streak_store.dart';
 import '../data/energy_drink_store.dart';
 import '../data/game_progress_store.dart';
 import '../data/testing_profile.dart';
 import '../data/user_profile_store.dart';
 import '../models/user_profile.dart';
 import 'profile_settings_sheet.dart';
+import 'tournament_carousel_news.dart';
 import 'tournament_unlock_dialog.dart';
 
 /// Selectable game mode from the start screen.
@@ -567,7 +571,93 @@ class _ProfileStrip extends StatelessWidget {
   }
 }
 
-/// Data for one tips carousel slide.
+/// Carousel slide kinds on the home screen hero.
+enum _CarouselSlideKind { dailyStreak, tournamentNews, proTip }
+
+/// One hero carousel card (streak, news, or tip).
+class _CarouselSlide {
+  const _CarouselSlide({
+    required this.kind,
+    required this.label,
+    required this.title,
+    required this.body,
+    required this.backgroundAsset,
+    required this.accent,
+  });
+
+  final _CarouselSlideKind kind;
+  final String label;
+  final String title;
+  final String body;
+  final String backgroundAsset;
+  final Color accent;
+
+  _CarouselSlide copyWith({String? body, String? title}) {
+    return _CarouselSlide(
+      kind: kind,
+      label: label,
+      title: title ?? this.title,
+      body: body ?? this.body,
+      backgroundAsset: backgroundAsset,
+      accent: accent,
+    );
+  }
+}
+
+class _ProTipContent {
+  const _ProTipContent({
+    required this.title,
+    required this.body,
+    required this.backgroundAsset,
+    required this.accent,
+  });
+
+  final String title;
+  final String body;
+  final String backgroundAsset;
+  final Color accent;
+}
+
+const _proTipPool = <_ProTipContent>[
+  _ProTipContent(
+    title: 'Set Up Your Shot 🎯',
+    body: 'Place your phone at waist height for the best shooting experience.',
+    backgroundAsset: 'assets/images/tips/Tips-Shooting.png',
+    accent: _Arcade.green,
+  ),
+  _ProTipContent(
+    title: 'Own Your Goal 🧤',
+    body: 'Center your head in the screen before going into keeping mode.',
+    backgroundAsset: 'assets/images/tips/Tips-Keeping.png',
+    accent: _Arcade.cyan,
+  ),
+  _ProTipContent(
+    title: 'Find Your Range 📏',
+    body: 'Stand 4–6 feet from your phone for better body tracking.',
+    backgroundAsset: 'assets/images/tips/Tips-Distance.png',
+    accent: _Arcade.lime,
+  ),
+  _ProTipContent(
+    title: 'Light It Up 💡',
+    body: 'Play in a well-lit room so the camera tracks every move.',
+    backgroundAsset: 'assets/images/tips/Tips-Light.png',
+    accent: _Arcade.magenta,
+  ),
+];
+
+_ProTipContent _randomProTip() =>
+    _proTipPool[math.Random().nextInt(_proTipPool.length)];
+
+_CarouselSlide _proTipSlide(_ProTipContent tip) => _CarouselSlide(
+      kind: _CarouselSlideKind.proTip,
+      label: 'PRO TIP',
+      title: tip.title,
+      body: tip.body,
+      backgroundAsset: tip.backgroundAsset,
+      accent: tip.accent,
+    );
+
+/// Legacy type used by the pro-tips bottom sheet.
 class _SpotlightSlide {
   const _SpotlightSlide({
     required this.title,
@@ -609,7 +699,7 @@ const _proTipSlides = <_SpotlightSlide>[
   ),
 ];
 
-/// Auto-cycling tips banner on the home screen.
+/// Auto-cycling hero banner: daily streak, optional tournament news, pro tip.
 class _SpotlightHero extends StatefulWidget {
   const _SpotlightHero({this.onTap});
 
@@ -620,28 +710,79 @@ class _SpotlightHero extends StatefulWidget {
 }
 
 class _SpotlightHeroState extends State<_SpotlightHero> {
-  static const _slides = _proTipSlides;
-
   static const _interval = Duration(milliseconds: 4200);
+  static const _streakArt =
+      'assets/images/main_page/carousel-personal-milestone.jpeg';
+  static const _newsArt = 'assets/images/main_page/carousel-newsletter.png';
 
   late final PageController _pageController;
+  late final math.Random _rng;
+  List<_CarouselSlide> _slides = const [];
+  TournamentBracket? _tournamentBracket;
   int _index = 0;
   Timer? _timer;
+  bool _loaded = false;
 
   @override
   void initState() {
     super.initState();
+    _rng = math.Random();
     _pageController = PageController();
+    unawaited(_loadCarousel());
+  }
+
+  Future<void> _loadCarousel() async {
+    final streak = await DailyStreakStore.recordVisitAndGetStreak();
+    TournamentBracket? bracket;
+    if (await TournamentStore.hasSavedTournament()) {
+      final saved = await TournamentStore.load();
+      bracket = saved?.bracket;
+    }
+    if (!mounted) return;
+
+    final streakCopy = DailyStreakStore.copyForStreak(streak);
+    final slides = <_CarouselSlide>[
+      _CarouselSlide(
+        kind: _CarouselSlideKind.dailyStreak,
+        label: 'DAILY STREAK',
+        title: streakCopy.title,
+        body: streakCopy.body,
+        backgroundAsset: _streakArt,
+        accent: const Color(0xFFFFD54F),
+      ),
+    ];
+
+    if (bracket != null) {
+      slides.add(
+        _CarouselSlide(
+          kind: _CarouselSlideKind.tournamentNews,
+          label: 'TOURNAMENT NEWS',
+          title: '',
+          body: TournamentCarouselNews.pickRandomHeadline(bracket, random: _rng),
+          backgroundAsset: _newsArt,
+          accent: _Arcade.cyan,
+        ),
+      );
+    }
+
+    slides.add(_proTipSlide(_randomProTip()));
+
+    setState(() {
+      _tournamentBracket = bracket;
+      _slides = slides;
+      _loaded = true;
+    });
     _startAutoAdvanceTimer();
   }
 
   void _startAutoAdvanceTimer() {
     _timer?.cancel();
+    if (_slides.isEmpty) return;
     _timer = Timer.periodic(_interval, (_) => _advanceAutomatically());
   }
 
   void _advanceAutomatically() {
-    if (!mounted || !_pageController.hasClients) return;
+    if (!mounted || !_pageController.hasClients || _slides.isEmpty) return;
     final next = (_index + 1) % _slides.length;
     _pageController.animateToPage(
       next,
@@ -650,8 +791,32 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     );
   }
 
+  void _refreshSlideContent(int index) {
+    if (index < 0 || index >= _slides.length) return;
+    final slide = _slides[index];
+    switch (slide.kind) {
+      case _CarouselSlideKind.proTip:
+        _slides[index] = _proTipSlide(_randomProTip());
+      case _CarouselSlideKind.tournamentNews:
+        final bracket = _tournamentBracket;
+        if (bracket != null) {
+          _slides[index] = slide.copyWith(
+            body: TournamentCarouselNews.pickRandomHeadline(
+              bracket,
+              random: _rng,
+            ),
+          );
+        }
+      case _CarouselSlideKind.dailyStreak:
+        break;
+    }
+  }
+
   void _onPageChanged(int index) {
-    setState(() => _index = index);
+    setState(() {
+      _index = index;
+      _refreshSlideContent(index);
+    });
     _startAutoAdvanceTimer();
   }
 
@@ -664,6 +829,22 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_loaded || _slides.isEmpty) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: Colors.white.withValues(alpha: 0.06),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
+      );
+    }
+
     final slide = _slides[_index];
     const cardRadius = BorderRadius.all(Radius.circular(20));
 
@@ -694,7 +875,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
               onPageChanged: _onPageChanged,
               itemCount: _slides.length,
               itemBuilder: (context, i) =>
-                  _SpotlightSlideView(slide: _slides[i]),
+                  _CarouselSlideView(slide: _slides[i]),
             ),
             Positioned(
               left: 18,
@@ -731,14 +912,15 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
   }
 }
 
-/// Single tips carousel slide (background + copy).
-class _SpotlightSlideView extends StatelessWidget {
-  const _SpotlightSlideView({required this.slide});
+/// Single hero carousel card (background + copy).
+class _CarouselSlideView extends StatelessWidget {
+  const _CarouselSlideView({required this.slide});
 
-  final _SpotlightSlide slide;
+  final _CarouselSlide slide;
 
   @override
   Widget build(BuildContext context) {
+    final isNews = slide.kind == _CarouselSlideKind.tournamentNews;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -752,12 +934,26 @@ class _SpotlightSlideView extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withValues(alpha: 0.15),
-                Colors.black.withValues(alpha: 0.65),
+                Colors.black.withValues(alpha: isNews ? 0.35 : 0.15),
+                Colors.black.withValues(alpha: isNews ? 0.82 : 0.65),
               ],
             ),
           ),
         ),
+        if (isNews)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Colors.black.withValues(alpha: 0.55),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.72],
+              ),
+            ),
+          ),
         DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -789,17 +985,19 @@ class _SpotlightSlideView extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 16, 16, 14),
-          child: _SlideContent(slide: slide),
+          child: slide.kind == _CarouselSlideKind.tournamentNews
+              ? _NewsletterSlideContent(slide: slide)
+              : _CarouselSlideContent(slide: slide),
         ),
       ],
     );
   }
 }
 
-class _SlideContent extends StatelessWidget {
-  const _SlideContent({required this.slide});
+class _CarouselSlideContent extends StatelessWidget {
+  const _CarouselSlideContent({required this.slide});
 
-  final _SpotlightSlide slide;
+  final _CarouselSlide slide;
 
   @override
   Widget build(BuildContext context) {
@@ -808,7 +1006,7 @@ class _SlideContent extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'PRO TIP',
+          slide.label,
           style: TextStyle(
             color: slide.accent,
             fontSize: 11,
@@ -839,6 +1037,87 @@ class _SlideContent extends StatelessWidget {
             fontSize: 13,
             fontWeight: FontWeight.w500,
             height: 1.3,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Newspaper-style layout for tournament news headlines.
+class _NewsletterSlideContent extends StatelessWidget {
+  const _NewsletterSlideContent({required this.slide});
+
+  final _CarouselSlide slide;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'GLOBAL CUP TIMES',
+                style: TextStyle(
+                  color: slide.accent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.8,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF3B5C).withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'BREAKING',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(height: 2, color: slide.accent.withValues(alpha: 0.85)),
+        const SizedBox(height: 3),
+        Container(height: 1, color: Colors.white.withValues(alpha: 0.35)),
+        const SizedBox(height: 14),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              slide.body,
+              maxLines: 5,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                height: 1.22,
+                shadows: [
+                  Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Text(
+          'Match report • Global Cup',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.55),
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
           ),
         ),
       ],
