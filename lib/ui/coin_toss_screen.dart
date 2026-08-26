@@ -4,6 +4,7 @@ import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/testing_profile.dart';
 import '../models/team.dart';
 import 'main_page_sound.dart';
 
@@ -115,9 +116,16 @@ class _CoinTossScreenState extends State<CoinTossScreen>
     widget.onDecided(role);
   }
 
+  bool get _canGoBack {
+    if (_phase == _TossPhase.calling) return true;
+    return TestingProfile.allowsCoinTossBack;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return PopScope(
+      canPop: _canGoBack,
+      child: DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -174,6 +182,7 @@ class _CoinTossScreenState extends State<CoinTossScreen>
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -182,14 +191,17 @@ class _CoinTossScreenState extends State<CoinTossScreen>
       padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () {
-              _tap();
-              widget.onBack();
-            },
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-            tooltip: 'Back',
-          ),
+          if (_canGoBack)
+            IconButton(
+              onPressed: () {
+                _tap();
+                widget.onBack();
+              },
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              tooltip: 'Back',
+            )
+          else
+            const SizedBox(width: 48),
           const SizedBox(width: 2),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,

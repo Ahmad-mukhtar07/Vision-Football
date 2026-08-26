@@ -29,10 +29,13 @@ class TestingProfile {
 
   static bool get unlocksEverything => _mode == TestingProfileMode.fullUnlock;
 
+  /// QA fresh-install profile can still navigate back after the toss.
+  static bool get allowsCoinTossBack => _mode == TestingProfileMode.freshInstall;
+
   /// Call once during app bootstrap after loading the saved profile.
   static Future<void> applyOnStartup(String displayName) async {
     final name = displayName.trim();
-    if (name == userFreshInstall) {
+    if (name == userFullUnlock) {
       _mode = TestingProfileMode.freshInstall;
       await _applyFreshInstall();
     } else if (name == userFullUnlock) {
