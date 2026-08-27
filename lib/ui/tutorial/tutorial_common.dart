@@ -322,8 +322,9 @@ class _PlacementDiagramCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxWidth = MediaQuery.sizeOf(context).width - 48;
-    final side = maxWidth.clamp(240.0, 360.0);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxWidth = screenWidth - 48;
+    final side = maxWidth.clamp(240.0, screenWidth > 600 ? 480.0 : 360.0);
 
     return Container(
       width: side,

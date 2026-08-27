@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../ui/calibration_layout.dart';
 import '../ui/corner_frame_overlay.dart';
 import 'calibration_hand_targets.dart';
 import 'keeper_calibration_panel.dart';
@@ -36,8 +37,8 @@ class KeeperCalibrationOverlay extends StatelessWidget {
       children: [
         Positioned(
           top: 0,
-          left: 0,
-          right: 0,
+          left: CalibrationLayout.frameInset,
+          right: CalibrationLayout.frameInset,
           bottom: bottomInset,
           child: const IgnorePointer(
             child: SizedBox.expand(
@@ -48,8 +49,8 @@ class KeeperCalibrationOverlay extends StatelessWidget {
         if (waitingForHands)
           Positioned(
             top: 0,
-            left: 0,
-            right: 0,
+            left: CalibrationLayout.frameInset,
+            right: CalibrationLayout.frameInset,
             bottom: bottomInset,
             child: const IgnorePointer(
               child: SizedBox.expand(
@@ -63,7 +64,9 @@ class KeeperCalibrationOverlay extends StatelessWidget {
             children: [
               Positioned(
                 top: 4,
-                right: 8,
+                right: CalibrationLayout.horizontalPadding(
+                  MediaQuery.sizeOf(context).width,
+                ),
                 child: Material(
                   color: Colors.black45,
                   shape: const CircleBorder(),
@@ -77,12 +80,21 @@ class KeeperCalibrationOverlay extends StatelessWidget {
                 ),
               ),
               Positioned(
-                left: 20,
-                right: 20,
+                left: 0,
+                right: 0,
                 bottom: _panelBottomGap,
-                child: KeeperCalibrationPanel(
-                  waitingForHands: waitingForHands,
-                  secondsLeft: secondsLeft,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: CalibrationLayout.horizontalPadding(
+                      MediaQuery.sizeOf(context).width,
+                    ),
+                  ),
+                  child: CalibrationLayout.centeredBottomPanel(
+                    child: KeeperCalibrationPanel(
+                      waitingForHands: waitingForHands,
+                      secondsLeft: secondsLeft,
+                    ),
+                  ),
                 ),
               ),
             ],

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/kicking_foot.dart';
 import '../pose/calibration_placement.dart';
 import '../pose/player_calibration.dart';
+import 'calibration_layout.dart';
 import 'corner_frame_overlay.dart';
 import 'shooting_calibration_panel.dart';
 
@@ -29,16 +30,17 @@ class ShootingCalibrationOverlay extends StatelessWidget {
   final VoidCallback? onSkipCountdown;
   final VoidCallback? onForceComplete;
 
-  static const double _panelTop = 16;
-  static const double _panelHorizontal = 16;
-  static const double _framePadding = 20;
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: calibration,
       builder: (context, _) {
         final issue = calibration.placement;
+        final panelTopInset = MediaQuery.paddingOf(context).top +
+            CalibrationLayout.panelTopGap +
+            ShootingCalibrationPanel.estimatedHeight +
+            CalibrationLayout.panelBottomGap;
+
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -49,33 +51,22 @@ class ShootingCalibrationOverlay extends StatelessWidget {
                   kickingFoot: kickingFoot,
                 ),
               ),
+            Positioned(
+              top: panelTopInset,
+              left: CalibrationLayout.frameInset,
+              right: CalibrationLayout.frameInset,
+              bottom: 12,
+              child: const IgnorePointer(
+                child: CornerFrameOverlay(),
+              ),
+            ),
             SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      _panelHorizontal,
-                      _panelTop,
-                      _panelHorizontal,
-                      8,
-                    ),
-                    child: _buildPanel(context),
-                  ),
-                  const Expanded(
-                    child: IgnorePointer(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          _framePadding,
-                          0,
-                          _framePadding,
-                          12,
-                        ),
-                        child: CornerFrameOverlay(),
-                      ),
-                    ),
-                  ),
-                ],
+              bottom: false,
+              child: Padding(
+                padding: CalibrationLayout.panelPadding(context),
+                child: CalibrationLayout.centeredPanel(
+                  child: _buildPanel(context),
+                ),
               ),
             ),
           ],
@@ -244,51 +235,54 @@ class _WarningCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 32),
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.62),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: PlacementWarningOverlay._red.withValues(alpha: 0.5 + 0.4 * glow),
-          width: 1.6,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: CalibrationLayout.maxPanelWidth),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.62),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: PlacementWarningOverlay._red.withValues(alpha: 0.5 + 0.4 * glow),
+            width: 1.6,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: PlacementWarningOverlay._red.withValues(alpha: 0.25 * glow),
+              blurRadius: 24,
+              spreadRadius: 2,
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: PlacementWarningOverlay._red.withValues(alpha: 0.25 * glow),
-            blurRadius: 24,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: PlacementWarningOverlay._red, size: 40),
-          const SizedBox(height: 10),
-          Text(
-            heading,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.6,
-              color: PlacementWarningOverlay._red,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: PlacementWarningOverlay._red, size: 40),
+            const SizedBox(height: 10),
+            Text(
+              heading,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.6,
+                color: PlacementWarningOverlay._red,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            instruction,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              height: 1.3,
-              color: Colors.white,
+            const SizedBox(height: 6),
+            Text(
+              instruction,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+                color: Colors.white,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

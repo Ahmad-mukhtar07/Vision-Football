@@ -112,7 +112,7 @@ class _ShootingCalibrationPanelState extends State<ShootingCalibrationPanel>
               if (widget.showProgress) ...[
                 const SizedBox(height: 14),
                 SizedBox(
-                  width: 240,
+                  width: double.infinity,
                   child: LinearProgressIndicator(
                     value: widget.progress > 0 ? widget.progress : null,
                     minHeight: 8,
@@ -170,8 +170,7 @@ class _ShootingCalibrationPanelState extends State<ShootingCalibrationPanel>
   }
 
   Widget _buildStatusRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         FadeTransition(
@@ -192,13 +191,11 @@ class _ShootingCalibrationPanelState extends State<ShootingCalibrationPanel>
             ),
           ),
         ),
-        const SizedBox(width: 12),
-        Flexible(
-          child: Text(
-            widget.statusText,
-            textAlign: TextAlign.center,
-            style: _statusStyle,
-          ),
+        const SizedBox(height: 10),
+        Text(
+          widget.statusText,
+          textAlign: TextAlign.center,
+          style: _statusStyle,
         ),
       ],
     );
