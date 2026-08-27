@@ -10,6 +10,7 @@ import 'data/game_settings.dart';
 import 'data/testing_profile.dart';
 import 'data/user_profile_store.dart';
 import 'services/ad_service.dart';
+import 'services/re_engagement_notification_service.dart';
 import 'keeper/keeper_screen.dart';
 import 'ui/full_match_screen.dart';
 import 'ui/mode_selection_overlay.dart';
@@ -22,6 +23,7 @@ import 'ui/vision_football_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await GameSettings.load();
+  await ReEngagementNotificationService.initialize();
   await AdService.instance.initialize();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -54,7 +56,7 @@ class AppBootstrap extends StatefulWidget {
   State<AppBootstrap> createState() => _AppBootstrapState();
 }
 
-class _AppBootstrapState extends State<AppBootstrap> {
+class _AppBootstrapState extends State<AppBootstrap> with WidgetsBindingObserver {
   static const _loadingMinDuration = Duration(milliseconds: 2200);
 
   List<CameraDescription>? _cameras;
@@ -68,7 +70,30 @@ class _AppBootstrapState extends State<AppBootstrap> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _runBootstrap();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_loadingComplete || _onboardingStep != null) return;
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(ReEngagementNotificationService.onAppForeground());
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        unawaited(ReEngagementNotificationService.onAppBackground());
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   Future<void> _runBootstrap() async {
@@ -89,6 +114,10 @@ class _AppBootstrapState extends State<AppBootstrap> {
       _loadingComplete = true;
       if (!onboardingComplete) _onboardingStep = _OnboardingStep.profile;
     });
+    if (onboardingComplete) {
+      unawaited(ReEngagementNotificationService.requestPermissionIfNeeded());
+      unawaited(ReEngagementNotificationService.onAppForeground());
+    }
   }
 
   Future<void> _startCameraPipeline() async {
@@ -142,6 +171,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
     await UserProfileStore.markOnboardingComplete();
     if (!mounted) return;
     setState(() => _onboardingStep = null);
+    unawaited(ReEngagementNotificationService.requestPermissionIfNeeded());
   }
 
   /// Builds the current first-run step. Reached only after the camera pipeline
