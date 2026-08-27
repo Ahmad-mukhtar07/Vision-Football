@@ -16,11 +16,13 @@ import '../keeper/keeper_match_state.dart';
 import '../keeper/keeper_screen.dart';
 import '../models/team.dart';
 import '../tournament/tournament_models.dart';
+import '../widgets/ad_banner_widget.dart';
 import 'coin_toss_screen.dart';
 import 'energy_drink_widgets.dart';
 import 'game_play_sound.dart';
 import 'main_page_sound.dart';
 import 'match_setup_screen.dart';
+import 'rewarded_ad_helpers.dart';
 import 'team_selection_screen.dart';
 import 'test_score_entry_dialog.dart';
 import 'tournament/tournament_champion_celebration.dart';
@@ -241,6 +243,41 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
     setState(() => _phase = _FmPhase.playingHalf2);
   }
 
+  bool get _allowsSecondChance {
+    if (!widget.tournamentFixture) return true;
+    final round = widget.tournamentRound;
+    return round != TournamentRound.semiFinal &&
+        round != TournamentRound.finalMatch;
+  }
+
+  void _replayFirstHalf() {
+    setState(() {
+      _userGoals = null;
+      _userGoalScorers = const [];
+      _phase = _FmPhase.playingHalf1;
+    });
+  }
+
+  void _replaySecondHalf() {
+    setState(() {
+      _opponentGoals = null;
+      _opponentGoalScorers = const [];
+      _phase = _FmPhase.playingHalf2;
+    });
+  }
+
+  Future<void> _secondChanceFirstHalf() async {
+    if (!await watchRewardedAd(context)) return;
+    if (!mounted) return;
+    _replayFirstHalf();
+  }
+
+  Future<void> _secondChanceSecondHalf() async {
+    if (!await watchRewardedAd(context)) return;
+    if (!mounted) return;
+    _replaySecondHalf();
+  }
+
   void _rematch() {
     setState(() {
       _firstRole = null;
@@ -378,6 +415,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           nextRole: _roleForHalf(2),
           onResume: _resumeToSecondHalf,
           onQuit: widget.onReturnToMenu,
+          onSecondChance: _allowsSecondChance ? _secondChanceFirstHalf : null,
         );
       case _FmPhase.fullTime:
         if (widget.tournamentFixture) {
@@ -400,6 +438,8 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
             groupStageDrawCounts: groupStageDrawCounts,
             skipWinCheer: _finalCelebrationShown,
             onDrawPending: widget.onFixtureDrawPending,
+            onSecondChance:
+                _allowsSecondChance ? _secondChanceSecondHalf : null,
             onContinue: () {
               final userGoals = _userGoals ?? 0;
               final opponentGoals = _opponentGoals ?? 0;
@@ -425,6 +465,7 @@ class _FullMatchScreenState extends State<FullMatchScreen> {
           opponentGoalScorers: _opponentGoalScorers,
           onRematch: _rematch,
           onMainMenu: widget.onReturnToMenu,
+          onSecondChance: _allowsSecondChance ? _secondChanceSecondHalf : null,
         );
     }
   }
@@ -654,6 +695,7 @@ class _HalfTimeOverlay extends StatefulWidget {
     required this.nextRole,
     required this.onResume,
     required this.onQuit,
+    this.onSecondChance,
   });
 
   final Team userTeam;
@@ -665,6 +707,7 @@ class _HalfTimeOverlay extends StatefulWidget {
   final MatchRole nextRole;
   final VoidCallback onResume;
   final VoidCallback onQuit;
+  final Future<void> Function()? onSecondChance;
 
   @override
   State<_HalfTimeOverlay> createState() => _HalfTimeOverlayState();
@@ -692,57 +735,75 @@ class _HalfTimeOverlayState extends State<_HalfTimeOverlay> {
     return DecoratedBox(
       decoration: _bgDecoration,
       child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'HALF TIME',
-                  style: TextStyle(
-                    color: _Pal.gold,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 6,
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'HALF TIME',
+                        style: TextStyle(
+                          color: _Pal.gold,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 6,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      _Scoreline(
+                        userTeam: widget.userTeam,
+                        opponentTeam: widget.opponentTeam,
+                        userGoals: widget.userGoals,
+                        opponentGoals: widget.opponentGoals,
+                        userGoalScorers: widget.userGoalScorers,
+                        opponentGoalScorers: widget.opponentGoalScorers,
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        nextLabel,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      _pillButton(
+                        'Resume',
+                        _Pal.green,
+                        widget.onResume,
+                        icon: Icons.play_arrow_rounded,
+                      ),
+                      if (widget.onSecondChance != null) ...[
+                        const SizedBox(height: 14),
+                        _pillButton(
+                          'Replay 1st half (Watch ad)',
+                          _Pal.orange,
+                          () => unawaited(widget.onSecondChance!()),
+                          icon: Icons.replay_rounded,
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      _pillButton(
+                        'Quit Match',
+                        Colors.white70,
+                        widget.onQuit,
+                        filled: false,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                _Scoreline(
-                  userTeam: widget.userTeam,
-                  opponentTeam: widget.opponentTeam,
-                  userGoals: widget.userGoals,
-                  opponentGoals: widget.opponentGoals,
-                  userGoalScorers: widget.userGoalScorers,
-                  opponentGoalScorers: widget.opponentGoalScorers,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  nextLabel,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                _pillButton(
-                  'Resume',
-                  _Pal.green,
-                  widget.onResume,
-                  icon: Icons.play_arrow_rounded,
-                ),
-                const SizedBox(height: 14),
-                _pillButton(
-                  'Quit Match',
-                  Colors.white70,
-                  widget.onQuit,
-                  filled: false,
-                ),
-              ],
+              ),
             ),
-          ),
+            const AdBannerWidget(),
+            const SizedBox(height: 2),
+          ],
         ),
       ),
     );
@@ -761,6 +822,7 @@ class _FullTimeOverlay extends StatefulWidget {
     required this.opponentGoalScorers,
     required this.onRematch,
     required this.onMainMenu,
+    this.onSecondChance,
   });
 
   final Team userTeam;
@@ -771,6 +833,7 @@ class _FullTimeOverlay extends StatefulWidget {
   final List<String> opponentGoalScorers;
   final VoidCallback onRematch;
   final VoidCallback onMainMenu;
+  final Future<void> Function()? onSecondChance;
 
   @override
   State<_FullTimeOverlay> createState() => _FullTimeOverlayState();
@@ -805,60 +868,81 @@ class _FullTimeOverlayState extends State<_FullTimeOverlay> {
     return DecoratedBox(
       decoration: _bgDecoration,
       child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'FULL TIME',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 5,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 44,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 3,
-                    shadows: [
-                      Shadow(color: color.withValues(alpha: 0.6), blurRadius: 18),
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'FULL TIME',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 5,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 44,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 3,
+                          shadows: [
+                            Shadow(
+                              color: color.withValues(alpha: 0.6),
+                              blurRadius: 18,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      _Scoreline(
+                        userTeam: widget.userTeam,
+                        opponentTeam: widget.opponentTeam,
+                        userGoals: widget.userGoals,
+                        opponentGoals: widget.opponentGoals,
+                        userGoalScorers: widget.userGoalScorers,
+                        opponentGoalScorers: widget.opponentGoalScorers,
+                      ),
+                      const SizedBox(height: 36),
+                      if (widget.onSecondChance != null) ...[
+                        _pillButton(
+                          'Replay 2nd half (Watch ad)',
+                          _Pal.orange,
+                          () => unawaited(widget.onSecondChance!()),
+                          icon: Icons.replay_rounded,
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      _pillButton(
+                        'Rematch',
+                        _Pal.green,
+                        widget.onRematch,
+                        icon: Icons.refresh_rounded,
+                      ),
+                      const SizedBox(height: 14),
+                      _pillButton(
+                        'Main Menu',
+                        Colors.white70,
+                        widget.onMainMenu,
+                        filled: false,
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 28),
-                _Scoreline(
-                  userTeam: widget.userTeam,
-                  opponentTeam: widget.opponentTeam,
-                  userGoals: widget.userGoals,
-                  opponentGoals: widget.opponentGoals,
-                  userGoalScorers: widget.userGoalScorers,
-                  opponentGoalScorers: widget.opponentGoalScorers,
-                ),
-                const SizedBox(height: 36),
-                _pillButton(
-                  'Rematch',
-                  _Pal.green,
-                  widget.onRematch,
-                  icon: Icons.refresh_rounded,
-                ),
-                const SizedBox(height: 14),
-                _pillButton(
-                  'Main Menu',
-                  Colors.white70,
-                  widget.onMainMenu,
-                  filled: false,
-                ),
-              ],
+              ),
             ),
-          ),
+            const AdBannerWidget(),
+            const SizedBox(height: 2),
+          ],
         ),
       ),
     );
@@ -876,6 +960,7 @@ class _TournamentFixtureResultOverlay extends StatefulWidget {
     this.groupStageDrawCounts = false,
     this.onDrawPending,
     this.skipWinCheer = false,
+    this.onSecondChance,
   });
 
   final Team userTeam;
@@ -887,6 +972,7 @@ class _TournamentFixtureResultOverlay extends StatefulWidget {
   final bool groupStageDrawCounts;
   final VoidCallback? onDrawPending;
   final bool skipWinCheer;
+  final Future<void> Function()? onSecondChance;
 
   @override
   State<_TournamentFixtureResultOverlay> createState() =>
@@ -929,54 +1015,74 @@ class _TournamentFixtureResultOverlayState
     return DecoratedBox(
       decoration: _bgDecoration,
       child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'FULL TIME',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 5,
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'FULL TIME',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 5,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 40,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      _Scoreline(
+                        userTeam: widget.userTeam,
+                        opponentTeam: widget.opponentTeam,
+                        userGoals: widget.userGoals,
+                        opponentGoals: widget.opponentGoals,
+                      ),
+                      const SizedBox(height: 36),
+                      if (widget.onSecondChance != null) ...[
+                        _pillButton(
+                          'Replay 2nd half (Watch ad)',
+                          _Pal.orange,
+                          () => unawaited(widget.onSecondChance!()),
+                          icon: Icons.replay_rounded,
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      _pillButton(
+                        knockoutDrawRematch
+                            ? 'Rematch'
+                            : isDraw || won
+                                ? 'Continue'
+                                : 'View Bracket',
+                        _Pal.green,
+                        knockoutDrawRematch
+                            ? widget.onRematch
+                            : widget.onContinue,
+                        icon: knockoutDrawRematch
+                            ? Icons.refresh_rounded
+                            : Icons.arrow_forward_rounded,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 40,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                _Scoreline(
-                  userTeam: widget.userTeam,
-                  opponentTeam: widget.opponentTeam,
-                  userGoals: widget.userGoals,
-                  opponentGoals: widget.opponentGoals,
-                ),
-                const SizedBox(height: 36),
-                _pillButton(
-                  knockoutDrawRematch
-                      ? 'Rematch'
-                      : isDraw || won
-                          ? 'Continue'
-                          : 'View Bracket',
-                  _Pal.green,
-                  knockoutDrawRematch ? widget.onRematch : widget.onContinue,
-                  icon: knockoutDrawRematch
-                      ? Icons.refresh_rounded
-                      : Icons.arrow_forward_rounded,
-                ),
-              ],
+              ),
             ),
-          ),
+            const AdBannerWidget(),
+            const SizedBox(height: 2),
+          ],
         ),
       ),
     );

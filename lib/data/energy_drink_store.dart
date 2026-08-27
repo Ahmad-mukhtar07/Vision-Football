@@ -39,6 +39,8 @@ class EnergyDrinkStore {
   static const fullMatchCost = 3;
   static const tournamentGroupCost = 3;
   static const tournamentKnockoutCost = 5;
+  static const rewardedDrinkAmount = 5;
+  static const lowEnergyThreshold = 6;
 
   static int costForTournamentRound(TournamentRound round) {
     if (round == TournamentRound.groupStage) return tournamentGroupCost;
@@ -101,6 +103,29 @@ class EnergyDrinkStore {
   }
 
   /// QA override — sets stock directly (clamped to [0, maxDrinks]).
+  static Future<EnergyDrinkState> addRewardDrinks(int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    var count = prefs.getInt(_keyCount) ?? defaultDrinks;
+    final nextRefillMs = prefs.getInt(_keyNextRefillMs);
+    var nextRefillAt = nextRefillMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(nextRefillMs);
+
+    count = _applyRegeneration(count, nextRefillAt, (updatedAt) {
+      nextRefillAt = updatedAt;
+    });
+
+    count = (count + amount).clamp(0, maxDrinks);
+    if (count >= maxDrinks) {
+      nextRefillAt = null;
+    } else if (nextRefillAt == null) {
+      nextRefillAt = DateTime.now().add(refillDuration);
+    }
+
+    await _save(count: count, nextRefillAt: nextRefillAt);
+    return loadState();
+  }
+
   static Future<EnergyDrinkState> setCount(int count) async {
     final prefs = await SharedPreferences.getInstance();
     var nextRefillMs = prefs.getInt(_keyNextRefillMs);

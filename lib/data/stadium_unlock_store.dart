@@ -1,5 +1,6 @@
 import 'keeper_stadium.dart';
 import 'player_stats_store.dart';
+import 'stadium_ad_unlock_store.dart';
 import 'testing_profile.dart';
 
 /// Unlock rules for keeper / shooter stadium backgrounds.
@@ -8,6 +9,34 @@ class StadiumUnlockStore {
 
   static int fullMatchesPlayed(PlayerStats stats) =>
       stats.easyPlayed + stats.moderatePlayed + stats.hardPlayed;
+
+  static bool prerequisitesMet(
+    KeeperStadiumLocation location,
+    PlayerStats stats,
+  ) =>
+      isUnlocked(location, stats);
+
+  static Future<bool> isUsable(
+    KeeperStadiumLocation location,
+    PlayerStats stats,
+  ) async {
+    if (TestingProfile.unlocksEverything) {
+      return isUnlocked(location, stats);
+    }
+    if (location == KeeperStadiumLocation.brazil) return true;
+    if (!isUnlocked(location, stats)) return false;
+    return StadiumAdUnlockStore.hasWatchedAd(location);
+  }
+
+  static Future<bool> needsRewardedAdUnlock(
+    KeeperStadiumLocation location,
+    PlayerStats stats,
+  ) async {
+    if (location == KeeperStadiumLocation.brazil) return false;
+    if (TestingProfile.unlocksEverything) return false;
+    if (!isUnlocked(location, stats)) return false;
+    return !(await StadiumAdUnlockStore.hasWatchedAd(location));
+  }
 
   static bool isUnlocked(
     KeeperStadiumLocation location,

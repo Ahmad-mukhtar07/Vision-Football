@@ -20,6 +20,7 @@ dependencies:
   wakelock_plus: ^1.6.1
   country_flags: ^4.1.2
   shared_preferences: ^2.5.3
+  google_mobile_ads: ^9.1.0
 
 dev_dependencies:
   flutter_test:

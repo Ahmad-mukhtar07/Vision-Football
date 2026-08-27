@@ -3,6 +3,7 @@ import 'daily_streak_store.dart';
 import 'energy_drink_store.dart';
 import 'game_progress_store.dart';
 import 'player_stats_store.dart';
+import 'stadium_ad_unlock_store.dart';
 import 'user_profile_store.dart';
 
 /// Special QA usernames applied once on app startup (after a restart).
@@ -35,7 +36,7 @@ class TestingProfile {
   /// Call once during app bootstrap after loading the saved profile.
   static Future<void> applyOnStartup(String displayName) async {
     final name = displayName.trim();
-    if (name == userFullUnlock) {
+    if (name == userFreshInstall) {
       _mode = TestingProfileMode.freshInstall;
       await _applyFreshInstall();
     } else if (name == userFullUnlock) {
@@ -53,6 +54,7 @@ class TestingProfile {
     await EnergyDrinkStore.resetToDefault();
     await TournamentStore.clear();
     await PlayerStatsStore.reset();
+    await StadiumAdUnlockStore.reset();
   }
 
   static Future<void> _applyFullUnlock() async {

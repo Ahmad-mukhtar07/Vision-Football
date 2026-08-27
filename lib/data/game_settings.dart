@@ -52,7 +52,7 @@ class GameSettings {
       orElse: () => KeeperStadiumLocation.brazil,
     );
     final stats = await PlayerStatsStore.load();
-    if (!StadiumUnlockStore.isUnlocked(keeperStadium, stats)) {
+    if (!await StadiumUnlockStore.isUsable(keeperStadium, stats)) {
       keeperStadium = KeeperStadiumLocation.brazil;
       await prefs.setString(_keyKeeperStadium, keeperStadium.name);
     }

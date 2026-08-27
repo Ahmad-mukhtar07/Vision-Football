@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../data/energy_drink_store.dart';
 import 'glass_panel.dart';
 import 'main_page_sound.dart';
+import 'rewarded_ad_helpers.dart';
 
 void _tap() {
   MainPageSound.playButtonClick();
@@ -266,6 +267,21 @@ class _EnergyDrinkStatusDialogState extends State<_EnergyDrinkStatusDialog> {
     super.dispose();
   }
 
+  Future<void> _watchAdForEnergy() async {
+    final earned = await watchRewardedAd(context);
+    if (!earned || !mounted) return;
+    final next = await EnergyDrinkStore.addRewardDrinks(
+      EnergyDrinkStore.rewardedDrinkAmount,
+    );
+    if (!mounted) return;
+    setState(() => _state = next);
+  }
+
+  bool get _showRewardedEnergyOffer =>
+      !widget.allowEditing &&
+      _state.count < _state.max &&
+      _state.count <= EnergyDrinkStore.lowEnergyThreshold;
+
   @override
   Widget build(BuildContext context) {
     const accent = Color(0xFF00E5FF);
@@ -386,6 +402,32 @@ class _EnergyDrinkStatusDialogState extends State<_EnergyDrinkStatusDialog> {
                 ),
               ),
             ],
+            if (_showRewardedEnergyOffer) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 46,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    _tap();
+                    unawaited(_watchAdForEnergy());
+                  },
+                  icon: const Icon(Icons.play_circle_outline_rounded),
+                  label: Text(
+                    'Watch ad for +${EnergyDrinkStore.rewardedDrinkAmount} drinks',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFC2FF1F),
+                    side: BorderSide(
+                      color: const Color(0xFFC2FF1F).withValues(alpha: 0.75),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(23),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
             SizedBox(
               height: 46,
@@ -455,7 +497,36 @@ Future<void> showInsufficientEnergyDialog(
                   height: 1.35,
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 46,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    _tap();
+                    final earned = await watchRewardedAd(ctx);
+                    if (!earned || !ctx.mounted) return;
+                    await EnergyDrinkStore.addRewardDrinks(
+                      EnergyDrinkStore.rewardedDrinkAmount,
+                    );
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  },
+                  icon: const Icon(Icons.play_circle_outline_rounded),
+                  label: Text(
+                    'Watch ad for +${EnergyDrinkStore.rewardedDrinkAmount} drinks',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFC2FF1F),
+                    side: BorderSide(
+                      color: const Color(0xFFC2FF1F).withValues(alpha: 0.75),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(23),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
               SizedBox(
                 height: 46,
                 child: FilledButton(

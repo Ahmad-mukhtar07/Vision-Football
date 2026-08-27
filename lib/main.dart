@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'data/game_settings.dart';
 import 'data/testing_profile.dart';
 import 'data/user_profile_store.dart';
+import 'services/ad_service.dart';
 import 'keeper/keeper_screen.dart';
 import 'ui/full_match_screen.dart';
 import 'ui/mode_selection_overlay.dart';
@@ -21,6 +22,7 @@ import 'ui/vision_football_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await GameSettings.load();
+  await AdService.instance.initialize();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);

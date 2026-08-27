@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/game_settings.dart';
 import '../data/keeper_stadium.dart';
 import '../data/player_stats_store.dart';
+import '../data/stadium_ad_unlock_store.dart';
 import '../data/stadium_unlock_store.dart';
 import 'main_page_sound.dart';
 import 'stadium_unlock_dialog.dart';
@@ -135,11 +138,23 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
   late KeeperStadiumLocation _selected;
   int _focusedIndex = 0;
   PlayerStats _stats = PlayerStats.empty;
+  Set<KeeperStadiumLocation> _adUnlockedStadiums = {
+    KeeperStadiumLocation.brazil,
+  };
   bool _loadingUnlocks = true;
   bool _suppressPageSound = true;
 
   bool _isUnlocked(KeeperStadiumLocation location) =>
-      StadiumUnlockStore.isUnlocked(location, _stats);
+      StadiumUnlockStore.prerequisitesMet(location, _stats);
+
+  bool _isUsableSync(KeeperStadiumLocation location) {
+    if (location == KeeperStadiumLocation.brazil) return true;
+    if (!_isUnlocked(location)) return false;
+    return _adUnlockedStadiums.contains(location);
+  }
+
+  bool _needsAdSync(KeeperStadiumLocation location) =>
+      _isUnlocked(location) && !_isUsableSync(location);
 
   @override
   void initState() {
@@ -161,8 +176,15 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
     final stats = await PlayerStatsStore.load();
     if (!mounted) return;
 
+    final adUnlocked = <KeeperStadiumLocation>{KeeperStadiumLocation.brazil};
+    for (final location in _locations) {
+      if (await StadiumAdUnlockStore.hasWatchedAd(location)) {
+        adUnlocked.add(location);
+      }
+    }
+
     var selected = GameSettings.keeperStadium;
-    if (!_isUnlockedFor(stats, selected)) {
+    if (!await StadiumUnlockStore.isUsable(selected, stats)) {
       selected = KeeperStadiumLocation.brazil;
       await GameSettings.setKeeperStadium(selected);
     }
@@ -171,6 +193,7 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
         _locations.indexOf(selected).clamp(0, _locations.length - 1);
     setState(() {
       _stats = stats;
+      _adUnlockedStadiums = adUnlocked;
       _selected = selected;
       _focusedIndex = pageIndex;
       _loadingUnlocks = false;
@@ -181,9 +204,6 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
       _pageController.jumpToPage(pageIndex);
     }
   }
-
-  bool _isUnlockedFor(PlayerStats stats, KeeperStadiumLocation location) =>
-      StadiumUnlockStore.isUnlocked(location, stats);
 
   @override
   void dispose() {
@@ -197,12 +217,35 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
     await GameSettings.setKeeperStadium(location);
   }
 
+  Future<void> _trySelectLocation(KeeperStadiumLocation location) async {
+    if (!_isUnlocked(location)) {
+      showStadiumUnlockDialog(
+        context,
+        location: location,
+        stats: _stats,
+      );
+      return;
+    }
+
+    if (_needsAdSync(location)) {
+      final unlocked = await showStadiumAdUnlockDialog(
+        context,
+        location: location,
+      );
+      if (!mounted || !unlocked) return;
+      setState(() => _adUnlockedStadiums.add(location));
+    }
+
+    await _selectUnlocked(location);
+    if (mounted) setState(() {});
+  }
+
   void _onPageChanged(int index) {
     final location = _locations[index];
     setState(() => _focusedIndex = index);
     if (!_suppressPageSound) MainPageSound.playButtonClick();
-    if (_isUnlocked(location)) {
-      _selectUnlocked(location);
+    if (_isUsableSync(location)) {
+      unawaited(_selectUnlocked(location));
     }
   }
 
@@ -217,7 +260,10 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
       );
       return;
     }
-    if (_pageController.page?.round() == index) return;
+    if (_pageController.page?.round() == index) {
+      unawaited(_trySelectLocation(location));
+      return;
+    }
     _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 320),
@@ -240,8 +286,12 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
 
     final focused = _focusedLocation;
     final focusedLocked = !_isUnlocked(focused);
-    final progressHint =
-        StadiumUnlockStore.progressHint(focused, _stats);
+    final focusedNeedsAd = _needsAdSync(focused);
+    final progressHint = focusedLocked
+        ? StadiumUnlockStore.progressHint(focused, _stats)
+        : focusedNeedsAd
+            ? 'Watch an ad to unlock ${focused.label}.'
+            : null;
 
     final pageView = PageView.builder(
       controller: _pageController,
@@ -251,6 +301,7 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
       itemBuilder: (context, index) {
         final location = _locations[index];
         final locked = !_isUnlocked(location);
+        final needsAd = _needsAdSync(location);
         return AnimatedBuilder(
           animation: _pageController,
           builder: (context, child) {
@@ -269,8 +320,9 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: _StadiumPreviewCard(
               location: location,
-              selected: !locked && location == _selected,
+              selected: _isUsableSync(location) && location == _selected,
               locked: locked,
+              needsAd: needsAd,
               accent: widget.accent,
               selectedColor: widget.selectedColor,
               onTap: () => _jumpToPage(index),
@@ -302,7 +354,11 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
           SizedBox(height: widget.previewHeight, child: pageView),
         const SizedBox(height: 10),
         Text(
-          focusedLocked ? '${focused.label} — LOCKED' : _selected.label,
+          focusedLocked
+              ? '${focused.label} — LOCKED'
+              : focusedNeedsAd
+                  ? '${focused.label} — WATCH AD'
+                  : _selected.label,
           textAlign: TextAlign.center,
           style: TextStyle(
             color: focusedLocked
@@ -313,7 +369,7 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
             letterSpacing: 0.4,
           ),
         ),
-        if (focusedLocked) ...[
+        if (focusedLocked || focusedNeedsAd) ...[
           const SizedBox(height: 4),
           Text(
             progressHint ??
@@ -335,7 +391,8 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
               if (i > 0) const SizedBox(width: 8),
               _StadiumPageDot(
                 active: _locations[i] == focused,
-                locked: !_isUnlocked(_locations[i]),
+                locked: !_isUnlocked(_locations[i]) ||
+                    _needsAdSync(_locations[i]),
                 selectedColor: widget.selectedColor,
                 onTap: () => _jumpToPage(i),
               ),
@@ -346,7 +403,9 @@ class _KeeperStadiumSelectorState extends State<KeeperStadiumSelector> {
         Text(
           focusedLocked
               ? 'Complete the challenge to unlock this stadium'
-              : 'Swipe for more stadiums',
+              : focusedNeedsAd
+                  ? 'Tap to watch an ad and use this stadium'
+                  : 'Swipe for more stadiums',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.42),
@@ -363,6 +422,7 @@ class _StadiumPreviewCard extends StatelessWidget {
     required this.location,
     required this.selected,
     required this.locked,
+    required this.needsAd,
     required this.accent,
     required this.selectedColor,
     required this.onTap,
@@ -371,6 +431,7 @@ class _StadiumPreviewCard extends StatelessWidget {
   final KeeperStadiumLocation location;
   final bool selected;
   final bool locked;
+  final bool needsAd;
   final Color accent;
   final Color selectedColor;
   final VoidCallback onTap;
@@ -412,8 +473,8 @@ class _StadiumPreviewCard extends StatelessWidget {
                   location.assetPath,
                   fit: BoxFit.cover,
                   alignment: Alignment.center,
-                  color: locked ? Colors.black54 : null,
-                  colorBlendMode: locked ? BlendMode.darken : null,
+                  color: locked || needsAd ? Colors.black54 : null,
+                  colorBlendMode: locked || needsAd ? BlendMode.darken : null,
                 ),
                 DecoratedBox(
                   decoration: BoxDecoration(
@@ -422,24 +483,26 @@ class _StadiumPreviewCard extends StatelessWidget {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.transparent,
-                        Colors.black.withValues(alpha: locked ? 0.55 : 0.35),
+                        Colors.black.withValues(alpha: locked || needsAd ? 0.55 : 0.35),
                       ],
                     ),
                   ),
                 ),
-                if (locked)
+                if (locked || needsAd)
                   Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.lock_rounded,
+                          needsAd
+                              ? Icons.play_circle_outline_rounded
+                              : Icons.lock_rounded,
                           color: selectedColor.withValues(alpha: 0.95),
                           size: 34,
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'LOCKED',
+                          needsAd ? 'WATCH AD' : 'LOCKED',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.92),
                             fontSize: 12,

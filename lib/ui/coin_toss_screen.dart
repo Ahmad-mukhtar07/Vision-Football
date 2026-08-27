@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:country_flags/country_flags.dart';
@@ -6,7 +7,9 @@ import 'package:flutter/services.dart';
 
 import '../data/testing_profile.dart';
 import '../models/team.dart';
+import '../widgets/ad_banner_widget.dart';
 import 'main_page_sound.dart';
+import 'rewarded_ad_helpers.dart';
 
 /// The user's role in a half: taking shots, or keeping goal.
 enum MatchRole { shooter, keeper }
@@ -116,6 +119,23 @@ class _CoinTossScreenState extends State<CoinTossScreen>
     widget.onDecided(role);
   }
 
+  void _resetToss() {
+    _flip.reset();
+    setState(() {
+      _phase = _TossPhase.calling;
+      _userCall = null;
+      _result = null;
+      _forcedRole = null;
+      _opponentChoseToKick = false;
+    });
+  }
+
+  Future<void> _redoTossWithAd() async {
+    if (!await watchRewardedAd(context)) return;
+    if (!mounted) return;
+    _resetToss();
+  }
+
   bool get _canGoBack {
     if (_phase == _TossPhase.calling) return true;
     return TestingProfile.allowsCoinTossBack;
@@ -142,7 +162,7 @@ class _CoinTossScreenState extends State<CoinTossScreen>
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   return SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
                     child: ConstrainedBox(
                       constraints:
                           BoxConstraints(minHeight: constraints.maxHeight - 36),
@@ -179,6 +199,8 @@ class _CoinTossScreenState extends State<CoinTossScreen>
                 },
               ),
             ),
+            const AdBannerWidget(),
+            const SizedBox(height: 2),
           ],
         ),
       ),
@@ -550,9 +572,37 @@ class _CoinTossScreenState extends State<CoinTossScreen>
               () => _chooseRole(_forcedRole!),
               icon: Icons.play_arrow_rounded,
             ),
+            const SizedBox(height: 14),
+            _adActionButton(
+              'Redo toss (Watch ad)',
+              _Pal.orange,
+              _redoTossWithAd,
+            ),
           ],
         );
     }
+  }
+
+  Widget _adActionButton(
+    String label,
+    Color color,
+    Future<void> Function() onTap,
+  ) {
+    return TextButton.icon(
+      onPressed: () {
+        _tap();
+        unawaited(onTap());
+      },
+      icon: Icon(Icons.play_circle_outline_rounded, color: color, size: 20),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+        ),
+      ),
+    );
   }
 
   Widget _bigButton(
