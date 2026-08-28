@@ -190,6 +190,7 @@ class KeeperGame extends FlameGame {
     }
     _pendingTarget = null;
     cameraXOffset.value = 0;
+    _centerBandShotsUsed = 0;
   }
 
   /// Penalty-spot position for the resting ball (centered in front of shooter).
@@ -256,12 +257,22 @@ class KeeperGame extends FlameGame {
     } else if (!tutorialMode && GameSettings.isHardMode) {
       tx = _hardModeScreenX(mouth, tx, r, wide: true);
     }
+    if (!tutorialMode && !GameSettings.isEasyMode) {
+      tx = _applyCenterShotCap(mouth, tx, r);
+    }
     _pendingTarget = Offset(tx, ty);
     if (tutorialMode) tutorialMarker.value = _pendingTarget;
     _ball.showAtShooter(_shooter.ballEmitPoint, _pendingTarget!);
   }
 
   Offset? _pendingTarget;
+
+  /// Moderate / hard: at most two shots per match may finish in the centre band.
+  int _centerBandShotsUsed = 0;
+
+  static const _centerBandMin = 0.38;
+  static const _centerBandMax = 0.62;
+  static const _maxCenterBandShots = 2;
 
   /// Plays the shooter run-up / strike animation; ball launches on impact.
   void beginKickSequence() {
@@ -446,6 +457,23 @@ class KeeperGame extends FlameGame {
           : GoalPlacement.bottomCorner;
     }
     return GoalPlacement.straight;
+  }
+
+  /// At most [_maxCenterBandShots] per match may aim in / near the mouth centre.
+  double _applyCenterShotCap(Rect mouth, double screenX, Random r) {
+    var nx = ((screenX - mouth.left) / mouth.width).clamp(0.0, 1.0);
+    final inCenterBand = nx >= _centerBandMin && nx <= _centerBandMax;
+    if (!inCenterBand) return screenX;
+
+    if (_centerBandShotsUsed >= _maxCenterBandShots) {
+      nx = r.nextBool()
+          ? 0.06 + r.nextDouble() * 0.24
+          : 0.70 + r.nextDouble() * 0.24;
+      return mouth.left + mouth.width * nx;
+    }
+
+    _centerBandShotsUsed++;
+    return screenX;
   }
 }
 

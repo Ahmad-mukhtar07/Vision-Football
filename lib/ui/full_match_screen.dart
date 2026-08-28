@@ -615,15 +615,19 @@ class _Scoreline extends StatelessWidget {
 }
 
 Widget _pillButton(
+  BuildContext context,
   String label,
   Color color,
   VoidCallback onTap, {
   bool filled = true,
   IconData? icon,
 }) {
+  final screenW = MediaQuery.sizeOf(context).width;
+  final width = (screenW - 48).clamp(220.0, 280.0);
+  final compact = screenW < 390;
+
   return SizedBox(
-    width: 260,
-    height: 52,
+    width: width,
     child: DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(26),
@@ -649,23 +653,39 @@ Widget _pillButton(
             _tap();
             onTap();
           },
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, color: filled ? Colors.black87 : color, size: 20),
-                const SizedBox(width: 8),
-              ],
-              Text(
-                label,
-                style: TextStyle(
-                  color: filled ? Colors.black87 : color,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.4,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 12 : 16,
+              vertical: compact ? 13 : 14,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Icon(
+                    icon,
+                    color: filled ? Colors.black87 : color,
+                    size: compact ? 18 : 20,
+                  ),
+                  SizedBox(width: compact ? 6 : 8),
+                ],
+                Flexible(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: filled ? Colors.black87 : color,
+                      fontSize: compact ? 14 : 16,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.4,
+                      height: 1.15,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -775,6 +795,7 @@ class _HalfTimeOverlayState extends State<_HalfTimeOverlay> {
                       ),
                       const SizedBox(height: 32),
                       _pillButton(
+                        context,
                         'Resume',
                         _Pal.green,
                         widget.onResume,
@@ -783,6 +804,7 @@ class _HalfTimeOverlayState extends State<_HalfTimeOverlay> {
                       if (widget.onSecondChance != null) ...[
                         const SizedBox(height: 14),
                         _pillButton(
+                          context,
                           'Replay 1st half (Watch ad)',
                           _Pal.orange,
                           () => unawaited(widget.onSecondChance!()),
@@ -791,6 +813,7 @@ class _HalfTimeOverlayState extends State<_HalfTimeOverlay> {
                       ],
                       const SizedBox(height: 14),
                       _pillButton(
+                        context,
                         'Quit Match',
                         Colors.white70,
                         widget.onQuit,
@@ -915,6 +938,7 @@ class _FullTimeOverlayState extends State<_FullTimeOverlay> {
                       const SizedBox(height: 36),
                       if (widget.onSecondChance != null) ...[
                         _pillButton(
+                          context,
                           'Replay 2nd half (Watch ad)',
                           _Pal.orange,
                           () => unawaited(widget.onSecondChance!()),
@@ -923,6 +947,7 @@ class _FullTimeOverlayState extends State<_FullTimeOverlay> {
                         const SizedBox(height: 14),
                       ],
                       _pillButton(
+                        context,
                         'Rematch',
                         _Pal.green,
                         widget.onRematch,
@@ -930,6 +955,7 @@ class _FullTimeOverlayState extends State<_FullTimeOverlay> {
                       ),
                       const SizedBox(height: 14),
                       _pillButton(
+                        context,
                         'Main Menu',
                         Colors.white70,
                         widget.onMainMenu,
@@ -1054,6 +1080,7 @@ class _TournamentFixtureResultOverlayState
                       const SizedBox(height: 36),
                       if (widget.onSecondChance != null) ...[
                         _pillButton(
+                          context,
                           'Replay 2nd half (Watch ad)',
                           _Pal.orange,
                           () => unawaited(widget.onSecondChance!()),
@@ -1062,6 +1089,7 @@ class _TournamentFixtureResultOverlayState
                         const SizedBox(height: 14),
                       ],
                       _pillButton(
+                        context,
                         knockoutDrawRematch
                             ? 'Rematch'
                             : isDraw || won

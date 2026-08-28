@@ -175,8 +175,8 @@ class KeeperHud extends StatelessWidget {
     final saved = result == KeeperShotResult.saved;
     return Positioned(
       top: 60,
-      left: 0,
-      right: 0,
+      left: 12,
+      right: 12,
       child: Center(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -184,16 +184,23 @@ class KeeperHud extends StatelessWidget {
             color: Colors.black54,
             borderRadius: BorderRadius.circular(16),
           ),
-          child: Text(
-            saved ? 'SAVED! 🧤' : 'GOAL CONCEDED!',
-            style: TextStyle(
-              color: saved ? _saveGreen : _goalRed,
-              fontSize: 36,
-              fontWeight: FontWeight.w900,
-              shadows: const [
-                Shadow(blurRadius: 10, color: Colors.black),
-              ],
-            ),
+          child: Builder(
+            builder: (context) {
+              final narrow = MediaQuery.sizeOf(context).width < 390;
+              return Text(
+                saved ? 'SAVED! 🧤' : 'GOAL CONCEDED!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: saved ? _saveGreen : _goalRed,
+                  fontSize: narrow ? 28 : 36,
+                  fontWeight: FontWeight.w900,
+                  height: 1.15,
+                  shadows: const [
+                    Shadow(blurRadius: 10, color: Colors.black),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),

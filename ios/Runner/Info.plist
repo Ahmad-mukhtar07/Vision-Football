@@ -34,7 +34,7 @@
 	<string>Vision Football may use motion sensors to help determine kick direction.</string>
 	<!-- Google AdMob app ID. Use test ID below; replace for production. -->
 	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<string>ca-app-pub-5366939839247481~4706155436</string>
 	<key>SKAdNetworkItems</key>
 	<array>
 		<dict>

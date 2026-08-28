@@ -16,9 +16,12 @@ class AdMobConfig {
   static const iosTestAppId = 'ca-app-pub-3940256099942544~1458002511';
 
   /// Replace with your production AdMob app IDs before shipping.
+  // static const androidProductionAppId =
+  //     'ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY';
   static const androidProductionAppId =
-      'ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY';
-  static const iosProductionAppId = 'ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY';
+      'ca-app-pub-5366939839247481~9196442080';
+  // static const iosProductionAppId = 'ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY';
+  static const iosProductionAppId = 'ca-app-pub-5366939839247481~4706155436';
 
   static String get appId {
     if (Platform.isAndroid) {
@@ -34,9 +37,11 @@ class AdMobConfig {
 
   static const androidTestBanner = 'ca-app-pub-3940256099942544/6300978111';
   static const iosTestBanner = 'ca-app-pub-3940256099942544/2934735716';
-  static const androidProductionBanner =
-      'ca-app-pub-XXXXXXXXXXXXXXXX/BBBBBBBBBB';
-  static const iosProductionBanner = 'ca-app-pub-XXXXXXXXXXXXXXXX/IIIIIIIIII';
+  // static const androidProductionBanner =
+  //     'ca-app-pub-XXXXXXXXXXXXXXXX/BBBBBBBBBB';
+  static const androidProductionBanner = 'ca-app-pub-5366939839247481/1595660376';
+  // static const iosProductionBanner = 'ca-app-pub-XXXXXXXXXXXXXXXX/IIIIIIIIII';
+  static const iosProductionBanner = 'ca-app-pub-5366939839247481/5102721195';
 
   static String get banner {
     if (Platform.isAndroid) {
@@ -55,9 +60,9 @@ class AdMobConfig {
   static const iosTestInterstitial =
       'ca-app-pub-3940256099942544/4411468910';
   static const androidProductionInterstitial =
-      'ca-app-pub-XXXXXXXXXXXXXXXX/BBBBBBBBBB';
+      'ca-app-pub-5366939839247481/9387404962';
   static const iosProductionInterstitial =
-      'ca-app-pub-XXXXXXXXXXXXXXXX/IIIIIIIIII';
+      'ca-app-pub-5366939839247481/7829896236';
 
   static String get interstitial {
     if (Platform.isAndroid) {
@@ -77,10 +82,10 @@ class AdMobConfig {
 
   static const androidTestRewarded = 'ca-app-pub-3940256099942544/5224354917';
   static const iosTestRewarded = 'ca-app-pub-3940256099942544/1712485313';
-  static const androidProductionRewarded =
-      'ca-app-pub-XXXXXXXXXXXXXXXX/BBBBBBBBBB';
+  // static const androidProductionRewarded = 'ca-app-pub-XXXXXXXXXXXXXXXX/BBBBBBBBBB';
+  static const androidProductionRewarded = 'ca-app-pub-5366939839247481/5151762004';
   static const iosProductionRewarded =
-      'ca-app-pub-XXXXXXXXXXXXXXXX/IIIIIIIIII';
+      'ca-app-pub-5366939839247481/2706446542';
 
   static String get rewarded {
     if (Platform.isAndroid) {
